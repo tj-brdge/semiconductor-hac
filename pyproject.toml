@@ -39,6 +39,9 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]
 
+[tool.ruff.lint.isort]
+known-first-party = ["themegraph"]
+
 [tool.ruff.lint.per-file-ignores]
 # The report template embeds HTML/JS whose lines are not Python.
 "src/themegraph/report/build.py" = ["E501"]
