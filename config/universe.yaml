@@ -1,0 +1,100 @@
+# v1 universe. `role: core` names are used in every layer and in return-based
+# evaluation; `role: adjacent` names join the text layer (and market affinity) so
+# themes can link outside semiconductors, but are excluded from return baskets.
+#
+# listed/delisted dates bound point-in-time membership. Dates marked "verify" come
+# from memory and must be checked against FMP profile/delisted data at M1.
+# cik is only given where the issuer is no longer in SEC company_tickers.json;
+# current issuers are resolved automatically.
+
+benchmarks: [SPY, SOXX]
+
+issuers:
+  # --- memory / storage
+  - {symbol: MU, segment: memory, role: core}
+  - {symbol: 005930.KS, segment: memory, role: core, currency: KRW, sec_filer: false}
+  - {symbol: 000660.KS, segment: memory, role: core, currency: KRW, sec_filer: false}
+  - {symbol: WDC, segment: memory, role: core}
+  - {symbol: SNDK, segment: memory, role: core, listed: 2025-02-24}  # verify
+  - {symbol: 2408.TW, segment: memory, role: core, currency: TWD, sec_filer: false}
+  # --- compute / logic
+  - {symbol: NVDA, segment: compute, role: core}
+  - {symbol: AMD, segment: compute, role: core}
+  - {symbol: INTC, segment: compute, role: core}
+  - {symbol: AVGO, segment: compute, role: core}
+  - {symbol: QCOM, segment: compute, role: core}
+  - {symbol: MRVL, segment: compute, role: core}
+  - {symbol: ARM, segment: compute, role: core, listed: 2023-09-14}  # verify
+  - {symbol: XLNX, segment: compute, role: core, delisted: 2022-02-14, cik: 743988}  # verify
+  # --- foundry / packaging
+  - {symbol: TSM, segment: foundry, role: core}
+  - {symbol: UMC, segment: foundry, role: core}
+  - {symbol: GFS, segment: foundry, role: core, listed: 2021-10-28}  # verify
+  - {symbol: AMKR, segment: foundry, role: core}
+  # --- analog / power / mixed signal
+  - {symbol: TXN, segment: analog, role: core}
+  - {symbol: ADI, segment: analog, role: core}
+  - {symbol: MCHP, segment: analog, role: core}
+  - {symbol: NXPI, segment: analog, role: core}
+  - {symbol: "ON", segment: analog, role: core}
+  - {symbol: STM, segment: analog, role: core}
+  - {symbol: WOLF, segment: analog, role: core}
+  - {symbol: MPWR, segment: analog, role: core}
+  - {symbol: POWI, segment: analog, role: core}
+  - {symbol: SWKS, segment: analog, role: core}
+  - {symbol: QRVO, segment: analog, role: core}
+  - {symbol: LSCC, segment: analog, role: core}
+  - {symbol: SLAB, segment: analog, role: core}
+  - {symbol: MXIM, segment: analog, role: core, delisted: 2021-08-26, cik: 743316}  # verify
+  - {symbol: LLTC, segment: analog, role: core, delisted: 2017-03-10, cik: 791907}  # verify
+  # --- equipment / materials / test
+  - {symbol: AMAT, segment: equipment, role: core}
+  - {symbol: LRCX, segment: equipment, role: core}
+  - {symbol: KLAC, segment: equipment, role: core}
+  - {symbol: ASML, segment: equipment, role: core}
+  - {symbol: TER, segment: equipment, role: core}
+  - {symbol: 8035.T, segment: equipment, role: core, currency: JPY, sec_filer: false}
+  - {symbol: 6857.T, segment: equipment, role: core, currency: JPY, sec_filer: false}
+  - {symbol: ENTG, segment: equipment, role: core}
+  - {symbol: MKSI, segment: equipment, role: core}
+  - {symbol: ONTO, segment: equipment, role: core}
+  - {symbol: CAMT, segment: equipment, role: core}
+  # --- EDA / IP
+  - {symbol: SNPS, segment: eda, role: core}
+  - {symbol: CDNS, segment: eda, role: core}
+
+  # --- adjacency ring: cloud / platforms
+  - {symbol: MSFT, segment: cloud, role: adjacent}
+  - {symbol: GOOGL, segment: cloud, role: adjacent}
+  - {symbol: AMZN, segment: cloud, role: adjacent}
+  - {symbol: META, segment: cloud, role: adjacent}
+  - {symbol: ORCL, segment: cloud, role: adjacent}
+  - {symbol: AAPL, segment: devices, role: adjacent}
+  # --- networking / optics
+  - {symbol: ANET, segment: networking, role: adjacent}
+  - {symbol: CSCO, segment: networking, role: adjacent}
+  - {symbol: CIEN, segment: networking, role: adjacent}
+  - {symbol: COHR, segment: networking, role: adjacent}
+  - {symbol: LITE, segment: networking, role: adjacent}
+  - {symbol: FN, segment: networking, role: adjacent}
+  - {symbol: CRDO, segment: networking, role: adjacent, listed: 2022-01-27}  # verify
+  - {symbol: ALAB, segment: networking, role: adjacent, listed: 2024-03-20}  # verify
+  # --- servers / hardware
+  - {symbol: SMCI, segment: servers, role: adjacent}
+  - {symbol: DELL, segment: servers, role: adjacent}
+  - {symbol: HPE, segment: servers, role: adjacent}
+  - {symbol: CLS, segment: servers, role: adjacent}
+  - {symbol: APH, segment: servers, role: adjacent}
+  - {symbol: GLW, segment: servers, role: adjacent}
+  # --- power / electrification
+  - {symbol: VRT, segment: power, role: adjacent}
+  - {symbol: ETN, segment: power, role: adjacent}
+  - {symbol: GEV, segment: power, role: adjacent, listed: 2024-04-02}  # verify
+  - {symbol: CEG, segment: power, role: adjacent, listed: 2022-02-02}  # verify
+  - {symbol: VST, segment: power, role: adjacent}
+  - {symbol: NVT, segment: power, role: adjacent}
+  # --- EV / auto / energy
+  - {symbol: TSLA, segment: ev, role: adjacent}
+  - {symbol: GM, segment: ev, role: adjacent}
+  - {symbol: RIVN, segment: ev, role: adjacent, listed: 2021-11-10}  # verify
+  - {symbol: ENPH, segment: ev, role: adjacent}

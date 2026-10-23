@@ -1,6 +1,6 @@
 # Multi-layer theme graph — design (v1 draft)
 
-Status: **draft for review**. No code yet. Decisions marked *(decided)* came from
+Status: **v1 implemented** (see README for what has and has not run on real data). Decisions marked *(decided)* came from
 the scoping interview; items marked *(open)* need an answer before or during the
 milestone that depends on them.
 
@@ -157,8 +157,11 @@ A **theme candidate** at time `t` is a topic track plus the set of issuers whose
 exposure to it is rising, flagged when all of these hold (thresholds fixed in
 config before holdout):
 
-- **Text emergence:** the topic's novel-passage weight and its issuer count grow
-  across at least *m* consecutive windows, with at least *n* issuers.
+- **Text emergence:** the topic's share of all novel passages, smoothed over one
+  quarter of snapshots so the earnings-call calendar does not read as growth, rises
+  for *m* consecutive quarter steps and by at least `min_growth_ratio` overall,
+  with at least *n* issuers exposed. Snapshots whose windows were still filling at
+  the start of the text history are skipped.
 - **Breadth:** the exposed issuers span at least two sub-industries, or the
   candidate is marked "single-segment".
 - **Market alignment (scored, not required):** market affinity among the exposed
@@ -290,14 +293,32 @@ docs/        DESIGN.md
 
 ## 10. Environment prerequisites
 
-- Network access to `financialmodelingprep.com` and `api.voyageai.com`
-  (`www.sec.gov` is already reachable).
+- Network access to `financialmodelingprep.com`, `api.voyageai.com`, `www.sec.gov`
+  and `data.sec.gov`.
+- `EDGAR_USER_AGENT` naming the requester and a contact email (SEC policy).
 - `FMP_API_KEY` and `VOYAGE_API_KEY` set as environment secrets, never in code,
   logs or chat.
 - Embedding cost to be estimated from actual corpus token counts at M3, before
   the first full run.
 
-## 11. Open questions
+## 11. Implementation notes (v1)
+
+- **Defaults taken for §12 questions:** adjacency ring included (text and market
+  affinity; returns use core names only); two-day transcript lag; dev/holdout split
+  at 2021-12-31.
+- **Null baskets** for co-movement and returns are drawn from non-members with the
+  same segment mix; percentiles count ties as half.
+- **Large windows:** above 5,000 passages, clustering first groups passages into
+  deterministic micro-clusters (seeded mini-batch k-means), then runs HAC on those.
+- **EDGAR timestamps:** `acceptanceDateTime` is read as US/Eastern (it carries a
+  misleading "Z"), which can only delay availability.
+- **Horizon finding from the synthetic demo:** when disclosures lead prices by more
+  than the forward horizon, the co-movement test misses a real theme. The
+  63/126-session horizons are a choice to revisit before freezing.
+- **Embeddings:** a hashing embedder exists for tests and the demo only; reports
+  warn whenever a run did not use the configured research model.
+
+## 12. Open questions
 
 1. Include the adjacency ring (§4.2) in v1? Recommended: yes, for text only.
 2. Should the transcript and filing lag rules (`available_at`) be the same as

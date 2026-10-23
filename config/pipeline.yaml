@@ -1,0 +1,71 @@
+# Pipeline rules. Every value here is part of the frozen specification: changing
+# it after `themegraph freeze` creates a new version that is evaluated forward only.
+
+periods:
+  start: 2013-01-01
+  dev_end: 2021-12-31
+  holdout_end: 2026-10-31
+  snapshot_frequency: ME      # pandas offset alias: month end
+
+availability:
+  # Delay between a source's publication time and when the pipeline may use it.
+  price_lag_days: 0           # close is usable from the next session (enforced in market layer)
+  transcript_lag_days: 2
+  filing_lag_days: 0          # EDGAR acceptance timestamps are exact
+  macro_release_lag_months: 2 # CPI reference month M usable from day 1 of M+2
+
+market:
+  benchmark: SPY
+  sector_benchmark: SOXX
+  residualize_against: [SPY, SOXX]
+  windows: [63, 126]
+  linkage: average
+  min_observations_share: 0.9
+
+macro:
+  factors: [us2y, us10y, dxy, wti, cpi]
+  window_months: 36
+  ridge_alpha: 1.0
+  min_months: 30
+
+text:
+  window_days: 180
+  chunk_words: 350
+  min_chunk_words: 40
+  exact_dup_drop: true
+  novelty_max_similarity: 0.95  # drop passages this close to the issuer's own earlier text
+  cluster_distance: 0.35        # cosine distance cut, average linkage
+  min_cluster_passages: 4
+  min_cluster_issuers: 2
+  track_link_similarity: 0.80   # centroid cosine to continue a track across windows
+  keywords_per_topic: 8
+
+embedding:
+  provider: voyage              # voyage | hashing (hashing is for tests/offline development only)
+  model: voyage-finance-2
+  batch_size: 64
+  dimensions: 1024
+
+candidates:
+  # Topic share is smoothed over `growth_step_snapshots` (one quarter of monthly
+  # snapshots) so the earnings-calendar cycle does not read as growth. A candidate
+  # needs that smoothed share to rise for `min_consecutive_growth_windows` steps in a
+  # row and by at least `min_growth_ratio` overall.
+  min_consecutive_growth_windows: 2
+  growth_step_snapshots: 3
+  min_growth_ratio: 1.25
+  min_issuers: 3
+  min_exposure: 0.05
+  market_alignment_window: 63
+  market_alignment_baseline_snapshots: 6
+
+evaluation:
+  label_match_min_jaccard: 0.34
+  label_match_window_days: 540  # a flag counts only if within this many days before consensus
+  forward_sessions: [63, 126]
+  null_draws: 500
+  seed: 20261022
+  primary_metrics:
+    - detection_recall
+    - median_lead_days
+    - comovement_null_percentile
