@@ -1,0 +1,121 @@
+# Hand-labelled ground truth (DESIGN.md §7.2). DRAFT — not frozen.
+#
+# Every marker needs a date AND a citation (URL or document reference) before the
+# file can be frozen; `themegraph freeze` refuses null markers. Dates were left
+# blank deliberately: they must come from dated public sources, not memory.
+#
+#   emergence_marker: earliest public evidence the theme existed
+#   consensus_marker: when it became mainstream (major press, dedicated ETF,
+#                     broad sell-side adoption)
+#   kind: theme | negative_control (hyped, then faded; used to count false alarms)
+
+frozen: false
+
+themes:
+  # ---------------- development period (2013–2021)
+  - id: memory_supercycle_2016
+    period: dev
+    kind: theme
+    issuers: [MU, 005930.KS, 000660.KS, WDC, LRCX, AMAT]
+    emergence_marker: {date: null, source: null}
+    consensus_marker: {date: null, source: null}
+  - id: crypto_gpu_2017
+    period: dev
+    kind: theme
+    issuers: [NVDA, AMD, TSM]
+    emergence_marker: {date: null, source: null}
+    consensus_marker: {date: null, source: null}
+  - id: cloud_datacenter_2016
+    period: dev
+    kind: theme
+    issuers: [NVDA, INTC, AMD, MSFT, AMZN, GOOGL, MU]
+    emergence_marker: {date: null, source: null}
+    consensus_marker: {date: null, source: null}
+  - id: sic_ev_power_2019
+    period: dev
+    kind: theme
+    issuers: [WOLF, "ON", STM, TSLA, POWI]
+    emergence_marker: {date: null, source: null}
+    consensus_marker: {date: null, source: null}
+  - id: chip_shortage_auto_2021
+    period: dev
+    kind: theme
+    issuers: [NXPI, MCHP, "ON", TXN, ADI, GM, TSM, UMC]
+    emergence_marker: {date: null, source: null}
+    consensus_marker: {date: null, source: null}
+  - id: handset_5g_2019
+    period: dev
+    kind: theme
+    issuers: [QCOM, SWKS, QRVO, AAPL, AVGO]
+    emergence_marker: {date: null, source: null}
+    consensus_marker: {date: null, source: null}
+
+  # ---------------- holdout period (2022–2026)
+  - id: inventory_correction_2022
+    period: holdout
+    kind: theme
+    issuers: [MU, WDC, INTC, AMD, NVDA, SWKS, QRVO]
+    emergence_marker: {date: null, source: null}
+    consensus_marker: {date: null, source: null}
+  - id: ai_compute_2023
+    period: holdout
+    kind: theme
+    issuers: [NVDA, AVGO, AMD, TSM, MSFT, META, SMCI]
+    emergence_marker: {date: null, source: null}
+    consensus_marker: {date: null, source: null}
+  - id: hbm_2023
+    period: holdout
+    kind: theme
+    issuers: [000660.KS, MU, 005930.KS]
+    emergence_marker: {date: null, source: null}
+    consensus_marker: {date: null, source: null}
+  - id: advanced_packaging_2023
+    period: holdout
+    kind: theme
+    issuers: [TSM, AMKR, ASML, CAMT, ONTO, 6857.T]
+    emergence_marker: {date: null, source: null}
+    consensus_marker: {date: null, source: null}
+  - id: ai_networking_optics_2023
+    period: holdout
+    kind: theme
+    issuers: [ANET, AVGO, MRVL, COHR, LITE, FN, CRDO, ALAB]
+    emergence_marker: {date: null, source: null}
+    consensus_marker: {date: null, source: null}
+  - id: ai_power_2024
+    period: holdout
+    kind: theme
+    issuers: [VRT, ETN, GEV, CEG, VST, NVT]
+    emergence_marker: {date: null, source: null}
+    consensus_marker: {date: null, source: null}
+  - id: china_export_controls_2022
+    period: holdout
+    kind: theme
+    issuers: [AMAT, LRCX, KLAC, ASML, NVDA, 8035.T]
+    emergence_marker: {date: null, source: null}
+    consensus_marker: {date: null, source: null}
+  - id: analog_bottoming_2024
+    period: holdout
+    kind: theme
+    issuers: [TXN, ADI, MCHP, NXPI, "ON", STM]
+    emergence_marker: {date: null, source: null}
+    consensus_marker: {date: null, source: null}
+  - id: dram_upcycle_2025
+    period: holdout
+    kind: theme
+    issuers: [MU, 000660.KS, 005930.KS, 2408.TW, SNDK]
+    emergence_marker: {date: null, source: null}
+    consensus_marker: {date: null, source: null}
+
+  # ---------------- negative controls
+  - id: metaverse_2021
+    period: dev
+    kind: negative_control
+    issuers: [META, NVDA, QCOM, AAPL]
+    emergence_marker: {date: null, source: null}
+    consensus_marker: {date: null, source: null}
+  - id: crypto_mining_2021
+    period: dev
+    kind: negative_control
+    issuers: [NVDA, AMD, TSM]
+    emergence_marker: {date: null, source: null}
+    consensus_marker: {date: null, source: null}
