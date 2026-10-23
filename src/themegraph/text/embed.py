@@ -7,7 +7,6 @@ model id, and reports flag any run that did not use the configured research mode
 
 from __future__ import annotations
 
-import os
 import re
 import time
 from pathlib import Path
@@ -19,6 +18,7 @@ import pandas as pd
 from sklearn.feature_extraction.text import HashingVectorizer
 
 from ..config import Embedding
+from ..data.http import env_value
 
 VOYAGE_URL = "https://api.voyageai.com/v1/embeddings"
 
@@ -53,7 +53,7 @@ class VoyageEmbedder:
                  client: httpx.Client | None = None):
         self.model_id = model
         self.batch_size = batch_size
-        key = api_key or os.environ.get("VOYAGE_API_KEY")
+        key = env_value("VOYAGE_API_KEY", api_key)
         if not key and client is None:
             raise RuntimeError("VOYAGE_API_KEY is not set (add it as an environment secret)")
         self.client = client or httpx.Client(

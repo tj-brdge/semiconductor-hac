@@ -12,7 +12,6 @@ which can only make availability later (the conservative direction).
 from __future__ import annotations
 
 import json
-import os
 import re
 from html.parser import HTMLParser
 from pathlib import Path
@@ -21,7 +20,7 @@ import pandas as pd
 
 from ..config import Availability
 from .cache import RawCache
-from .http import CachedFetcher
+from .http import CachedFetcher, env_value
 from .pit import filing_available_at
 
 WWW = "https://www.sec.gov"
@@ -32,7 +31,7 @@ FORMS = {"10-K", "10-Q", "8-K", "20-F", "6-K", "40-F", "10-K/A", "20-F/A"}
 class EdgarClient:
     def __init__(self, cache_dir: Path, user_agent: str | None = None, offline: bool = False,
                  fetcher: CachedFetcher | None = None):
-        ua = user_agent or os.environ.get("EDGAR_USER_AGENT")
+        ua = env_value("EDGAR_USER_AGENT", user_agent)
         if fetcher is None and not offline and (not ua or "@" not in ua):
             raise RuntimeError(
                 "EDGAR_USER_AGENT must name you and a contact email, per SEC fair-access policy"

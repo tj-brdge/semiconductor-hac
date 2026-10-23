@@ -27,3 +27,24 @@ def test_corruption_detected(tmp_path):
     (tmp_path / k[:2] / f"{k}.body").write_bytes(b"abd")
     with pytest.raises(CacheConflict):
         c.get(k)
+
+
+def test_env_value_strips_smart_quotes_and_rejects_other_unicode(monkeypatch):
+    from themegraph.data.http import env_value
+
+    monkeypatch.setenv("EDGAR_USER_AGENT", "“Jane Doe jane@example.com”")
+    assert env_value("EDGAR_USER_AGENT") == "Jane Doe jane@example.com"
+    monkeypatch.setenv("FMP_API_KEY", "abc–def")
+    with pytest.raises(RuntimeError, match="U\\+2013") as e:
+        env_value("FMP_API_KEY")
+    assert "abc" not in str(e.value)
+    monkeypatch.delenv("VOYAGE_API_KEY", raising=False)
+    assert env_value("VOYAGE_API_KEY") is None
+
+
+def test_edgar_client_accepts_smart_quoted_user_agent(tmp_path, monkeypatch):
+    from themegraph.data.edgar import EdgarClient
+
+    monkeypatch.setenv("EDGAR_USER_AGENT", "“Jane Doe jane@example.com”")
+    c = EdgarClient(tmp_path)
+    assert c.f._client.headers["User-Agent"] == "Jane Doe jane@example.com"

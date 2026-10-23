@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import time
 
 import httpx
@@ -72,3 +73,24 @@ class CachedFetcher:
             }
             return self.cache.put(key, resp.content, meta)
         raise FetchError(f"{self.source} {endpoint} {_redact(params)} failed: {last_err}")
+
+
+QUOTES = "\"'“”‘’«»` "
+
+
+def env_value(name: str, value: str | None = None) -> str | None:
+    """Read a credential or header value from the environment, tolerating values
+    pasted with smart quotes around them. Raises with a readable message (never
+    echoing the value) if anything non-ASCII remains, since HTTP headers and
+    query strings cannot carry it."""
+    raw = value if value is not None else os.environ.get(name)
+    if raw is None:
+        return None
+    cleaned = raw.strip().strip(QUOTES).strip()
+    bad = sorted({f"U+{ord(c):04X}" for c in cleaned if not c.isascii()})
+    if bad:
+        raise RuntimeError(
+            f"{name} contains non-ASCII characters ({', '.join(bad)}), often smart quotes "
+            f"from copy-paste. Re-type it with plain quotes, e.g. export {name}='...'"
+        )
+    return cleaned or None
