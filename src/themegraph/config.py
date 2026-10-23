@@ -63,6 +63,7 @@ class Text(_Strict):
 
 class Embedding(_Strict):
     provider: Literal["voyage", "hashing"] = "voyage"
+    endpoint: Literal["voyage", "mongodb"] = "voyage"
     model: str = "voyage-finance-2"
     batch_size: int = 64
     dimensions: int = 1024

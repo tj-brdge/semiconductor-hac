@@ -141,3 +141,26 @@ def test_voyage_error_includes_api_detail_not_key():
         msg = str(e)
     assert "Model not available for this plan" in msg and "403" in msg
     assert "sk-secret" not in msg and "payment method" in msg
+
+
+def test_voyage_endpoint_choice_and_wrong_key_hint():
+    import httpx
+
+    from themegraph.text.embed import VoyageEmbedder
+
+    seen = []
+
+    def handler(request):
+        seen.append(str(request.url))
+        return httpx.Response(403, json={"detail": "This API key cannot access this endpoint."})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    emb = VoyageEmbedder("voyage-finance-2", client=client, endpoint="voyage")
+    try:
+        emb.embed(["hello"])
+        raise AssertionError("expected failure")
+    except RuntimeError as e:
+        assert "endpoint: mongodb" in str(e)
+    assert VoyageEmbedder("m", client=client, endpoint="mongodb").url.startswith(
+        "https://ai.mongodb.com/")
+    assert seen[0].startswith("https://api.voyageai.com/")

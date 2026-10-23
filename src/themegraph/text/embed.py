@@ -21,7 +21,10 @@ from tqdm.auto import tqdm
 from ..config import Embedding
 from ..data.http import env_value
 
-VOYAGE_URL = "https://api.voyageai.com/v1/embeddings"
+ENDPOINTS = {
+    "voyage": "https://api.voyageai.com/v1/embeddings",
+    "mongodb": "https://ai.mongodb.com/v1/embeddings",
+}
 
 
 class Embedder(Protocol):
@@ -51,8 +54,10 @@ class HashingEmbedder:
 
 class VoyageEmbedder:
     def __init__(self, model: str, batch_size: int = 64, api_key: str | None = None,
-                 client: httpx.Client | None = None):
+                 client: httpx.Client | None = None, endpoint: str = "voyage"):
         self.model_id = model
+        self.endpoint = endpoint
+        self.url = ENDPOINTS[endpoint]
         self.batch_size = batch_size
         key = env_value("VOYAGE_API_KEY", api_key)
         if not key and client is None:
@@ -66,7 +71,7 @@ class VoyageEmbedder:
         for i in range(0, len(texts), self.batch_size):
             batch = texts[i:i + self.batch_size]
             for attempt in range(5):
-                r = self.client.post(VOYAGE_URL, json={
+                r = self.client.post(self.url, json={
                     "input": batch, "model": self.model_id, "input_type": "document",
                 })
                 if r.status_code == 200:
@@ -74,7 +79,7 @@ class VoyageEmbedder:
                 if r.status_code in (429, 500, 502, 503, 504):
                     time.sleep(2 ** (attempt + 1))
                     continue
-                raise RuntimeError(_voyage_error(r, self.model_id))
+                raise RuntimeError(_voyage_error(r, self.model_id, self.endpoint))
             else:
                 raise RuntimeError("Voyage embeddings: retries exhausted")
             data = sorted(r.json()["data"], key=lambda d: d["index"])
@@ -82,15 +87,20 @@ class VoyageEmbedder:
         return _normalise(np.vstack(out)) if out else np.zeros((0, 0), np.float32)
 
 
-def _voyage_error(r: httpx.Response, model: str) -> str:
+def _voyage_error(r: httpx.Response, model: str, endpoint: str = "voyage") -> str:
     """Voyage's own explanation (never contains the key), plus a hint for auth errors."""
     try:
         body = r.json()
         detail = body.get("detail") or body.get("message") or body.get("error") or body
     except ValueError:
         detail = r.text
-    msg = f"Voyage embeddings HTTP {r.status_code} (model {model}): {str(detail)[:400]}"
-    if r.status_code in (401, 403):
+    msg = (f"Voyage embeddings HTTP {r.status_code} (model {model}, endpoint {endpoint}): "
+           f"{str(detail)[:400]}")
+    if "cannot access this endpoint" in str(detail):
+        other = "mongodb" if endpoint == "voyage" else "voyage"
+        msg += (f"\nThis key belongs to the other service: set `endpoint: {other}` under "
+                "embedding in config/pipeline.yaml.")
+    elif r.status_code in (401, 403):
         msg += ("\nCheck that VOYAGE_API_KEY is current, that the account has a payment "
                 "method, and that it can use this model (embedding.model in "
                 "config/pipeline.yaml).")
@@ -100,7 +110,7 @@ def _voyage_error(r: httpx.Response, model: str) -> str:
 def make_embedder(cfg: Embedding) -> Embedder:
     if cfg.provider == "hashing":
         return HashingEmbedder(cfg.dimensions)
-    return VoyageEmbedder(cfg.model, cfg.batch_size)
+    return VoyageEmbedder(cfg.model, cfg.batch_size, endpoint=cfg.endpoint)
 
 
 class EmbeddingCache:
