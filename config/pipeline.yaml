@@ -42,6 +42,9 @@ text:
 
 embedding:
   provider: voyage              # voyage | hashing (hashing is for tests/offline development only)
+  # Where Voyage models are served. Keys created at dash.voyageai.com use `voyage`;
+  # keys created in the MongoDB Atlas console use `mongodb`.
+  endpoint: mongodb
   model: voyage-finance-2
   batch_size: 64
   dimensions: 1024
