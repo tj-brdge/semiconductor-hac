@@ -73,3 +73,15 @@ def test_freeze_detects_changes_and_single_holdout(tmp_path):
     cfg.write_text(cfg.read_text().replace("window_days: 180", "window_days: 90"))
     with pytest.raises(RuntimeError, match="config"):
         F.check_freeze(root)
+
+
+def test_metrics_when_no_label_has_dates():
+    led = pd.DataFrame({"candidate_id": ["c1"], "t": pd.to_datetime(["2019-01-31"], utc=True),
+                        "issuers": [["A", "B"]]})
+    undated = Theme(id="t", period="dev", kind="theme", issuers=["A", "B"],
+                    emergence_marker=Marker(), consensus_marker=Marker())
+    m = match_candidates(led, [undated], 0.34, 540)
+    metrics = detection_metrics(m, led, 5)
+    assert metrics["themes_evaluable"] == 0 and metrics["themes_not_evaluable"] == 1
+    assert metrics["unmatched_candidates"] == 1
+    assert np.isnan(metrics["detection_recall"])

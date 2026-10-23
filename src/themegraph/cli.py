@@ -86,11 +86,16 @@ def cmd_run(a):
     out = Path(a.out or RUNS / f"{a.period}-{dt.datetime.now(dt.UTC):%Y%m%dT%H%M%SZ}")
     ctx = P.build(prices, docs, cfg, u, make_embedder(cfg.embedding), DATA / "cache",
                   a.period, factors)
-    res = P.evaluate(ctx, load_labels())
-    manifest = P.save(ctx, res, out, {
+    inputs = {
         "prices": P.frame_sha256(prices), "documents": P.frame_sha256(docs[["doc_id", "text"]])
         if len(docs) else None,
-    })
+    }
+    # Save layers and the hashed candidate ledger before any outcome is computed, so
+    # the ledger is fixed first and a failure in evaluation never loses a finished build.
+    P.save(ctx, None, out, inputs)
+    print("layers and candidate ledger saved:", out)
+    res = P.evaluate(ctx, load_labels())
+    manifest = P.save(ctx, res, out, inputs)
     if a.period == "holdout":
         guard_holdout(manifest["results_sha256"])
         if not a.verify_identical:

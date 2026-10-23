@@ -20,8 +20,10 @@ def match_candidates(ledger: pd.DataFrame, themes: list[Theme], min_jaccard: flo
     rows = []
     for th in themes:
         c = th.consensus_marker.date
-        if c is None:
-            rows.append({"theme": th.id, "kind": th.kind, "evaluable": False})
+        if c is None:  # no consensus date yet: listed, but cannot be scored
+            rows.append({"theme": th.id, "kind": th.kind, "evaluable": False,
+                         "consensus": pd.NaT, "detected": False, "first_flag": pd.NaT,
+                         "candidate_id": None, "jaccard": np.nan, "lead_days": np.nan})
             continue
         C = pd.Timestamp(c, tz="UTC")
         lo = C - pd.Timedelta(days=window_days)
