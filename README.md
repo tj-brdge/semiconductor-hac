@@ -60,6 +60,17 @@ Raw responses land in `data/raw/` (content-hashed, never overwritten); normalise
 tables in `data/store/<table>/<vintage>.parquet`; embeddings are cached per model.
 `data/` and `runs/` are git-ignored.
 
+### Refreshing data
+
+Re-run the same `ingest` commands. Data that providers revise or extend (adjusted
+price history, the list of earnings calls, EDGAR filing lists, the latest
+treasury quarter and macro year) is cached per **vintage**, the download date,
+so a refresh on a new day fetches it afresh while re-runs on the same day reuse
+one consistent snapshot. Data that never changes (transcript text, filing
+documents, finished quarters and years) is downloaded once and reused forever.
+Old vintages are kept; `--vintage YYYY-MM-DD` rebuilds from a past snapshot
+without downloading.
+
 ### Holdout protocol
 
 1. Fill every `emergence_marker` / `consensus_marker` in `labels/themes.yaml` with a

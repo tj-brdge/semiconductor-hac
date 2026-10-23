@@ -37,9 +37,13 @@ class CachedFetcher:
         self._last = 0.0
 
     def fetch(self, url: str, params: dict | None = None, endpoint: str | None = None,
-              retries: int = 3) -> CachedResponse:
+              retries: int = 3, vintage: str | None = None) -> CachedResponse:
+        """Fetch through the cache. `vintage` (a date string) is for responses that
+        change over time: it becomes part of the cache key but is not sent, so each
+        vintage is its own immutable snapshot and a new vintage fetches afresh."""
         endpoint = endpoint or url
-        key = cache_key(self.source, endpoint, params)
+        key_params = {**(params or {}), "_vintage": vintage} if vintage else params
+        key = cache_key(self.source, endpoint, key_params)
         hit = self.cache.get(key)
         if hit is not None:
             return hit

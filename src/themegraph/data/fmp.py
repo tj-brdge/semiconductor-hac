@@ -32,60 +32,82 @@ FX_PAIRS = {"KRW": "USDKRW", "TWD": "USDTWD", "JPY": "USDJPY"}
 
 
 class FMPClient:
+    """Responses that providers revise (adjusted price history, call lists, the
+    current year of a macro series) are cached per `vintage` (default: today, UTC),
+    so a refresh fetches them afresh while re-runs the same day reuse one consistent
+    snapshot. Fixed content (transcript text, finished treasury quarters and
+    economic years) is cached once and reused by every vintage."""
+
     def __init__(self, cache_dir: Path, api_key: str | None = None, offline: bool = False,
-                 fetcher: CachedFetcher | None = None):
+                 fetcher: CachedFetcher | None = None, vintage: str | None = None):
+        self.vintage = vintage or dt.datetime.now(dt.UTC).date().isoformat()
         self.api_key = env_value("FMP_API_KEY", api_key)
         if not self.api_key and not offline and fetcher is None:
             raise RuntimeError("FMP_API_KEY is not set (add it as an environment secret)")
         self.f = fetcher or CachedFetcher("fmp", RawCache(cache_dir), min_interval=0.2,
                                           offline=offline)
 
-    def _get(self, endpoint: str, **params) -> list[dict]:
+    def _get(self, endpoint: str, mutable: bool = False, **params) -> list[dict]:
         p = {k: str(v) for k, v in params.items() if v is not None}
         if self.api_key:
             p["apikey"] = self.api_key
-        resp = self.f.fetch(f"{BASE}/{endpoint}", params=p, endpoint=endpoint)
+        resp = self.f.fetch(f"{BASE}/{endpoint}", params=p, endpoint=endpoint,
+                            vintage=self.vintage if mutable else None)
         data = json.loads(resp.body or b"[]")
         if isinstance(data, dict) and "Error Message" in data:
             raise RuntimeError(f"FMP {endpoint}: {data['Error Message']}")
         return data if isinstance(data, list) else [data]
 
-    # --- prices, chunked by calendar year so no response hits a row cap
+    # --- prices, chunked by calendar year so no response hits a row cap. Adjusted
+    # history is restated after every split and dividend, so every chunk of a symbol
+    # must come from the same vintage; mixing vintages would put a fake jump at the
+    # chunk boundary.
     def prices(self, symbol: str, start: dt.date, end: dt.date) -> list[dict]:
         rows: list[dict] = []
         for year in range(start.year, end.year + 1):
             lo = max(start, dt.date(year, 1, 1))
             hi = min(end, dt.date(year, 12, 31))
-            rows += self._get("historical-price-eod/dividend-adjusted",
+            rows += self._get("historical-price-eod/dividend-adjusted", mutable=True,
                               symbol=symbol, **{"from": lo, "to": hi})
         return rows
 
     def treasury(self, start: dt.date, end: dt.date) -> list[dict]:
-        rows, lo = [], start
-        while lo <= end:  # the endpoint serves at most ~90 days per request
-            hi = min(end, lo + dt.timedelta(days=89))
-            rows += self._get("treasury-rates", **{"from": lo, "to": hi})
-            lo = hi + dt.timedelta(days=1)
+        """Calendar-quarter chunks (the endpoint serves at most ~90 days per request).
+        Fixed boundaries mean finished quarters are reused whatever the start date;
+        the quarter still in progress is fetched per vintage."""
+        rows: list[dict] = []
+        q = pd.Timestamp(start).to_period("Q")
+        while q.start_time.date() <= end:
+            lo = max(start, q.start_time.date())
+            hi = min(end, q.end_time.date())
+            rows += self._get("treasury-rates", mutable=hi >= _today() - dt.timedelta(days=7),
+                              **{"from": lo, "to": hi})
+            q += 1
         return rows
 
     def economic(self, name: str, start: dt.date, end: dt.date) -> list[dict]:
         rows: list[dict] = []
         for year in range(start.year, end.year + 1):
-            rows += self._get("economic-indicators", name=name,
+            rows += self._get("economic-indicators", mutable=year >= _today().year - 1,
+                              name=name,
                               **{"from": dt.date(year, 1, 1), "to": dt.date(year, 12, 31)})
         return rows
 
     def transcript_dates(self, symbol: str) -> list[dict]:
-        return self._get("earning-call-transcript-dates", symbol=symbol)
+        return self._get("earning-call-transcript-dates", mutable=True, symbol=symbol)
 
     def transcript(self, symbol: str, year: int, quarter: int) -> list[dict]:
         return self._get("earning-call-transcript", symbol=symbol, year=year, quarter=quarter)
 
     def profile(self, symbol: str) -> list[dict]:
-        return self._get("profile", symbol=symbol)
+        return self._get("profile", mutable=True, symbol=symbol)
 
     def delisted(self, page: int = 0) -> list[dict]:
-        return self._get("delisted-companies", page=page, limit=100)
+        return self._get("delisted-companies", mutable=True, page=page, limit=100)
+
+
+def _today() -> dt.date:
+    return dt.datetime.now(dt.UTC).date()
 
 
 # ---------------------------------------------------------------- normalisers
