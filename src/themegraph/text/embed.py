@@ -63,8 +63,7 @@ class VoyageEmbedder:
 
     def embed(self, texts: list[str]) -> np.ndarray:
         out = []
-        starts = range(0, len(texts), self.batch_size)
-        for i in tqdm(starts, desc="Embedding", unit="batch", disable=None, dynamic_ncols=True):
+        for i in range(0, len(texts), self.batch_size):
             batch = texts[i:i + self.batch_size]
             for attempt in range(5):
                 r = self.client.post(VOYAGE_URL, json={
@@ -75,12 +74,27 @@ class VoyageEmbedder:
                 if r.status_code in (429, 500, 502, 503, 504):
                     time.sleep(2 ** (attempt + 1))
                     continue
-                raise RuntimeError(f"Voyage embeddings HTTP {r.status_code}")
+                raise RuntimeError(_voyage_error(r, self.model_id))
             else:
                 raise RuntimeError("Voyage embeddings: retries exhausted")
             data = sorted(r.json()["data"], key=lambda d: d["index"])
             out.append(np.array([d["embedding"] for d in data], dtype=np.float32))
         return _normalise(np.vstack(out)) if out else np.zeros((0, 0), np.float32)
+
+
+def _voyage_error(r: httpx.Response, model: str) -> str:
+    """Voyage's own explanation (never contains the key), plus a hint for auth errors."""
+    try:
+        body = r.json()
+        detail = body.get("detail") or body.get("message") or body.get("error") or body
+    except ValueError:
+        detail = r.text
+    msg = f"Voyage embeddings HTTP {r.status_code} (model {model}): {str(detail)[:400]}"
+    if r.status_code in (401, 403):
+        msg += ("\nCheck that VOYAGE_API_KEY is current, that the account has a payment "
+                "method, and that it can use this model (embedding.model in "
+                "config/pipeline.yaml).")
+    return msg
 
 
 def make_embedder(cfg: Embedding) -> Embedder:
@@ -90,7 +104,13 @@ def make_embedder(cfg: Embedding) -> Embedder:
 
 
 class EmbeddingCache:
-    """Parquet shards under <root>/<model_id>/; never recomputes a cached hash."""
+    """Parquet shards under <root>/<model_id>/; never recomputes a cached hash.
+
+    New vectors are written every `save_every` passages, so an interrupted or failed
+    run keeps (and does not pay again for) everything embedded before the failure.
+    """
+
+    save_every = 1024
 
     def __init__(self, root: Path, embedder: Embedder):
         self.embedder = embedder
@@ -109,10 +129,21 @@ class EmbeddingCache:
             if h not in self._mem and h not in todo:
                 todo[h] = t
         if todo:
-            vecs = self.embedder.embed(list(todo.values()))
-            new = pd.DataFrame({"text_hash": list(todo), "vector": list(vecs)})
-            shard = self.dir / f"{len(list(self.dir.glob('*.parquet'))):06d}.parquet"
-            new.to_parquet(shard, index=False)
-            for h, v in zip(todo, vecs, strict=True):
-                self._mem[h] = v
+            items = list(todo.items())
+            with tqdm(total=len(items), desc=f"Embedding ({self.embedder.model_id})",
+                      unit="passage", disable=None, dynamic_ncols=True) as bar:
+                for i in range(0, len(items), self.save_every):
+                    chunk = items[i:i + self.save_every]
+                    vecs = self.embedder.embed([t for _, t in chunk])
+                    keys = [h for h, _ in chunk]
+                    self._write_shard(keys, vecs)
+                    for h, v in zip(keys, vecs, strict=True):
+                        self._mem[h] = v
+                    bar.update(len(chunk))
         return np.vstack([self._mem[h] for h in hashes]) if hashes else np.zeros((0, 0))
+
+    def _write_shard(self, keys: list[str], vecs: np.ndarray) -> None:
+        n = len(list(self.dir.glob("*.parquet")))
+        tmp = self.dir / f"{n:06d}.parquet.tmp"
+        pd.DataFrame({"text_hash": keys, "vector": list(vecs)}).to_parquet(tmp, index=False)
+        tmp.rename(self.dir / f"{n:06d}.parquet")  # atomic: no half-written shards

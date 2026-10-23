@@ -100,3 +100,44 @@ def test_window_exposure_shares():
 def test_ctfidf_distinguishes_topics():
     kw = ctfidf_keywords({1: "hbm hbm dram memory", 2: "inverter silicon carbide ev"}, 2)
     assert "hbm" in kw[1] and "hbm" not in kw[2]
+
+
+def test_embedding_cache_keeps_progress_when_a_later_chunk_fails(tmp_path):
+    class FailsSecondCall(HashingEmbedder):
+        calls = 0
+
+        def embed(self, texts):
+            FailsSecondCall.calls += 1
+            if FailsSecondCall.calls == 2:
+                raise RuntimeError("quota")
+            return super().embed(texts)
+
+    cache = EmbeddingCache(tmp_path, FailsSecondCall(32))
+    cache.save_every = 2
+    hashes, texts = ["a", "b", "c", "d"], ["w1 x", "w2 y", "w3 z", "w4 q"]
+    try:
+        cache.get(hashes, texts)
+    except RuntimeError:
+        pass
+    reloaded = EmbeddingCache(tmp_path, HashingEmbedder(32))
+    assert set(reloaded._mem) == {"a", "b"}
+
+
+def test_voyage_error_includes_api_detail_not_key():
+    import httpx
+
+    from themegraph.text.embed import VoyageEmbedder
+
+    def handler(request):
+        return httpx.Response(403, json={"detail": "Model not available for this plan"})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler),
+                          headers={"Authorization": "Bearer sk-secret"})
+    emb = VoyageEmbedder("voyage-finance-2", client=client)
+    try:
+        emb.embed(["hello"])
+        raise AssertionError("expected failure")
+    except RuntimeError as e:
+        msg = str(e)
+    assert "Model not available for this plan" in msg and "403" in msg
+    assert "sk-secret" not in msg and "payment method" in msg
