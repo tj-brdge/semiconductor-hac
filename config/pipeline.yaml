@@ -2,7 +2,7 @@
 # it after `themegraph freeze` creates a new version that is evaluated forward only.
 
 periods:
-  start: 2013-01-01
+  start: 2010-01-01
   dev_end: 2021-12-31
   holdout_end: 2026-10-31
   snapshot_frequency: ME      # pandas offset alias: month end
@@ -64,8 +64,11 @@ candidates:
 
 evaluation:
   label_match_min_jaccard: 0.34
-  label_match_window_days: 540  # a flag counts only if within this many days before consensus
-  forward_sessions: [63, 126]
+  label_match_window_days: 1095  # a flag counts as early if within 3 years before consensus
+  # Outcome horizons after a first flag: 1, 2 and 3 years. Long horizons suit
+  # multi-year holding; a flag can be scored only once its horizon has elapsed
+  # inside the period being evaluated.
+  forward_sessions: [252, 504, 756]
   null_draws: 500
   seed: 20261022
   primary_metrics:
