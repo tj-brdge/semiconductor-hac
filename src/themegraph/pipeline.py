@@ -104,16 +104,20 @@ def period_bounds(cfg: PipelineConfig, period: str) -> tuple[pd.Timestamp, pd.Ti
 
 def build(prices: pd.DataFrame, docs: pd.DataFrame, cfg: PipelineConfig,
           universe: UniverseConfig, embedder: Embedder, cache_dir: Path, period: str,
-          factors: pd.DataFrame | None = None, log=print) -> RunContext:
+          factors: pd.DataFrame | None = None, log=print,
+          end: dt.date | None = None) -> RunContext:
     """Compute every layer from the start date through the end of `period`.
     For the holdout period the history before it is used to warm up windows and
     tracks; candidates are evaluated only inside the period."""
-    _, end = period_bounds(cfg, period)
+    if end is None:
+        _, end = period_bounds(cfg, period)
     end_ts = snapshot_ts(end)
     prices = prices.loc[prices["available_at"] <= end_ts]
     docs = docs.loc[docs["available_at"] <= end_ts] if len(docs) else docs
     snaps = [snapshot_ts(d) for d in pd.date_range(cfg.periods.start, end,
                                                    freq=cfg.periods.snapshot_frequency)]
+    if not snaps or snaps[-1] < end_ts:  # an as-of run also snapshots its cutoff day
+        snaps.append(end_ts)
     panel = price_panel(prices)
     panel.index = pd.DatetimeIndex(panel.index).tz_localize(None).normalize()
     rets = log_returns(panel)

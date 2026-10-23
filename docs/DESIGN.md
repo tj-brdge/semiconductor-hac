@@ -234,7 +234,7 @@ Candidate themes:
   episode-level results, block-bootstrap intervals and the null distribution. No
   annualised performance claims.
 
-### 7.4 Freeze mechanics
+### 7.4 Freeze mechanics (implemented as the holdout lifecycle; see README)
 
 `freeze` writes `freeze.json` with the hashes of code, config, label file, and
 primary metric definitions, and creates a git tag. The holdout runner refuses to
@@ -354,6 +354,56 @@ returns:
 - **Calibration:** `themegraph topics --dates ... --distances ...` prints the
   topics a window yields at several cluster distances, so the threshold is chosen
   by reading topics. It must be fixed before the freeze.
+
+### Review fixes after PR #7
+
+Correctness:
+- **Cluster cache** keys on the passages' IDs, issuers, genres and embedding bytes,
+  plus procedure constants, embedder, settings and seed; entries are re-validated
+  on load. (IDs alone returned stale labels when vectors changed.)
+- **Degenerate vectors:** genres with fewer than 3 passages in a window are
+  centred on the window mean; empty, non-finite or near-zero residuals and
+  cancelled micro-centroids are excluded with label -1 and counted
+  (`passages_excluded_degenerate`). No jitter.
+- **As-of explanations:** each candidate's keywords and quotations come from its
+  flag window only (with issuer, genre, context, source, availability). Whole-run
+  keywords remain as a labelled retrospective summary; neither feeds detection.
+- **Returns:** entry at the first close after the snapshot (the move into it is
+  excluded); equal-weight buy-and-hold simple return, chosen because a mean of log
+  returns is not a holdable portfolio; fixed membership with constituent statuses.
+- **Snapshot availability:** returns carry when they became known; snapshots
+  ignore later-published prices. Runs record input vintages and
+  `availability_basis` (reconstructed for history, observed for forward).
+- **Null baskets** never repeat a security or include a member; unsupported when
+  non-members are too few.
+- **Holdout lifecycle:** see README; attempts are logged before the build, only the
+  first is clean, verification binds every input and output.
+
+Research choices (with fixtures in `tests/`, not tuned on outcomes):
+- **Generic topics** are judged by breadth when growth began. Judged at the flag,
+  a theme spreading to all issuers within a quarter (AI in 2023) was never flagged.
+  The cap applies only with at least 2 x min_issuers issuers with text.
+- **Recurring topics:** the 24-snapshot new-high rule suppresses a topic returning
+  to a level it held within the past two years. A memory cycle recurring after
+  more than two years still qualifies; a relapse within one cycle does not. This
+  is intended; it is a trade-off, not a finding.
+- **Numeric filter** raised from 0.15 to 0.35: 0.15 dropped ordinary guidance
+  passages; tables score about 0.8.
+- **Tracking:** overlap-based links also require centroid cosine >= 0.5. With
+  6-month windows stepped monthly, any topic seen once lives about 6 windows, so
+  churn statistics report life beyond that span and first-to-last centroid cosine
+  (drift). Whether overlap tracking preserves meaning on real data must be checked
+  with those statistics in the next development run.
+
+Pushed back / deferred:
+- **Beta and momentum matching:** with 4-12 issuers per segment the matched cells
+  are mostly empty. Nulls match on segment; momentum balance is reported as a
+  diagnostic (`momentum_gap_vs_null`).
+- **Layer ablations** (text-only vs market-only candidates) need a separate
+  market-only detector; deferred rather than approximated.
+- **Inference:** episodes sharing issuers over overlapping intervals are pooled
+  into dependence groups before sign-flip tests. With few groups the results are
+  descriptive; no stronger inference is claimed.
 
 ## 12. Open questions
 

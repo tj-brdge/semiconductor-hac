@@ -155,6 +155,33 @@ def cmd_adjudicate(a):
     print(json.dumps(A.summary(A.load(path), n), indent=1))
 
 
+def cmd_forward(a):
+    """Forward log: record as-of predictions, or append matured outcomes."""
+    import pandas as pd
+
+    from . import forward as Fw
+    from . import ingest as I
+    from .text.embed import make_embedder
+
+    cfg, u = load_pipeline(), load_universe()
+    store = _store()
+    out = ROOT / "forward"
+    prices = I.load_prices(store)
+    if a.action == "predict":
+        cutoff = dt.date.fromisoformat(a.cutoff) if a.cutoff else dt.date.today()
+        recs = Fw.predict(prices, I.load_documents(store), cfg, u, make_embedder(cfg.embedding),
+                          DATA / "cache", out, cutoff)
+        print(f"{len(recs)} prediction records for cutoff {cutoff} in {out / Fw.PREDICTIONS}")
+        return
+    closes = prices.pivot_table(index="date", columns="symbol", values="close")
+    closes.index = pd.DatetimeIndex(closes.index).tz_localize(None).normalize() \
+        .tz_localize("UTC") + pd.Timedelta(hours=22)
+    delisted = {i.symbol: i.delisted for i in u.issuers if i.delisted}
+    new = Fw.evaluate_outcomes(out, closes, cfg.market.sector_benchmark,
+                               cfg.evaluation.forward_sessions, closes.index.max(), delisted)
+    print(f"{len(new)} new outcome records in {out / Fw.OUTCOMES}")
+
+
 def cmd_freeze(a):
     from .eval.freeze import freeze
     print(json.dumps(freeze(), indent=1))
@@ -206,6 +233,10 @@ def main(argv=None):
     s.add_argument("--allow-holdout-dates", action="store_true",
                    help="inspect dates after dev_end; logged as holdout contamination")
     s.set_defaults(fn=cmd_topics)
+    s = sub.add_parser("forward", help="as-of prediction log (predict) and outcomes")
+    s.add_argument("action", choices=["predict", "outcomes"])
+    s.add_argument("--cutoff", help="prediction date YYYY-MM-DD (default today)")
+    s.set_defaults(fn=cmd_forward)
     s = sub.add_parser("adjudicate", help="write/refresh a run's adjudication worksheet")
     s.add_argument("run_dir")
     s.set_defaults(fn=cmd_adjudicate)

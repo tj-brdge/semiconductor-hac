@@ -16,20 +16,27 @@ Semiconductors are the first test case; the design is in
 
 ## Status
 
+Evidence levels: **implemented** (code exists), **tested** (offline tests on
+synthetic or fixture data), **live-validated** (run on real FMP/EDGAR/Voyage data
+and inspected), **deferred** (not built).
+
 | Piece | State |
 |---|---|
-| Point-in-time store, raw cache, FMP + EDGAR clients | built; **not yet run on live data** (see prerequisites) |
-| Market, macro, text layers; tracking; candidates | built, tested |
-| Evaluation (detection, co-movement, returns), freeze/holdout guard | built, tested |
-| Interactive HTML report | built |
-| Theme label file (`labels/themes.yaml`) | **draft**: themes listed, dated markers still to fill |
-| Real-data dev run, holdout run, forward log | not started |
+| Point-in-time store, raw cache, FMP + EDGAR clients, per-vintage refresh | tested; **live-validated**: real ingestion has run (prices, macro, transcripts, EDGAR) |
+| Market and macro layers | tested; live-validated in the first development run |
+| Text layer as of the first development run (2010–2021, `voyage-finance-2`) | live-validated, and found wanting: 190 candidates (16 a year), topics dominated by call small talk and statement boilerplate, ~14,600 topic IDs over 144 windows |
+| Revised text layer (PR #7 and the review fixes: filters, genre centring, overlap tracking with a similarity floor, new-high and breadth rules, content-addressed cache, as-of explanations) | tested on synthetic data and fixtures; **not yet live-validated** |
+| Evaluation: detection, co-movement, buy-and-hold returns, dependence-grouped inference, adjudication | tested |
+| Holdout lifecycle (attempt logged before outcomes, one clean attempt, verification) | tested; the real holdout has **not** been run |
+| Forward prediction log (`themegraph forward`) | tested; not yet used on live data |
+| Theme labels (`labels/themes.yaml`) | **draft**: themes listed, every date and source still blank, not frozen |
+| Layer ablations (text-only vs market-only), beta matching, follow-through/fundamentals layer | deferred |
 
 ## Quick start
 
 ```bash
 uv sync
-uv run pytest -q              # 36 tests, ~1 min, fully offline
+uv run pytest -q              # 75 tests, ~2 min, fully offline
 uv run themegraph demo        # synthetic planted themes -> runs/demo/{dev,holdout}/report.html
 ```
 
@@ -51,10 +58,11 @@ Prerequisites (cloud environment settings or your shell):
 uv run themegraph ingest fmp-prices        # USD closes, FX-converted for KRW/TWD/JPY listings
 uv run themegraph ingest fmp-macro         # yields, CPI (release-lagged), oil, dollar
 uv run themegraph ingest fmp-transcripts
-uv run themegraph ingest edgar             # 10-K/10-Q/20-F sections, 8-K exhibit 99
+uv run themegraph ingest edgar             # 10-K/10-Q/20-F sections, 8-K/6-K exhibit 99
 uv run themegraph coverage                 # per-issuer gaps, before trusting anything
 uv run themegraph topics                   # read sample topics; calibrate cluster_distance
 uv run themegraph run --period dev         # -> runs/dev-<timestamp>/report.html
+uv run themegraph adjudicate runs/dev-...  # review matches and candidates (worksheet)
 ```
 
 Raw responses land in `data/raw/` (content-hashed, never overwritten); normalised
@@ -76,11 +84,37 @@ without downloading.
 
 1. Fill every `emergence_marker` / `consensus_marker` in `labels/themes.yaml` with a
    date **and** a source, then set `frozen: true`. Check with `themegraph labels`.
-2. `themegraph freeze` writes `freeze.json`: hashes of code, config, labels and the
-   primary metrics. Commit it.
-3. `themegraph run --period holdout` refuses to run without a matching freeze and
-   logs the run in `holdout_log.jsonl`. It runs once; `--verify-identical` re-runs
-   only to confirm the same result.
+2. `themegraph freeze` writes `freeze.json`: hashes of code, config, labels, the
+   primary metrics and the dependency environment (`uv.lock`, Python version).
+3. `themegraph run --period holdout` appends an `attempt` record to
+   `holdout_log.jsonl` and takes `holdout.lock` **before** building anything, so
+   an interrupted attempt still counts. Only the first attempt is clean; any later
+   one, under any freeze, needs `--new-attempt-reason` and is logged as not clean.
+   Inspecting holdout-period topics (`themegraph topics --allow-holdout-dates`)
+   is logged and also makes later attempts not clean.
+4. `--verify-identical` re-runs a completed attempt and checks inputs, vintages,
+   environment, ledger and per-episode outputs; it never runs a first attempt.
+
+### Forward log
+
+`themegraph forward predict --cutoff YYYY-MM-DD` records, append-only, what the
+pipeline flags using only data downloaded by the cutoff (`forward/predictions.jsonl`).
+Repeating a cutoff with the same inputs adds nothing; with different inputs it is
+refused. `themegraph forward outcomes` appends outcomes for horizons that have
+elapsed (`forward/outcomes.jsonl`) and never modifies predictions.
+
+### Conventions worth knowing
+
+- **Returns:** bought at the first close after the snapshot, sold h sessions later;
+  equal-weight buy-and-hold simple return; membership fixed at the flag;
+  constituents tagged complete/delisted/stale/missing; baskets under 80% coverage
+  and horizons past the data are reported, not scored.
+- **Availability:** historical runs reconstruct availability from publication
+  times plus lags (`availability_basis: reconstructed`); this cannot undo later
+  revisions or survivorship in present-day data. Forward predictions use the
+  observed basis.
+- **Inference** is descriptive: episodes sharing issuers over overlapping
+  intervals are pooled into dependence groups before any permutation test.
 
 ## Layout
 
