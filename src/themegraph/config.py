@@ -54,7 +54,7 @@ class Text(_Strict):
     min_chunk_words: int = 40
     exact_dup_drop: bool = True
     novelty_max_similarity: float = 0.95
-    max_numeric_share: float = 0.15
+    max_numeric_share: float = 0.35
     drop_financial_statements: bool = True
     center_by_genre: bool = True
     remove_top_components: int = 0
@@ -63,6 +63,7 @@ class Text(_Strict):
     min_cluster_issuers: int = 2
     track_link_similarity: float = 0.8
     track_link_overlap: float = 0.3
+    track_link_min_similarity: float = 0.5
     keywords_per_topic: int = 8
     parallel_jobs: int = 4
 

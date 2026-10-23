@@ -122,9 +122,11 @@ def begin_holdout(inputs: dict, reason: str | None = None, root: Path = ROOT) ->
             f"{lock} exists: another holdout attempt is running or one was interrupted. "
             "An interrupted attempt is already logged as consumed; inspect the log, "
             "then delete the lock to proceed.") from e
+    inspected = [r for r in holdout_records(root) if r["event"] == "holdout_topic_inspection"]
     attempt = {"event": "attempt", "attempt_id": uuid.uuid4().hex,
-               "freeze": record["hashes"], "inputs": inputs, "clean": not attempts,
-               "reason": reason}
+               "freeze": record["hashes"], "inputs": inputs,
+               "clean": not attempts and not inspected,
+               "contaminated_by": [r["logged_at"] for r in inspected], "reason": reason}
     os.write(fd, json.dumps({"attempt_id": attempt["attempt_id"], "pid": os.getpid()}).encode())
     os.close(fd)
     _append(root, attempt)

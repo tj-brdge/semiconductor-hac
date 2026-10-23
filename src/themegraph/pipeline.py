@@ -160,7 +160,8 @@ def build(prices: pd.DataFrame, docs: pd.DataFrame, cfg: PipelineConfig,
         windows = cluster_windows(p, V, snaps, cfg, embedder.model_id,
                                   cache_dir / "clusters", log)
         tracker = Tracker(cfg.text.track_link_similarity,
-                          link_overlap=cfg.text.track_link_overlap)
+                          link_overlap=cfg.text.track_link_overlap,
+                          link_min_similarity=cfg.text.track_link_min_similarity)
         for wc in windows:
             t = wc.t
             assign = tracker.step(wc)
@@ -180,12 +181,15 @@ def build(prices: pd.DataFrame, docs: pd.DataFrame, cfg: PipelineConfig,
                     best[tid] = (len(idx), t, [wc.passage_ids[i] for i in idx])
             edges.append(matrix_edges(t, "text", text_affinity(ex)))
         ctx.events = track_events(tracker)
-        ctx.track_stats = {**tracker.stats(),
+        step = (snaps[1] - snaps[0]).days if len(snaps) > 1 else cfg.text.window_days
+        ctx.track_stats = {**tracker.stats(int(np.ceil(cfg.text.window_days / max(step, 1)))),
                            "passages_excluded_degenerate": int(sum(w.excluded for w in windows))}
         log(f"  topic tracking: {ctx.track_stats}")
     ctx.exposure = (pd.concat(exposures, ignore_index=True) if exposures else
                     pd.DataFrame(columns=["t", "track_id", "symbol", "n_passages", "exposure"]))
-    ctx.edges = pd.concat([e for e in edges if len(e)], ignore_index=True) if edges else None
+    usable = [e for e in edges if len(e)]
+    ctx.edges = pd.concat(usable, ignore_index=True) if usable else \
+        pd.DataFrame(columns=["t", "layer", "a", "b", "weight"])
 
     log("theme candidates")
     first_doc = docs["available_at"].min() if len(docs) else None
@@ -350,6 +354,9 @@ def evaluate(ctx: RunContext, labels: LabelFile) -> dict:
     years = (end - start).days / 365.25
     matches = match_candidates(led, labels.for_period(ctx.period),
                                ev.label_match_min_jaccard, ev.label_match_window_days)
+    matches = _mark_text_evidence(matches, labels.for_period(ctx.period), ctx,
+                                  ev.label_match_window_days,
+                                  cfg.text.min_cluster_passages * cfg.candidates.min_issuers)
     q1 = detection_metrics(matches, led, years)
     firsts = led.loc[led["t"] == led["t_first_flag"]] if len(led) else led
     segs = segments(ctx.universe)
@@ -365,6 +372,33 @@ def evaluate(ctx: RunContext, labels: LabelFile) -> dict:
         "returns": returns_summary(rt, firsts, ev.null_draws, ev.seed),
     }
     return {"q1": q1, "q2": q2, "matches": matches, "comovement": como, "returns": rt}
+
+
+def _mark_text_evidence(matches: pd.DataFrame, themes, ctx: RunContext, window_days: int,
+                        min_passages: int) -> pd.DataFrame:
+    """A labelled theme can only be missed if its issuers had text to detect it from.
+    Themes whose issuers had fewer than `min_passages` passages in the matching window
+    are marked not evaluable (reason no_text_evidence) instead of counting as misses."""
+    if not len(matches):
+        return matches
+    m = matches.copy()
+    m["evidence_passages"] = np.nan
+    m["reason"] = np.where(m["evaluable"], "", "no_consensus_date")
+    p = ctx.passages
+    by_id = {th.id: th for th in themes}
+    for i, row in m.iterrows():
+        if not row["evaluable"]:
+            continue
+        th = by_id[row["theme"]]
+        c = pd.Timestamp(th.consensus_marker.date, tz="UTC")
+        n = 0 if p is None or not len(p) else int(
+            (p["symbol"].isin(th.issuers) & (p["available_at"] <= c)
+             & (p["available_at"] > c - pd.Timedelta(days=window_days))).sum())
+        m.at[i, "evidence_passages"] = n
+        if n < min_passages and not row["detected"]:
+            m.at[i, "evaluable"] = False
+            m.at[i, "reason"] = "no_text_evidence"
+    return m
 
 
 def returns_summary(rt: pd.DataFrame, firsts: pd.DataFrame, draws: int, seed: int) -> dict:

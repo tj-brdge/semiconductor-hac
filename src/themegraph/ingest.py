@@ -112,7 +112,7 @@ def ingest_fmp_transcripts(client: F.FMPClient, cfg: PipelineConfig, universe: U
 
 def ingest_edgar(client: E.EdgarClient, cfg: PipelineConfig, universe: UniverseConfig,
                  store: Store, end: dt.date, symbols: list[str] | None = None,
-                 forms=("10-K", "10-Q", "20-F", "8-K"), log=_log) -> Path:
+                 forms=("10-K", "10-Q", "20-F", "8-K", "6-K"), log=_log) -> Path:
     tickers = client.ticker_map()
     frames = []
     wanted = [i for i in universe.issuers
@@ -128,10 +128,16 @@ def ingest_edgar(client: E.EdgarClient, cfg: PipelineConfig, universe: UniverseC
         texts: dict[str, dict[str, str]] = {}
         for r in _bar(list(filings.itertuples()), f"  {iss.symbol}", "filing", leave=False):
             try:
-                if r.form == "8-K":
+                if r.form in ("8-K", "6-K"):
+                    # Current reports: the substance (press releases, interim results
+                    # of foreign issuers such as TSM, ASML, UMC) is in exhibit 99; a
+                    # 6-K without one carries it in the primary document.
                     names = E.exhibit_names(client.filing_index(cik, r.accessionNumber))
                     body = "\n\n".join(E.html_to_text(client.document(cik, r.accessionNumber, n))
                                        for n in names)
+                    if not body.strip() and r.form == "6-K":
+                        body = E.html_to_text(client.document(cik, r.accessionNumber,
+                                                             r.primaryDocument))
                     if body.strip():
                         texts[r.accessionNumber] = {"ex99": body}
                 else:

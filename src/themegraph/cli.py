@@ -123,6 +123,15 @@ def cmd_topics(a):
     from .text.embed import make_embedder
 
     cfg = load_pipeline()
+    late = [d for d in a.dates if pd.Timestamp(d).date() > cfg.periods.dev_end]
+    if late:
+        if not a.allow_holdout_dates:
+            sys.exit(f"{late} fall after the development period ({cfg.periods.dev_end}). "
+                     "Reading holdout topics contaminates the holdout; pass "
+                     "--allow-holdout-dates to do it anyway (it is logged).")
+        from .eval.freeze import _append
+        _append(ROOT, {"event": "holdout_topic_inspection", "dates": late,
+                       "note": "holdout topics inspected before evaluation: not clean"})
     docs = I.load_documents(_store())
     p, V = P.prepare_passages(docs, cfg, make_embedder(cfg.embedding), DATA / "cache")
     for d in a.dates:
@@ -131,6 +140,19 @@ def cmd_topics(a):
                 update={"cluster_distance": dist})})
             print(P.describe_window(p, V, snapshot_ts(pd.Timestamp(d)), c, a.top))
             print()
+
+
+def cmd_adjudicate(a):
+    """Create/refresh a run's adjudication worksheet and print adjudicated counts."""
+    from .eval import adjudication as A
+
+    run = Path(a.run_dir)
+    path = A.write_worksheet(run)
+    res = json.loads((run / "results.json").read_text()) if (run / "results.json").exists() \
+        else {}
+    n = res.get("q1", {}).get("themes_evaluable", 0)
+    print(path)
+    print(json.dumps(A.summary(A.load(path), n), indent=1))
 
 
 def cmd_freeze(a):
@@ -181,7 +203,12 @@ def main(argv=None):
     s.add_argument("--dates", nargs="+", default=["2012-06-30", "2016-06-30", "2020-06-30"])
     s.add_argument("--distances", nargs="+", type=float, default=[0.5, 0.6, 0.7])
     s.add_argument("--top", type=int, default=12)
+    s.add_argument("--allow-holdout-dates", action="store_true",
+                   help="inspect dates after dev_end; logged as holdout contamination")
     s.set_defaults(fn=cmd_topics)
+    s = sub.add_parser("adjudicate", help="write/refresh a run's adjudication worksheet")
+    s.add_argument("run_dir")
+    s.set_defaults(fn=cmd_adjudicate)
     s = sub.add_parser("freeze", help="hash code/config/labels before the holdout run")
     s.set_defaults(fn=cmd_freeze)
     s = sub.add_parser("labels", help="validate labels/themes.yaml")

@@ -30,9 +30,12 @@ class Tracker:
     most of its passages) or when their centroids are close. Ranking uses the sum of
     the two. A track survives up to `max_gap` windows without a match."""
 
-    def __init__(self, link_similarity: float, max_gap: int = 1, link_overlap: float = 0.3):
+    def __init__(self, link_similarity: float, max_gap: int = 1, link_overlap: float = 0.3,
+                 link_min_similarity: float = 0.5):
         self.thr = link_similarity
         self.overlap_thr = link_overlap
+        self.min_sim = link_min_similarity  # floor for overlap-based links
+        self.first_centroid: dict[int, np.ndarray] = {}
         self.max_gap = max_gap
         self.tracks: dict[int, Track] = {}
         self.members: dict[int, set[str]] = {}
@@ -45,6 +48,7 @@ class Tracker:
         tr = Track(tid, t, t, centroid, parent=parent)
         tr.events.append((t, event, parent))
         self.tracks[tid] = tr
+        self.first_centroid[tid] = centroid
         return tid
 
     def step(self, wc: WindowClusters) -> dict[int, int]:
@@ -71,7 +75,9 @@ class Tracker:
                     prev = self.members.get(tr.track_id, set())
                     if prev and sets[c]:
                         Ov[i, j] = len(sets[c] & prev) / min(len(sets[c]), len(prev))
-            E = (S >= self.thr) | (Ov >= self.overlap_thr)
+            # Shared passages alone could chain unrelated subjects (a small cluster
+            # inside a large one overlaps fully); overlap links need some similarity.
+            E = (S >= self.thr) | ((Ov >= self.overlap_thr) & (S >= self.min_sim))
             score = S + Ov
             pairs = sorted(((score[i, j], i, j) for i in range(len(clusters))
                             for j in range(len(live)) if E[i, j]), reverse=True)
@@ -118,19 +124,31 @@ class Tracker:
                 self.members.pop(tr.track_id, None)
         return assign
 
-    def stats(self) -> dict:
-        """Churn diagnostics: a healthy tracker has long-lived topics, few births."""
+    def stats(self, window_span: int = 1) -> dict:
+        """Churn diagnostics. With overlapping windows a passage stays in
+        `window_span` consecutive windows, so any topic appearing once lives about
+        that long; persistence is reported beyond that span. Drift is the cosine
+        between a topic's first and last centroid: low values mean the track drifted
+        into a different subject."""
         if not self.tracks:
             return {"tracks": 0}
         n_win = max(len(self.windows), 1)
-        life = [len({e[0] for e in tr.events if e[1] in ("birth", "split", "continue")})
-                for tr in self.tracks.values()]
+        life = np.array([len({e[0] for e in tr.events
+                              if e[1] in ("birth", "split", "continue")})
+                         for tr in self.tracks.values()])
+        beyond = np.maximum(life - window_span, 0)
+        long = [tr for tr, n in zip(self.tracks.values(), life, strict=True)
+                if n > 2 * window_span]
+        drift = [float(self.first_centroid[tr.track_id] @ tr.centroid) for tr in long]
         return {
             "tracks": len(self.tracks),
             "windows": n_win,
             "births_per_window": round(len(self.tracks) / n_win, 2),
+            "window_span": window_span,
             "median_track_life_windows": float(np.median(life)),
-            "share_tracks_living_6_plus_windows": round(float(np.mean(np.array(life) >= 6)), 3),
+            "median_life_beyond_window_span": float(np.median(beyond)),
+            "share_tracks_persisting_beyond_span": round(float(np.mean(beyond > 0)), 3),
+            "median_first_last_centroid_cosine": float(np.median(drift)) if drift else None,
         }
 
 
@@ -153,4 +171,7 @@ def window_exposure(wc: WindowClusters, assign: dict[int, int]) -> pd.DataFrame:
 def track_events(tracker: Tracker) -> pd.DataFrame:
     rows = [{"track_id": tr.track_id, "t": t, "event": ev, "other": other}
             for tr in tracker.tracks.values() for t, ev, other in tr.events]
-    return pd.DataFrame(rows).sort_values(["t", "track_id"]).reset_index(drop=True)
+    cols = ["track_id", "t", "event", "other"]
+    if not rows:  # no accepted clusters in any window: no topics, not an error
+        return pd.DataFrame(columns=cols)
+    return pd.DataFrame(rows, columns=cols).sort_values(["t", "track_id"]).reset_index(drop=True)

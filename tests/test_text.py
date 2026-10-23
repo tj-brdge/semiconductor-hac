@@ -174,7 +174,11 @@ def test_substantive_mask_drops_tables_and_statement_boilerplate():
         "revenue 1,234 2,345 (12) 3.4% 5,678 9,012 11.2% 345 678 901 234 567 890",
         "for the three months ended march non-gaap net income per diluted share was",
     ]})
-    assert substantive_mask(p, 0.15, True).tolist() == [True, False, False]
+    assert substantive_mask(p, 0.35, True).tolist() == [True, False, False]
+    guidance = pd.DataFrame({"text": [
+        "We expect revenue of $4.2 billion to $4.4 billion, gross margin of 45% to 47%, "
+        "and HBM bit shipments up about 50% sequentially as AI server demand stays strong"]})
+    assert substantive_mask(guidance, 0.35, True).all()  # operational evidence is kept
 
 
 def test_genre_centering_removes_register_not_subject():
@@ -190,6 +194,20 @@ def test_genre_centering_removes_register_not_subject():
     same_subject = X[0] @ X[2]   # same subject, same genre
     same_genre_other_subject = X[0] @ X[10]
     assert same_subject > 0.9 and same_genre_other_subject < 0
+
+
+def test_overlap_alone_cannot_chain_unrelated_subjects():
+    tr = Tracker(link_similarity=0.8, link_overlap=0.3, link_min_similarity=0.5)
+    ids = [f"p{i}" for i in range(6)]
+    a1 = tr.step(WindowClusters(pd.Timestamp("2020-01-31", tz="UTC"), ids,
+                                np.array(list("AABBCC")), np.zeros(6, int),
+                                {0: np.array([1.0, 0, 0])}))
+    a2 = tr.step(WindowClusters(pd.Timestamp("2020-02-29", tz="UTC"), ids[:3],
+                                np.array(list("AAB")), np.zeros(3, int),
+                                {0: np.array([0.0, 1.0, 0])}))  # shares passages, orthogonal
+    assert a2[0] != a1[0]
+    stats = tr.stats(window_span=6)
+    assert stats["median_life_beyond_window_span"] == 0
 
 
 def test_tracker_links_by_shared_passages_when_centroid_drifts():

@@ -87,3 +87,19 @@ def test_serial_and_parallel_clustering_agree(cfg, tmp_path):
                             "dev", log=lambda *a: None)
     assert out[1].ledger.equals(out[2].ledger)
     assert out[1].assignments.equals(out[2].assignments)
+
+
+def test_sparse_inputs_are_unavailable_evidence_not_negative_findings(cfg, tmp_path):
+    cfg = S.demo_config(cfg)
+    u = S.synthetic_universe(per_segment=1)
+    prices = S.synthetic_prices(u)
+    prices = prices[prices.symbol.isin(["SPY", "SOXX", "MEM1"])]  # no market edges possible
+    docs = S.synthetic_documents(u)
+    docs = docs[docs.symbol == "MEM1"].head(3)                     # no text clusters possible
+    ctx = P.build(prices, docs, cfg, u, HashingEmbedder(64), tmp_path, "dev",
+                  log=lambda *a: None)
+    assert ctx.ledger.empty and ctx.events.empty and ctx.edges.empty
+    q1 = P.evaluate(ctx, S.synthetic_labels())["q1"]
+    assert q1["themes_evaluable"] == 0
+    assert q1["not_evaluable_reasons"] == {"no_text_evidence": 2}
+    assert q1["detection_recall"] != q1["detection_recall"]  # NaN, not 0.0
