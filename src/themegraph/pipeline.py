@@ -53,6 +53,8 @@ class RunContext:
     end: pd.Timestamp
     snapshots: list[pd.Timestamp]
     rets: pd.DataFrame
+    closes: pd.DataFrame | None = None       # sessions x symbols, for outcome returns
+    rets_known: pd.DataFrame | None = None   # when each return became available
     affinity: dict[int, dict[pd.Timestamp, pd.DataFrame | None]] = field(default_factory=dict)
     exposure: pd.DataFrame | None = None
     events: pd.DataFrame | None = None
@@ -85,7 +87,7 @@ class RunContext:
             w = self.cfg.candidates.market_alignment_window
             snap = market_snapshot(self.rets, t1, w, self.cfg.market,
                                    symbols_as_of(self.universe, t1),
-                                   self.cfg.market.residualize_against)
+                                   self.cfg.market.residualize_against, known=self.rets_known)
             self._aff_cache[key] = snap["affinity"]
         return self._aff_cache[key]
 
@@ -116,14 +118,25 @@ def build(prices: pd.DataFrame, docs: pd.DataFrame, cfg: PipelineConfig,
     panel.index = pd.DatetimeIndex(panel.index).tz_localize(None).normalize()
     rets = log_returns(panel)
     rets.index = rets.index.tz_localize("UTC") + pd.Timedelta(hours=22)
-    ctx = RunContext(cfg, universe, period, end_ts, snaps, rets)
+    # When each return became known: the later of its two closes' availability.
+    known = prices.pivot_table(index="date", columns="symbol", values="available_at",
+                               aggfunc="max")
+    known.index = pd.DatetimeIndex(known.index).tz_localize(None).normalize()
+    known = known.reindex(index=panel.index, columns=panel.columns)
+    known = known.apply(lambda c: pd.to_datetime(c, utc=True))
+    rets_known = np.maximum(known, known.shift(1)).iloc[1:]
+    rets_known.index = rets.index
+    closes = panel.copy()
+    closes.index = closes.index.tz_localize("UTC") + pd.Timedelta(hours=22)
+    ctx = RunContext(cfg, universe, period, end_ts, snaps, rets, closes=closes,
+                     rets_known=rets_known)
 
     log(f"market layer: {len(snaps)} snapshots, windows {cfg.market.windows}")
     for w in cfg.market.windows:
         ctx.affinity[w] = {}
         for t in _bar(snaps, f"Market layer ({w}d)"):
             snap = market_snapshot(rets, t, w, cfg.market, symbols_as_of(universe, t),
-                                   cfg.market.residualize_against)
+                                   cfg.market.residualize_against, known=rets_known)
             ctx.affinity[w][t] = snap["affinity"]
     edges = []
     main_w = cfg.candidates.market_alignment_window
@@ -342,16 +355,39 @@ def evaluate(ctx: RunContext, labels: LabelFile) -> dict:
     segs = segments(ctx.universe)
     como = comovement_test(firsts, ctx.affinity_after, ev.forward_sessions, segs,
                            ev.null_draws, ev.seed) if len(firsts) else pd.DataFrame()
-    rets = ctx.rets.loc[ctx.rets.index <= ctx.end]
     core = {s for s, r in roles(ctx.universe).items() if r == "core"}
-    rt = returns_test(firsts, rets, core, cfg.market.sector_benchmark, ev.forward_sessions,
-                      segs, ev.null_draws, ev.seed) if len(firsts) else pd.DataFrame()
+    delisted = {i.symbol: i.delisted for i in ctx.universe.issuers if i.delisted}
+    rt = returns_test(firsts, ctx.closes, core, cfg.market.sector_benchmark,
+                      ev.forward_sessions, segs, ev.null_draws, ev.seed, ctx.end,
+                      delisted) if len(firsts) else pd.DataFrame()
     q2 = {
         "comovement": summarise_percentiles(como, ev.null_draws, ev.seed) if len(como) else {},
-        "returns": (rt.groupby("h")[["excess_vs_benchmark", "excess_vs_momentum", "null_pct"]]
-                    .median().to_dict(orient="index") if len(rt) else {}),
+        "returns": returns_summary(rt, firsts, ev.null_draws, ev.seed),
     }
     return {"q1": q1, "q2": q2, "matches": matches, "comovement": como, "returns": rt}
+
+
+def returns_summary(rt: pd.DataFrame, firsts: pd.DataFrame, draws: int, seed: int) -> dict:
+    """Per horizon: counts by status, medians of usable episodes, and the grouped
+    null-percentile summary (episodes sharing issuers over overlapping intervals are
+    pooled before the permutation test)."""
+    if not len(rt):
+        return {}
+    issuers = dict(zip(firsts["candidate_id"], firsts["issuers"], strict=False))
+    ok = rt.loc[rt["status"] == "ok"].assign(issuers=lambda d: d["candidate_id"].map(issuers))
+    grouped = summarise_percentiles(ok, draws, seed) if len(ok) else {}
+    out = {}
+    for h, g in rt.groupby("h"):
+        okh = g.loc[g["status"] == "ok"]
+        out[int(h)] = {
+            "status_counts": g["status"].value_counts().to_dict(),
+            "median_excess_vs_benchmark": float(okh["excess_vs_benchmark"].median())
+            if len(okh) else None,
+            "median_excess_vs_momentum": float(okh["excess_vs_momentum"].median())
+            if len(okh) else None,
+            **grouped.get(int(h), {}),
+        }
+    return out
 
 
 def _jsonable(o):
@@ -408,6 +444,17 @@ def save(ctx: RunContext, results: dict | None, out_dir: Path, inputs: dict) -> 
         (out_dir / "results.json").write_text(json.dumps(summary, default=_jsonable, indent=1))
     (out_dir / "manifest.json").write_text(json.dumps(manifest, default=_jsonable, indent=1))
     return manifest
+
+
+def output_bindings(ctx: RunContext, results: dict, manifest: dict) -> dict:
+    """Hashes of everything a holdout result consists of, for verification."""
+    out = {"ledger_sha256": manifest["ledger_sha256"],
+           "results_sha256": manifest.get("results_sha256")}
+    for name in ("matches", "comovement", "returns"):
+        df = results.get(name)
+        out[f"{name}_sha256"] = frame_sha256(df.astype(str)) if df is not None and len(df) \
+            else None
+    return out
 
 
 def frame_sha256(df: pd.DataFrame) -> str:

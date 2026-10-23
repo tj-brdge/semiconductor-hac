@@ -148,25 +148,26 @@ def ingest_edgar(client: E.EdgarClient, cfg: PipelineConfig, universe: UniverseC
 
 # ------------------------------------------------------------------ loaders
 
-def load_prices(store: Store) -> pd.DataFrame:
-    return store.read("prices")
+def load_prices(store: Store, upto: str | None = None) -> pd.DataFrame:
+    return store.read("prices", upto=upto)
 
 
-def load_documents(store: Store) -> pd.DataFrame:
+def load_documents(store: Store, upto: str | None = None) -> pd.DataFrame:
     frames = []
     for table in ("documents_transcripts", "documents_edgar"):
         if store.vintages(table):
-            frames.append(store.read(table))
+            frames.append(store.read(table, upto=upto))
     if not frames:
         return pd.DataFrame(columns=["symbol", "doc_id", "doc_type", "published_at",
                                      "available_at", "text"])
     return pd.concat(frames, ignore_index=True)
 
 
-def load_factors(store: Store, cfg: PipelineConfig) -> pd.DataFrame | None:
+def load_factors(store: Store, cfg: PipelineConfig,
+                 upto: str | None = None) -> pd.DataFrame | None:
     if not store.vintages("macro"):
         return None
-    m = store.read("macro")
+    m = store.read("macro", upto=upto)
     daily, kinds, cpi = {}, {}, None
     for name, g in m.groupby("series"):
         s = g.set_index(pd.to_datetime(g["date"]))["value"].sort_index()

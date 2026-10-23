@@ -286,8 +286,9 @@ const tiles = [
   ["Negative controls flagged", q1.negative_controls_flagged ?? "–", "hype that faded"],
 ];
 for (const [h, v] of Object.entries(como))
-  tiles.push([`Co-movement percentile, ${h} sessions`, fmt(v.mean_pct, 2),
-              `n=${v.n}, permutation p=${fmt(v.p_value, 3)}`]);
+  tiles.push([`Co-movement percentile, ${h} sessions`, fmt(v.group_mean_pct ?? v.mean_pct, 2),
+              `${v.n_episodes ?? v.n} episodes in ${v.n_groups ?? "?"} dependence groups; ` +
+              `grouped sign-flip p=${fmt(v.p_value_grouped ?? v.p_value, 3)} (descriptive)`]);
 $("#tiles").innerHTML = tiles.map(([k, v, s]) =>
   `<div class="card tile"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div>
    <div class="k">${esc(s)}</div></div>`).join("");
@@ -393,7 +394,8 @@ table($("#como"), [["Candidate", r => esc(r.candidate_id)], ["Flag", r => esc(r.
   ["h", r => r.h], ["Issuers", r => r.n], ["Δ affinity", r => fmt(r.delta, 3)],
   ["Null median", r => fmt(r.null_median, 3)], ["Percentile", r => fmt(r.null_pct)]], D.comovement);
 table($("#rets"), [["Candidate", r => esc(r.candidate_id)], ["Flag", r => esc(r.t)],
-  ["h", r => r.h], ["Basket log return", r => fmt(r.basket, 3)],
+  ["h", r => r.h], ["Status", r => esc(r.status || "")],
+  ["Basket return (EW buy-and-hold, next-close entry)", r => fmt(r.basket, 3)],
   ["vs sector ETF", r => fmt(r.excess_vs_benchmark, 3)], ["vs momentum", r => fmt(r.excess_vs_momentum, 3)],
   ["Null percentile", r => fmt(r.null_pct)]], D.returns);
 </script></body></html>
