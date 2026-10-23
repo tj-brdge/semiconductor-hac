@@ -180,7 +180,7 @@ comes first is itself a finding.
 
 | Period | Dates | Use |
 |---|---|---|
-| Development | 2013-01 → 2021-12 | Build, tune, and inspect freely |
+| Development | 2010-01 → 2021-12 | Build, tune, and inspect freely |
 | Holdout | 2022-01 → 2026-10 | Run **once** with frozen rules |
 | Forward | from the freeze date | Append-only prediction log; the only clean evidence |
 
@@ -222,7 +222,8 @@ Candidate themes:
 **Q2 — signal**
 
 - ★ **Co-movement test:** does a text-first candidate predict a rise in market
-  affinity among its issuers over the next 63 and 126 sessions, compared with
+  affinity among its issuers over the next 1, 2 and 3 years (252/504/756
+  sessions), compared with
   random issuer sets matched on size, sub-industry, beta and momentum? This is the
   cleanest test of whether text adds information prices did not already have.
 - Return test: forward excess return of candidate baskets versus SOXX, versus
@@ -312,9 +313,13 @@ docs/        DESIGN.md
   deterministic micro-clusters (seeded mini-batch k-means), then runs HAC on those.
 - **EDGAR timestamps:** `acceptanceDateTime` is read as US/Eastern (it carries a
   misleading "Z"), which can only delay availability.
-- **Horizon finding from the synthetic demo:** when disclosures lead prices by more
-  than the forward horizon, the co-movement test misses a real theme. The
-  63/126-session horizons are a choice to revisit before freezing.
+- **Horizons:** outcomes are measured 1, 2 and 3 years after a first flag, to
+  match multi-year holding and the time a theme takes to move from disclosures to
+  prices (the synthetic demo showed a 63/126-session horizon missing a theme whose
+  text led prices by about nine months). A flag counts as early up to three years
+  before its consensus marker. A flag is scored only once its horizon has fully
+  elapsed inside the evaluated period, so long horizons trade fewer scoreable
+  episodes for relevance; the start date moved to 2010 to recover some of them.
 - **Embeddings:** a hashing embedder exists for tests and the demo only; reports
   warn whenever a run did not use the configured research model.
 
