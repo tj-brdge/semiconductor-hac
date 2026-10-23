@@ -45,3 +45,16 @@ def test_build_ignores_data_after_period_end(cfg, tmp_path):
                 cfg, u, HashingEmbedder(256), tmp_path / "b", "dev", log=lambda *x: None)
     assert a.ledger.equals(b.ledger)
     assert a.exposure.equals(b.exposure)
+
+
+def test_second_build_reuses_window_clusters(cfg, tmp_path):
+    cfg = S.demo_config(cfg)
+    u = S.synthetic_universe(per_segment=3)
+    prices, docs = S.synthetic_prices(u), S.synthetic_documents(u)
+    logs = []
+    a = P.build(prices, docs, cfg, u, HashingEmbedder(256), tmp_path, "dev", log=logs.append)
+    b = P.build(prices, docs, cfg, u, HashingEmbedder(256), tmp_path, "dev", log=logs.append)
+    clustering = [m for m in logs if "clustering" in m]
+    assert clustering[0].startswith("  clustering 42 windows")
+    assert clustering[1].startswith("  clustering 0 windows (42 cached)")
+    assert a.ledger.equals(b.ledger) and a.exposure.equals(b.exposure)

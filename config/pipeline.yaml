@@ -34,11 +34,26 @@ text:
   min_chunk_words: 40
   exact_dup_drop: true
   novelty_max_similarity: 0.95  # drop passages this close to the issuer's own earlier text
-  cluster_distance: 0.35        # cosine distance cut, average linkage
+  # Passages that are mostly numbers, or financial-statement / safe-harbour wording,
+  # cluster by phrasing shared across every issuer rather than by subject.
+  max_numeric_share: 0.15
+  drop_financial_statements: true
+  # Before clustering, centre each window's vectors within their genre (call remarks,
+  # call Q&A, each filing section) so clusters form around subject matter rather than
+  # register. remove_top_components > 0 also strips the window's strongest shared
+  # directions; off by default because they can be real topics (memory vs analog).
+  center_by_genre: true
+  remove_top_components: 0
+  cluster_distance: 0.60        # cosine distance cut (average linkage) after centring;
+                                # calibrate by reading topics: `themegraph topics`
   min_cluster_passages: 4
   min_cluster_issuers: 2
-  track_link_similarity: 0.80   # centroid cosine to continue a track across windows
+  # A cluster continues a topic from the previous window if they share this share of
+  # passages (windows overlap) or their centroids are this similar.
+  track_link_overlap: 0.30
+  track_link_similarity: 0.80
   keywords_per_topic: 8
+  parallel_jobs: 4              # windows clustered in parallel (~0.5 GB each); -1 = all cores
 
 embedding:
   provider: voyage              # voyage | hashing (hashing is for tests/offline development only)
@@ -57,7 +72,12 @@ candidates:
   min_consecutive_growth_windows: 2
   growth_step_snapshots: 3
   min_growth_ratio: 1.25
+  # Emergence, not recurrence: the grown share must exceed anything the topic reached
+  # in this many snapshots before the growth began.
+  new_high_lookback_snapshots: 24
   min_issuers: 3
+  # Generic topics: skip if more than this share of issuers with text discuss it.
+  max_issuer_share: 0.5
   min_exposure: 0.05
   market_alignment_window: 63
   market_alignment_baseline_snapshots: 6

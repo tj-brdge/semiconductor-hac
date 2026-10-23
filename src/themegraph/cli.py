@@ -103,6 +103,26 @@ def cmd_run(a):
     print("report:", build_report(out, u, f"Theme graph · {a.period}"))
 
 
+def cmd_topics(a):
+    """Print topics for a few windows at one or more cluster distances."""
+    import pandas as pd
+
+    from . import ingest as I
+    from . import pipeline as P
+    from .data.pit import snapshot_ts
+    from .text.embed import make_embedder
+
+    cfg = load_pipeline()
+    docs = I.load_documents(_store())
+    p, V = P.prepare_passages(docs, cfg, make_embedder(cfg.embedding), DATA / "cache")
+    for d in a.dates:
+        for dist in a.distances:
+            c = cfg.model_copy(update={"text": cfg.text.model_copy(
+                update={"cluster_distance": dist})})
+            print(P.describe_window(p, V, snapshot_ts(pd.Timestamp(d)), c, a.top))
+            print()
+
+
 def cmd_freeze(a):
     from .eval.freeze import freeze
     print(json.dumps(freeze(), indent=1))
@@ -142,6 +162,11 @@ def main(argv=None):
     s.add_argument("--out")
     s.add_argument("--verify-identical", action="store_true")
     s.set_defaults(fn=cmd_run)
+    s = sub.add_parser("topics", help="print topics for sample windows (calibration)")
+    s.add_argument("--dates", nargs="+", default=["2012-06-30", "2016-06-30", "2020-06-30"])
+    s.add_argument("--distances", nargs="+", type=float, default=[0.5, 0.6, 0.7])
+    s.add_argument("--top", type=int, default=12)
+    s.set_defaults(fn=cmd_topics)
     s = sub.add_parser("freeze", help="hash code/config/labels before the holdout run")
     s.set_defaults(fn=cmd_freeze)
     s = sub.add_parser("labels", help="validate labels/themes.yaml")
