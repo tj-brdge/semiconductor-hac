@@ -16,6 +16,7 @@ import httpx
 import numpy as np
 import pandas as pd
 from sklearn.feature_extraction.text import HashingVectorizer
+from tqdm.auto import tqdm
 
 from ..config import Embedding
 from ..data.http import env_value
@@ -62,7 +63,8 @@ class VoyageEmbedder:
 
     def embed(self, texts: list[str]) -> np.ndarray:
         out = []
-        for i in range(0, len(texts), self.batch_size):
+        starts = range(0, len(texts), self.batch_size)
+        for i in tqdm(starts, desc="Embedding", unit="batch", disable=None, dynamic_ncols=True):
             batch = texts[i:i + self.batch_size]
             for attempt in range(5):
                 r = self.client.post(VOYAGE_URL, json={

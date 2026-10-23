@@ -16,6 +16,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from tqdm.auto import tqdm
 
 from . import __version__
 from .config import CONFIG_DIR, PipelineConfig, UniverseConfig, file_sha256
@@ -36,6 +37,10 @@ from .text.novelty import novelty_mask
 from .text.passages import drop_exact_duplicates, passages_from_documents
 from .text.track import Tracker, track_events, window_exposure
 from .universe.membership import roles, segments, symbols_as_of
+
+
+def _bar(items, desc: str):
+    return tqdm(items, desc=desc, unit="snapshot", disable=None, dynamic_ncols=True)
 
 
 @dataclass
@@ -110,7 +115,7 @@ def build(prices: pd.DataFrame, docs: pd.DataFrame, cfg: PipelineConfig,
     log(f"market layer: {len(snaps)} snapshots, windows {cfg.market.windows}")
     for w in cfg.market.windows:
         ctx.affinity[w] = {}
-        for t in snaps:
+        for t in _bar(snaps, f"Market layer ({w}d)"):
             snap = market_snapshot(rets, t, w, cfg.market, symbols_as_of(universe, t),
                                    cfg.market.residualize_against)
             ctx.affinity[w][t] = snap["affinity"]
@@ -122,7 +127,7 @@ def build(prices: pd.DataFrame, docs: pd.DataFrame, cfg: PipelineConfig,
     if factors is not None and not factors.empty:
         log("macro layer")
         mrets = monthly_returns(rets.set_axis(rets.index.tz_localize(None).normalize()))
-        for t in snaps:
+        for t in _bar(snaps, "Macro layer"):
             tt = t.tz_localize(None).normalize()
             expo = macro_exposures(mrets, factors, cfg.market.benchmark, cfg.macro, tt)
             edges.append(matrix_edges(t, "macro", exposure_similarity(expo)))
@@ -142,7 +147,7 @@ def build(prices: pd.DataFrame, docs: pd.DataFrame, cfg: PipelineConfig,
         log(f"  {len(p)} novel passages ({int((~keep).sum())} near-duplicates dropped)")
         ctx.passages = p
         tracker = Tracker(cfg.text.track_link_similarity)
-        for t in snaps:
+        for t in _bar(snaps, "Text clustering"):
             wc = cluster_window(p, V, t, cfg.text, seed=cfg.evaluation.seed)
             assign = tracker.step(wc)
             totals[t] = len(wc.labels)
