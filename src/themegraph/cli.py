@@ -47,11 +47,11 @@ def cmd_ingest(a):
     store = _store()
     if a.source == "edgar":
         from .data.edgar import EdgarClient
-        client = EdgarClient(DATA / "raw" / "edgar")
+        client = EdgarClient(DATA / "raw" / "edgar", vintage=a.vintage)
         print(I.ingest_edgar(client, cfg, u, store, end, a.symbols))
         return
     from .data.fmp import FMPClient
-    client = FMPClient(DATA / "raw" / "fmp")
+    client = FMPClient(DATA / "raw" / "fmp", vintage=a.vintage)
     if a.source == "fmp-prices":
         print(I.ingest_fmp_prices(client, cfg, u, store, end))
     elif a.source == "fmp-macro":
@@ -131,6 +131,9 @@ def main(argv=None):
     s.add_argument("source", choices=["edgar", "fmp-prices", "fmp-macro", "fmp-transcripts"])
     s.add_argument("--end", help="last date (default today)")
     s.add_argument("--symbols", nargs="*", help="EDGAR only: limit to these symbols")
+    s.add_argument("--vintage", help="snapshot date (YYYY-MM-DD) for data that changes over "
+                   "time; default today. Reuse a past date to rebuild from that snapshot "
+                   "without downloading")
     s.set_defaults(fn=cmd_ingest)
     s = sub.add_parser("coverage", help="per-issuer data coverage")
     s.set_defaults(fn=cmd_coverage)

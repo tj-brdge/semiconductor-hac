@@ -18,7 +18,7 @@ class FakeFetcher:
         self.routes = routes
         self.calls = []
 
-    def fetch(self, url, params=None, endpoint=None, retries=3):
+    def fetch(self, url, params=None, endpoint=None, retries=3, vintage=None):
         self.calls.append((url, params))
         for key, body in self.routes.items():
             if url.endswith(key):

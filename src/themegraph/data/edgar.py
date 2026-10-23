@@ -11,6 +11,7 @@ which can only make availability later (the conservative direction).
 
 from __future__ import annotations
 
+import datetime as dt
 import json
 import re
 from html.parser import HTMLParser
@@ -29,8 +30,12 @@ FORMS = {"10-K", "10-Q", "8-K", "20-F", "6-K", "40-F", "10-K/A", "20-F/A"}
 
 
 class EdgarClient:
+    """The ticker map and each issuer's filing list grow over time and are cached per
+    `vintage` (default: today, UTC); filing documents never change and are cached once."""
+
     def __init__(self, cache_dir: Path, user_agent: str | None = None, offline: bool = False,
-                 fetcher: CachedFetcher | None = None):
+                 fetcher: CachedFetcher | None = None, vintage: str | None = None):
+        self.vintage = vintage or dt.datetime.now(dt.UTC).date().isoformat()
         ua = env_value("EDGAR_USER_AGENT", user_agent)
         if fetcher is None and not offline and (not ua or "@" not in ua):
             raise RuntimeError(
@@ -41,15 +46,15 @@ class EdgarClient:
             min_interval=0.15, offline=offline,
         )
 
-    def _json(self, url: str) -> dict:
-        return json.loads(self.f.fetch(url).body)
+    def _json(self, url: str, mutable: bool = False) -> dict:
+        return json.loads(self.f.fetch(url, vintage=self.vintage if mutable else None).body)
 
     def ticker_map(self) -> dict[str, int]:
-        data = self._json(f"{WWW}/files/company_tickers.json")
+        data = self._json(f"{WWW}/files/company_tickers.json", mutable=True)
         return {v["ticker"].upper(): int(v["cik_str"]) for v in data.values()}
 
     def filings(self, cik: int) -> pd.DataFrame:
-        sub = self._json(f"{DATA}/submissions/CIK{cik:010d}.json")
+        sub = self._json(f"{DATA}/submissions/CIK{cik:010d}.json", mutable=True)
         frames = [pd.DataFrame(sub["filings"]["recent"])]
         for extra in sub["filings"].get("files", []):
             frames.append(pd.DataFrame(self._json(f"{DATA}/submissions/{extra['name']}")))
