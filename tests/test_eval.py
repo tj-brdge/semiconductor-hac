@@ -33,7 +33,7 @@ def test_matching_respects_window_and_overlap():
 
 def test_null_sets_exclude_members_and_match_segments():
     segs = {f"{g}{i}": g for g in "AB" for i in range(6)}
-    sets = matched_null_sets(["A0", "A1", "B0"], list(segs), segs,
+    sets, _ = matched_null_sets(["A0", "A1", "B0"], list(segs), segs,
                              np.random.default_rng(0), 50)
     for s in sets:
         assert not {"A0", "A1", "B0"} & set(s)
@@ -58,22 +58,59 @@ def test_freeze_refuses_incomplete_labels(tmp_path):
         F.freeze(root)
 
 
-def test_freeze_detects_changes_and_single_holdout(tmp_path):
+def _frozen_root(tmp_path):
     root = _repo_copy(tmp_path)
     lf = LabelFile(frozen=True, themes=[_theme("t", ["MU", "NVDA"], "2020-06-30")])
     (root / "labels" / "themes.yaml").write_text(
         yaml.safe_dump(json.loads(lf.model_dump_json())))
     F.freeze(root)
-    assert F.guard_holdout("abc", root)["already_run"] is False
-    F.log_holdout("abc", root)
-    assert F.guard_holdout("abc", root)["already_run"] is True
-    with pytest.raises(RuntimeError, match="different result"):
-        F.guard_holdout("xyz", root)
+    return root
+
+
+def test_holdout_attempt_is_logged_before_outcomes_and_runs_once(tmp_path):
+    root = _frozen_root(tmp_path)
+    with pytest.raises(F.HoldoutError, match="nothing to verify"):
+        F.completed_attempt(root)  # verification can never be a first run
+    a = F.begin_holdout({"prices": "p1"}, root=root)
+    assert F.holdout_records(root)[0]["event"] == "attempt" and a["clean"]
+    with pytest.raises(F.HoldoutError, match="already consumed"):
+        F.begin_holdout({"prices": "p1"}, root=root)  # even while the first is running
+    F.complete_holdout(a, {"ledger_sha256": "L", "returns_sha256": "R"}, root=root)
+    F.verify_holdout({"prices": "p1"}, {"ledger_sha256": "L", "returns_sha256": "R"},
+                     root=root)
+    with pytest.raises(F.HoldoutError, match="outputs.returns_sha256"):
+        F.verify_holdout({"prices": "p1"}, {"ledger_sha256": "L", "returns_sha256": "X"},
+                         root=root)
+    with pytest.raises(F.HoldoutError, match="inputs.prices"):
+        F.verify_holdout({"prices": "p2"}, {"ledger_sha256": "L", "returns_sha256": "R"},
+                         root=root)
+    events = [r["event"] for r in F.holdout_records(root)]
+    assert events == ["attempt", "completed", "verified", "verify_mismatch", "verify_mismatch"]
+
+
+def test_changed_specification_cannot_get_a_clean_holdout(tmp_path):
+    root = _frozen_root(tmp_path)
+    F.complete_holdout(F.begin_holdout({}, root=root), {}, root=root)
     cfg = root / "config" / "pipeline.yaml"
     cfg.write_text(cfg.read_text().replace("window_days: 180", "window_days: 90"))
     with pytest.raises(RuntimeError, match="config"):
         F.check_freeze(root)
+    F.freeze(root)  # a new freeze is allowed...
+    with pytest.raises(F.HoldoutError, match="already consumed"):
+        F.begin_holdout({}, root=root)  # ...but not a second clean holdout
+    second = F.begin_holdout({}, reason="re-test after window change", root=root)
+    assert second["clean"] is False and second["reason"]
 
+
+def test_interrupted_attempt_stays_consumed_and_locked(tmp_path):
+    root = _frozen_root(tmp_path)
+    F.begin_holdout({}, root=root)  # never completed: simulates a crash
+    with pytest.raises(F.HoldoutError, match="already consumed"):
+        F.begin_holdout({}, root=root)
+    with pytest.raises(F.HoldoutError, match="holdout.lock"):
+        F.begin_holdout({}, reason="retry", root=root)
+    with pytest.raises(F.HoldoutError, match="nothing to verify"):
+        F.completed_attempt(root)
 
 def test_metrics_when_no_label_has_dates():
     led = pd.DataFrame({"candidate_id": ["c1"], "t": pd.to_datetime(["2019-01-31"], utc=True),

@@ -34,9 +34,11 @@ text:
   min_chunk_words: 40
   exact_dup_drop: true
   novelty_max_similarity: 0.95  # drop passages this close to the issuer's own earlier text
-  # Passages that are mostly numbers, or financial-statement / safe-harbour wording,
-  # cluster by phrasing shared across every issuer rather than by subject.
-  max_numeric_share: 0.15
+  # Passages that are mostly numbers (tables, ~0.8 numeric tokens), or that repeat
+  # financial-statement / safe-harbour wording, cluster by phrasing shared across
+  # every issuer rather than by subject. Guidance and pricing passages run ~0.15-0.25
+  # numeric and are kept (0.15 dropped them).
+  max_numeric_share: 0.35
   drop_financial_statements: true
   # Before clustering, centre each window's vectors within their genre (call remarks,
   # call Q&A, each filing section) so clusters form around subject matter rather than
@@ -52,6 +54,7 @@ text:
   # passages (windows overlap) or their centroids are this similar.
   track_link_overlap: 0.30
   track_link_similarity: 0.80
+  track_link_min_similarity: 0.50  # overlap links also need this centroid cosine
   keywords_per_topic: 8
   parallel_jobs: 4              # windows clustered in parallel (~0.5 GB each); -1 = all cores
 
@@ -76,7 +79,8 @@ candidates:
   # in this many snapshots before the growth began.
   new_high_lookback_snapshots: 24
   min_issuers: 3
-  # Generic topics: skip if more than this share of issuers with text discuss it.
+  # Generic topics: skip if more than this share of issuers with text already discussed
+  # it when its growth began (applies only with >= 2 x min_issuers issuers with text).
   max_issuer_share: 0.5
   min_exposure: 0.05
   market_alignment_window: 63

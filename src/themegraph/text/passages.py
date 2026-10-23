@@ -67,6 +67,7 @@ def passages_from_documents(docs: pd.DataFrame, size: int, min_words: int) -> pd
                     "text": chunk,
                     "text_hash": text_hash(chunk),
                     "genre": genre_of(d.doc_type, unit),
+                    "url": getattr(d, "url", None),
                 })
                 n += 1
     return pd.DataFrame(recs)

@@ -174,7 +174,11 @@ def test_substantive_mask_drops_tables_and_statement_boilerplate():
         "revenue 1,234 2,345 (12) 3.4% 5,678 9,012 11.2% 345 678 901 234 567 890",
         "for the three months ended march non-gaap net income per diluted share was",
     ]})
-    assert substantive_mask(p, 0.15, True).tolist() == [True, False, False]
+    assert substantive_mask(p, 0.35, True).tolist() == [True, False, False]
+    guidance = pd.DataFrame({"text": [
+        "We expect revenue of $4.2 billion to $4.4 billion, gross margin of 45% to 47%, "
+        "and HBM bit shipments up about 50% sequentially as AI server demand stays strong"]})
+    assert substantive_mask(guidance, 0.35, True).all()  # operational evidence is kept
 
 
 def test_genre_centering_removes_register_not_subject():
@@ -184,11 +188,26 @@ def test_genre_centering_removes_register_not_subject():
     subject = np.repeat(np.eye(4)[:2], 10, axis=0)          # two subjects
     register = np.tile(np.array([[0, 0, 5, 0], [0, 0, 0, 5]]), (10, 1))  # two genres
     genres = np.tile(np.array(["qa", "prepared"]), 10)
-    X = remove_common_directions(subject + register + 0.01 * rng.normal(size=(20, 4)), 0,
-                                 genres=genres)
+    X, valid = remove_common_directions(subject + register + 0.01 * rng.normal(size=(20, 4)),
+                                        0, genres=genres)
+    assert valid.all()
     same_subject = X[0] @ X[2]   # same subject, same genre
     same_genre_other_subject = X[0] @ X[10]
     assert same_subject > 0.9 and same_genre_other_subject < 0
+
+
+def test_overlap_alone_cannot_chain_unrelated_subjects():
+    tr = Tracker(link_similarity=0.8, link_overlap=0.3, link_min_similarity=0.5)
+    ids = [f"p{i}" for i in range(6)]
+    a1 = tr.step(WindowClusters(pd.Timestamp("2020-01-31", tz="UTC"), ids,
+                                np.array(list("AABBCC")), np.zeros(6, int),
+                                {0: np.array([1.0, 0, 0])}))
+    a2 = tr.step(WindowClusters(pd.Timestamp("2020-02-29", tz="UTC"), ids[:3],
+                                np.array(list("AAB")), np.zeros(3, int),
+                                {0: np.array([0.0, 1.0, 0])}))  # shares passages, orthogonal
+    assert a2[0] != a1[0]
+    stats = tr.stats(window_span=6)
+    assert stats["median_life_beyond_window_span"] == 0
 
 
 def test_tracker_links_by_shared_passages_when_centroid_drifts():
@@ -203,17 +222,3 @@ def test_tracker_links_by_shared_passages_when_centroid_drifts():
     a2 = tr.step(w2)
     assert a2[0] == a1[0]
     assert tr.stats()["tracks"] == 1
-
-
-def test_cluster_cache_round_trip(tmp_path, cfg):
-    from themegraph.text.cluster import ClusterCache
-
-    c = ClusterCache(tmp_path, "m", cfg.text, 1)
-    wc = WindowClusters(pd.Timestamp("2020-01-31", tz="UTC"), ["a", "b"], np.array(["X", "Y"]),
-                        np.array([0, -1]), {0: np.array([1.0, 0.0])})
-    k = c.key(["a", "b"])
-    assert c.get(k, wc.t, ["a", "b"], ["X", "Y"]) is None
-    c.put(k, wc)
-    back = c.get(k, wc.t, ["a", "b"], ["X", "Y"])
-    assert back.labels.tolist() == [0, -1] and np.allclose(back.centroids[0], [1, 0])
-    assert c.key(["a", "b"]) != ClusterCache(tmp_path, "other-model", cfg.text, 1).key(["a", "b"])

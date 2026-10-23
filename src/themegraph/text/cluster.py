@@ -27,7 +27,9 @@ from ..config import Text
 
 MAX_HAC_POINTS = 5000
 MICRO_DIMS = 128
-CLUSTER_VERSION = 3  # bump when the clustering procedure changes (invalidates the cache)
+CLUSTER_VERSION = 4  # bump when the clustering procedure changes (invalidates the cache)
+MIN_GENRE_PASSAGES = 3  # smaller genres are centred on the pooled window mean instead
+DEGENERATE_NORM = 1e-6  # residual norms below this carry no direction: excluded
 
 
 @dataclass
@@ -35,8 +37,9 @@ class WindowClusters:
     t: pd.Timestamp
     passage_ids: list[str]
     symbols: np.ndarray
-    labels: np.ndarray  # -1 = unclustered
+    labels: np.ndarray  # -1 = unclustered (or excluded as degenerate)
     centroids: dict[int, np.ndarray] = field(default_factory=dict)
+    excluded: int = 0  # passages with no usable direction after centring
 
     def members(self, label: int) -> set[str]:
         return {p for p, lab in zip(self.passage_ids, self.labels, strict=True) if lab == label}
@@ -49,20 +52,42 @@ def _unit(V: np.ndarray) -> np.ndarray:
 
 
 def remove_common_directions(V: np.ndarray, k: int, seed: int = 0,
-                             genres: np.ndarray | None = None) -> np.ndarray:
+                             genres: np.ndarray | None = None
+                             ) -> tuple[np.ndarray, np.ndarray]:
     """Centre each genre on its own mean, then project out the top-k principal
-    directions of the result (k=0 skips that step)."""
+    directions (k=0 skips that step). Returns (unit vectors, valid mask).
+
+    Policy for degenerate inputs, applied explicitly rather than hidden by jitter:
+    - A genre with fewer than MIN_GENRE_PASSAGES passages in the window is centred on
+      the window mean instead of its own: a one- or two-passage "genre mean" mostly
+      erases the passages themselves (a singleton becomes exactly zero).
+    - Any residual whose norm falls below DEGENERATE_NORM (relative to the largest
+      residual) has no direction; it is marked invalid, left unclustered (label -1)
+      and counted, never assigned a random direction.
+    """
     X = V.astype(np.float64, copy=True)
+    usable = np.isfinite(X).all(axis=1) & (np.linalg.norm(np.nan_to_num(X), axis=1) > 0)
+    X[~usable] = 0.0  # empty or non-finite embeddings: excluded, and kept out of means
+    if not usable.any():
+        return X.astype(np.float32), usable
+    window_mean = X[usable].mean(axis=0, keepdims=True)
     if genres is None:
-        X -= X.mean(axis=0, keepdims=True)
+        X[usable] -= window_mean
     else:
         for g in np.unique(genres):
-            idx = genres == g
-            X[idx] -= X[idx].mean(axis=0, keepdims=True)
+            idx = (genres == g) & usable
+            mean = X[idx].mean(axis=0, keepdims=True) if idx.sum() >= MIN_GENRE_PASSAGES \
+                else window_mean
+            X[idx] -= mean
     if k > 0 and min(X.shape) > k:
         _, _, Vt = randomized_svd(X, n_components=k, random_state=seed)
         X = X - (X @ Vt.T) @ Vt
-    return _unit(X).astype(np.float32)
+    norms = np.linalg.norm(X, axis=1)
+    scale = norms.max() if len(norms) and norms.max() > 0 else 1.0
+    valid = usable & (norms > DEGENERATE_NORM * scale)
+    X[~valid] = 0.0
+    X[valid] /= norms[valid, None]
+    return X.astype(np.float32), valid
 
 
 def _hac_labels(V: np.ndarray, threshold: float) -> np.ndarray:
@@ -93,25 +118,38 @@ def cluster_subset(t: pd.Timestamp, passage_ids: np.ndarray, symbols: np.ndarray
     wc = WindowClusters(t, list(passage_ids), np.asarray(symbols), labels)
     if len(passage_ids) < cfg.min_cluster_passages:
         return wc
-    X = remove_common_directions(V, cfg.remove_top_components, seed,
-                                 genres if cfg.center_by_genre else None)
-    if len(X) > MAX_HAC_POINTS:
-        # Group passages into deterministic micro-clusters in a compressed space, then
-        # run HAC on the micro-clusters' full-dimension centroids.
-        dims = min(MICRO_DIMS, X.shape[1], len(X) - 1)
-        Xr = _unit(PCA(dims, random_state=seed).fit_transform(X))
-        km = MiniBatchKMeans(n_clusters=MAX_HAC_POINTS // 2, random_state=seed, n_init=1,
-                             batch_size=4096).fit(Xr)
-        groups = km.labels_
-        present = np.unique(groups)
-        cent = _unit(np.vstack([X[groups == g].mean(axis=0) for g in present]))
-        raw_by_group = dict(zip(present, _hac_labels(cent, cfg.cluster_distance),
-                                strict=True))
-        raw = np.array([raw_by_group[g] for g in groups])
-    else:
-        raw = _hac_labels(X, cfg.cluster_distance)
+    X, valid = remove_common_directions(V, cfg.remove_top_components, seed,
+                                        genres if cfg.center_by_genre else None)
+    wc.excluded = int((~valid).sum())
+    pos = np.flatnonzero(valid)  # cluster valid rows only; keep alignment via pos
+    raw = np.zeros(len(passage_ids), dtype=int)  # 0 = not clustered
+    if len(pos) >= cfg.min_cluster_passages:
+        Xv = X[pos]
+        if len(Xv) > MAX_HAC_POINTS:
+            # Group passages into deterministic micro-clusters in a compressed space,
+            # then run HAC on the micro-clusters' full-dimension centroids. A
+            # micro-centroid can cancel to ~0 (members pointing opposite ways); its
+            # members are then excluded rather than given an arbitrary direction.
+            dims = min(MICRO_DIMS, Xv.shape[1], len(Xv) - 1)
+            Xr = _unit(PCA(dims, random_state=seed).fit_transform(Xv))
+            km = MiniBatchKMeans(n_clusters=MAX_HAC_POINTS // 2, random_state=seed,
+                                 n_init=1, batch_size=4096).fit(Xr)
+            groups = km.labels_
+            present = np.unique(groups)
+            means = np.vstack([Xv[groups == g].mean(axis=0) for g in present])
+            ok = np.linalg.norm(means, axis=1) > DEGENERATE_NORM
+            group_label = dict.fromkeys(present[~ok], 0)
+            if ok.sum():
+                group_label.update(zip(present[ok], _hac_labels(_unit(means[ok]),
+                                                                  cfg.cluster_distance),
+                                       strict=True))
+            sub = np.array([group_label[g] for g in groups])
+            wc.excluded += int((sub == 0).sum())
+            raw[pos] = sub
+        else:
+            raw[pos] = _hac_labels(Xv, cfg.cluster_distance)
     next_id = 0
-    for lab in np.unique(raw):
+    for lab in np.unique(raw[raw > 0]):
         idx = np.flatnonzero(raw == lab)
         if len(idx) < cfg.min_cluster_passages:
             continue
@@ -126,33 +164,51 @@ def cluster_subset(t: pd.Timestamp, passage_ids: np.ndarray, symbols: np.ndarray
 
 
 class ClusterCache:
-    """Per-window results keyed by the window's passages, settings and embedder."""
+    """Per-window results keyed by everything that determines them: the passages'
+    IDs, issuers, genres and embedding vectors (by content hash), the embedder, the
+    text settings, the seed and the procedure version. A result is reused only when
+    all of these match, and stored metadata is re-checked on load."""
 
     def __init__(self, root: Path, embedder_id: str, cfg: Text, seed: int):
         self.dir = Path(root)
         self.dir.mkdir(parents=True, exist_ok=True)
-        self.salt = json.dumps([CLUSTER_VERSION, embedder_id, cfg.model_dump(), seed],
-                               sort_keys=True, default=str)
+        self.salt = json.dumps([CLUSTER_VERSION, MIN_GENRE_PASSAGES, DEGENERATE_NORM,
+                                MAX_HAC_POINTS, MICRO_DIMS, embedder_id, cfg.model_dump(),
+                                seed], sort_keys=True, default=str)
 
-    def key(self, passage_ids) -> str:
+    def key(self, passage_ids, symbols, genres, V: np.ndarray) -> str:
         h = hashlib.sha256(self.salt.encode())
-        for p in passage_ids:
-            h.update(p.encode())
-            h.update(b"\0")
+        for col in (passage_ids, symbols, genres if genres is not None else []):
+            h.update(b"\x1e")
+            for x in col:
+                h.update(str(x).encode())
+                h.update(b"\0")
+        A = np.ascontiguousarray(V, dtype=np.float32)
+        h.update(str(A.shape).encode())
+        h.update(A.tobytes())
         return h.hexdigest()
 
-    def get(self, key: str, t, passage_ids, symbols) -> WindowClusters | None:
+    def get(self, key: str, t, passage_ids, symbols, dim: int) -> WindowClusters | None:
         path = self.dir / f"{key}.npz"
         if not path.exists():
             return None
         z = np.load(path)
-        cents = {int(i): c for i, c in zip(z["cent_ids"], z["cents"], strict=True)}
-        return WindowClusters(t, list(passage_ids), np.asarray(symbols), z["labels"], cents)
+        labels, cents = z["labels"], z["cents"]
+        ok = (str(z["key"]) == key and len(labels) == len(passage_ids)
+              and (len(cents) == 0 or cents.shape[1] == dim)
+              and set(np.unique(labels[labels >= 0])) == set(z["cent_ids"].tolist()))
+        if not ok:  # corrupt or mismatched entry: recompute rather than trust it
+            return None
+        wc = WindowClusters(t, list(passage_ids), np.asarray(symbols), labels,
+                            {int(i): c for i, c in zip(z["cent_ids"], cents, strict=True)})
+        wc.excluded = int(z["excluded"])
+        return wc
 
     def put(self, key: str, wc: WindowClusters) -> None:
         ids = np.array(sorted(wc.centroids), dtype=int)
         cents = (np.vstack([wc.centroids[i] for i in ids]) if len(ids)
                  else np.zeros((0, 0), np.float32))
         tmp = self.dir / f"{key}.tmp.npz"
-        np.savez(tmp, labels=wc.labels, cent_ids=ids, cents=cents)
+        np.savez(tmp, labels=wc.labels, cent_ids=ids, cents=cents, key=np.array(key),
+                 excluded=np.array(wc.excluded))
         tmp.rename(self.dir / f"{key}.npz")

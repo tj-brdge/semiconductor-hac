@@ -56,6 +56,8 @@ def detection_metrics(matches: pd.DataFrame, ledger: pd.DataFrame, years: float)
     return {
         "themes_evaluable": int(len(themes)),
         "themes_not_evaluable": int((matches.get("evaluable") == False).sum()),  # noqa: E712
+        "not_evaluable_reasons": (matches.loc[matches["evaluable"] == False, "reason"]  # noqa: E712
+                                  .value_counts().to_dict() if "reason" in matches else {}),
         "detection_recall": float(themes["detected"].mean()) if len(themes) else float("nan"),
         "median_lead_days": float(themes["lead_days"].median()) if len(themes) else float("nan"),
         "negative_controls_flagged": int(neg["detected"].sum()) if len(neg) else 0,

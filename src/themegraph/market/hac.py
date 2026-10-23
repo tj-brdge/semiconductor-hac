@@ -13,8 +13,11 @@ from .returns import window_residuals
 
 
 def shrunk_correlation(resid: pd.DataFrame) -> pd.DataFrame:
-    """Ledoit-Wolf correlation; pairwise-missing rows are dropped window-wide."""
-    X = resid.dropna()
+    """Ledoit-Wolf correlation of residual returns. Columns already passed the
+    min_observations_share filter; their remaining gaps are set to 0 (no residual
+    move) instead of dropping every row with any gap, which with staggered gaps can
+    leave no rows at all."""
+    X = resid.fillna(0.0)
     z = (X - X.mean()) / X.std(ddof=0).replace(0, np.nan)
     z = z.dropna(axis=1)
     cov = LedoitWolf().fit(z.to_numpy()).covariance_
@@ -42,9 +45,17 @@ def hac_affinity(corr: pd.DataFrame, method: str = "average") -> tuple[pd.DataFr
 
 
 def market_snapshot(rets: pd.DataFrame, t: pd.Timestamp, window: int, cfg: Market,
-                    symbols: list[str], residualize_against: list[str]) -> dict:
-    """Affinity among `symbols` from the `window` sessions ending at or before t."""
-    hist = rets.loc[rets.index <= t].tail(window)
+                    symbols: list[str], residualize_against: list[str],
+                    known: pd.DataFrame | None = None) -> dict:
+    """Affinity among `symbols` from the `window` sessions ending at or before t.
+    `known` (same shape as rets) gives when each return became available; returns
+    not yet available at t are treated as missing, so a snapshot never sees a price
+    published after it, whatever its trading date."""
+    hist = rets.loc[rets.index <= t]
+    if known is not None:
+        k = known.reindex(index=hist.index, columns=hist.columns)
+        hist = hist.where(k.isna() | (k <= t)).dropna(how="all")
+    hist = hist.tail(window)
     cols = [s for s in symbols if s in hist.columns]
     present = hist[cols].notna().mean()
     eligible = present.index[present >= cfg.min_observations_share].tolist()

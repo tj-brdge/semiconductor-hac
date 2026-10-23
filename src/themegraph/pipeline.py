@@ -53,6 +53,8 @@ class RunContext:
     end: pd.Timestamp
     snapshots: list[pd.Timestamp]
     rets: pd.DataFrame
+    closes: pd.DataFrame | None = None       # sessions x symbols, for outcome returns
+    rets_known: pd.DataFrame | None = None   # when each return became available
     affinity: dict[int, dict[pd.Timestamp, pd.DataFrame | None]] = field(default_factory=dict)
     exposure: pd.DataFrame | None = None
     events: pd.DataFrame | None = None
@@ -62,6 +64,9 @@ class RunContext:
     ledger_sha256: str | None = None
     passages: pd.DataFrame | None = None
     track_stats: dict = field(default_factory=dict)
+    windows: pd.DataFrame | None = None
+    assignments: pd.DataFrame | None = None
+    explanations: pd.DataFrame | None = None
     embedder_id: str = ""
     _aff_cache: dict = field(default_factory=dict)
 
@@ -82,7 +87,7 @@ class RunContext:
             w = self.cfg.candidates.market_alignment_window
             snap = market_snapshot(self.rets, t1, w, self.cfg.market,
                                    symbols_as_of(self.universe, t1),
-                                   self.cfg.market.residualize_against)
+                                   self.cfg.market.residualize_against, known=self.rets_known)
             self._aff_cache[key] = snap["affinity"]
         return self._aff_cache[key]
 
@@ -99,28 +104,43 @@ def period_bounds(cfg: PipelineConfig, period: str) -> tuple[pd.Timestamp, pd.Ti
 
 def build(prices: pd.DataFrame, docs: pd.DataFrame, cfg: PipelineConfig,
           universe: UniverseConfig, embedder: Embedder, cache_dir: Path, period: str,
-          factors: pd.DataFrame | None = None, log=print) -> RunContext:
+          factors: pd.DataFrame | None = None, log=print,
+          end: dt.date | None = None) -> RunContext:
     """Compute every layer from the start date through the end of `period`.
     For the holdout period the history before it is used to warm up windows and
     tracks; candidates are evaluated only inside the period."""
-    _, end = period_bounds(cfg, period)
+    if end is None:
+        _, end = period_bounds(cfg, period)
     end_ts = snapshot_ts(end)
     prices = prices.loc[prices["available_at"] <= end_ts]
     docs = docs.loc[docs["available_at"] <= end_ts] if len(docs) else docs
     snaps = [snapshot_ts(d) for d in pd.date_range(cfg.periods.start, end,
                                                    freq=cfg.periods.snapshot_frequency)]
+    if not snaps or snaps[-1] < end_ts:  # an as-of run also snapshots its cutoff day
+        snaps.append(end_ts)
     panel = price_panel(prices)
     panel.index = pd.DatetimeIndex(panel.index).tz_localize(None).normalize()
     rets = log_returns(panel)
     rets.index = rets.index.tz_localize("UTC") + pd.Timedelta(hours=22)
-    ctx = RunContext(cfg, universe, period, end_ts, snaps, rets)
+    # When each return became known: the later of its two closes' availability.
+    known = prices.pivot_table(index="date", columns="symbol", values="available_at",
+                               aggfunc="max")
+    known.index = pd.DatetimeIndex(known.index).tz_localize(None).normalize()
+    known = known.reindex(index=panel.index, columns=panel.columns)
+    known = known.apply(lambda c: pd.to_datetime(c, utc=True))
+    rets_known = np.maximum(known, known.shift(1)).iloc[1:]
+    rets_known.index = rets.index
+    closes = panel.copy()
+    closes.index = closes.index.tz_localize("UTC") + pd.Timedelta(hours=22)
+    ctx = RunContext(cfg, universe, period, end_ts, snaps, rets, closes=closes,
+                     rets_known=rets_known)
 
     log(f"market layer: {len(snaps)} snapshots, windows {cfg.market.windows}")
     for w in cfg.market.windows:
         ctx.affinity[w] = {}
         for t in _bar(snaps, f"Market layer ({w}d)"):
             snap = market_snapshot(rets, t, w, cfg.market, symbols_as_of(universe, t),
-                                   cfg.market.residualize_against)
+                                   cfg.market.residualize_against, known=rets_known)
             ctx.affinity[w][t] = snap["affinity"]
     edges = []
     main_w = cfg.candidates.market_alignment_window
@@ -137,32 +157,43 @@ def build(prices: pd.DataFrame, docs: pd.DataFrame, cfg: PipelineConfig,
 
     log("text layer")
     ctx.embedder_id = embedder.model_id
-    exposures, totals, active, best = [], {}, {}, {}
+    exposures, totals, active, best, assigned, win_rows = [], {}, {}, {}, [], []
     if len(docs):
         p, V = prepare_passages(docs, cfg, embedder, cache_dir, log)
         ctx.passages = p
         windows = cluster_windows(p, V, snaps, cfg, embedder.model_id,
                                   cache_dir / "clusters", log)
         tracker = Tracker(cfg.text.track_link_similarity,
-                          link_overlap=cfg.text.track_link_overlap)
+                          link_overlap=cfg.text.track_link_overlap,
+                          link_min_similarity=cfg.text.track_link_min_similarity)
         for wc in windows:
             t = wc.t
             assign = tracker.step(wc)
             totals[t] = len(wc.labels)
             active[t] = len(np.unique(wc.symbols))
+            win_rows.append({"t": t, "n_passages": len(wc.labels),
+                             "n_clustered": int((wc.labels >= 0).sum()),
+                             "n_excluded_degenerate": wc.excluded,
+                             "n_issuers_with_text": active[t], "n_topics": len(assign)})
             ex = window_exposure(wc, assign)
             exposures.append(ex)
             for c, tid in assign.items():
                 idx = np.flatnonzero(wc.labels == c)
+                assigned.append(pd.DataFrame({"t": t, "track_id": tid,
+                                              "passage_id": [wc.passage_ids[i] for i in idx]}))
                 if len(idx) > best.get(tid, (0,))[0]:
                     best[tid] = (len(idx), t, [wc.passage_ids[i] for i in idx])
             edges.append(matrix_edges(t, "text", text_affinity(ex)))
         ctx.events = track_events(tracker)
-        ctx.track_stats = tracker.stats()
+        step = (snaps[1] - snaps[0]).days if len(snaps) > 1 else cfg.text.window_days
+        ctx.track_stats = {**tracker.stats(int(np.ceil(cfg.text.window_days / max(step, 1)))),
+                           "passages_excluded_degenerate": int(sum(w.excluded for w in windows))}
         log(f"  topic tracking: {ctx.track_stats}")
     ctx.exposure = (pd.concat(exposures, ignore_index=True) if exposures else
                     pd.DataFrame(columns=["t", "track_id", "symbol", "n_passages", "exposure"]))
-    ctx.edges = pd.concat([e for e in edges if len(e)], ignore_index=True) if edges else None
+    usable = [e for e in edges if len(e)]
+    ctx.edges = pd.concat(usable, ignore_index=True) if usable else \
+        pd.DataFrame(columns=["t", "layer", "a", "b", "weight"])
 
     log("theme candidates")
     first_doc = docs["available_at"].min() if len(docs) else None
@@ -172,7 +203,11 @@ def build(prices: pd.DataFrame, docs: pd.DataFrame, cfg: PipelineConfig,
                         ctx.affinity.get(main_w, {}), cfg.evaluation.seed,
                         min(cfg.evaluation.null_draws, 200), pd.Series(totals),
                         warmup, pd.Series(active)) if len(ctx.exposure) else pd.DataFrame()
+    ctx.windows = pd.DataFrame(win_rows)
+    ctx.assignments = (pd.concat(assigned, ignore_index=True) if assigned else
+                       pd.DataFrame(columns=["t", "track_id", "passage_id"]))
     ctx.topics = topic_labels(ctx, best, cfg.text.keywords_per_topic)
+    ctx.explanations = asof_explanations(ctx, V if len(docs) else None, cfg)
     return ctx
 
 
@@ -224,8 +259,8 @@ def cluster_windows(p: pd.DataFrame, V: np.ndarray, snaps: list[pd.Timestamp],
     out, todo = {}, []
     for t in snaps:
         idx = np.flatnonzero(window_mask(p, t, cfg.text.window_days))
-        key = cache.key(ids[idx])
-        hit = cache.get(key, t, ids[idx], syms[idx])
+        key = cache.key(ids[idx], syms[idx], genres[idx], V[idx])
+        hit = cache.get(key, t, ids[idx], syms[idx], V.shape[1])
         if hit is not None:
             out[t] = hit
         else:
@@ -248,8 +283,11 @@ def _cluster_idx(t, ids, syms, genres, V, idx, cfg, seed):
 
 def topic_labels(ctx: RunContext, best: dict, top_n: int, extra: int = 200,
                  max_passages: int = 200) -> pd.DataFrame:
-    """Keywords once per topic, from the window where it was largest. Labelled: every
-    topic in the candidate ledger plus the `extra` largest others."""
+    """RETROSPECTIVE labels: keywords once per topic, from the window where it was
+    largest over the whole run, which can be after a candidate's flag. Display
+    metadata only (never used by detection); historical explanations of a flag use
+    `asof_explanations`. Labelled: every topic in the candidate ledger plus the
+    `extra` largest others."""
     if not best or ctx.passages is None:
         return pd.DataFrame(columns=["t", "track_id", "keywords", "n_passages"])
     flagged = set(ctx.ledger["track_id"]) if ctx.ledger is not None and len(ctx.ledger) \
@@ -260,7 +298,54 @@ def topic_labels(ctx: RunContext, best: dict, top_n: int, extra: int = 200,
     docs = {tid: " ".join(text.loc[best[tid][2][:max_passages]]) for tid in chosen}
     kw = ctfidf_keywords(docs, top_n)
     return pd.DataFrame([{"t": best[tid][1], "track_id": tid, "keywords": kw[tid],
-                          "n_passages": best[tid][0]} for tid in chosen])
+                          "n_passages": best[tid][0], "basis": "retrospective_peak_window"}
+                         for tid in chosen])
+
+
+QUOTE_CHARS = 500
+
+
+def asof_explanations(ctx: RunContext, V: np.ndarray | None, cfg: PipelineConfig,
+                      n_quotes: int = 3, background: int = 400) -> pd.DataFrame:
+    """Why each candidate was flagged, using only what was available at its first
+    flag: keywords contrasting the topic's passages in that window with the rest of
+    the window, and the passages closest to the topic's centre as quotations (with
+    issuer, document, genre, speaker/section and availability time)."""
+    cols = ["candidate_id", "track_id", "t", "keywords", "quotes"]
+    led, p = ctx.ledger, ctx.passages
+    if V is None or led is None or not len(led) or p is None or not len(ctx.assignments):
+        return pd.DataFrame(columns=cols)
+    pos = pd.Series(np.arange(len(p)), index=p["passage_id"])
+    A = ctx.assignments
+    rows = []
+    for r in led.loc[led["t"] == led["t_first_flag"]].itertuples():
+        members = A.loc[(A["t"] == r.t) & (A["track_id"] == r.track_id), "passage_id"]
+        mi = pos.loc[members].to_numpy()
+        win = np.flatnonzero(window_mask(p, r.t, cfg.text.window_days))
+        bg = np.setdiff1d(win, mi)[:background]
+        kw = ctfidf_keywords({0: " ".join(p["text"].to_numpy()[mi[:200]]),
+                              1: " ".join(p["text"].to_numpy()[bg])},
+                             cfg.text.keywords_per_topic)[0] if len(mi) else []
+        cent = V[mi].mean(axis=0)
+        order = mi[np.argsort(-(V[mi] @ cent), kind="stable")]
+        # Closest passages to the topic centre, one per issuer first, then any.
+        picked, seen = [], set()
+        for i in order:
+            if p["symbol"].iat[i] not in seen:
+                picked.append(i)
+                seen.add(p["symbol"].iat[i])
+        picked += [i for i in order if i not in set(picked)]
+        quotes = []
+        for i in picked[:n_quotes]:
+            row = p.iloc[i]
+            quotes.append({"passage_id": row["passage_id"], "symbol": row["symbol"],
+                           "doc_id": row["doc_id"], "genre": row.get("genre"),
+                           "context": row.get("unit"), "url": row.get("url"),
+                           "available_at": pd.Timestamp(row["available_at"]).isoformat(),
+                           "text": row["text"][:QUOTE_CHARS]})
+        rows.append({"candidate_id": r.candidate_id, "track_id": int(r.track_id), "t": r.t,
+                     "keywords": kw, "quotes": quotes})
+    return pd.DataFrame(rows, columns=cols)
 
 
 def evaluate(ctx: RunContext, labels: LabelFile) -> dict:
@@ -273,21 +358,74 @@ def evaluate(ctx: RunContext, labels: LabelFile) -> dict:
     years = (end - start).days / 365.25
     matches = match_candidates(led, labels.for_period(ctx.period),
                                ev.label_match_min_jaccard, ev.label_match_window_days)
+    matches = _mark_text_evidence(matches, labels.for_period(ctx.period), ctx,
+                                  ev.label_match_window_days,
+                                  cfg.text.min_cluster_passages * cfg.candidates.min_issuers)
     q1 = detection_metrics(matches, led, years)
     firsts = led.loc[led["t"] == led["t_first_flag"]] if len(led) else led
     segs = segments(ctx.universe)
     como = comovement_test(firsts, ctx.affinity_after, ev.forward_sessions, segs,
                            ev.null_draws, ev.seed) if len(firsts) else pd.DataFrame()
-    rets = ctx.rets.loc[ctx.rets.index <= ctx.end]
     core = {s for s, r in roles(ctx.universe).items() if r == "core"}
-    rt = returns_test(firsts, rets, core, cfg.market.sector_benchmark, ev.forward_sessions,
-                      segs, ev.null_draws, ev.seed) if len(firsts) else pd.DataFrame()
+    delisted = {i.symbol: i.delisted for i in ctx.universe.issuers if i.delisted}
+    rt = returns_test(firsts, ctx.closes, core, cfg.market.sector_benchmark,
+                      ev.forward_sessions, segs, ev.null_draws, ev.seed, ctx.end,
+                      delisted) if len(firsts) else pd.DataFrame()
     q2 = {
         "comovement": summarise_percentiles(como, ev.null_draws, ev.seed) if len(como) else {},
-        "returns": (rt.groupby("h")[["excess_vs_benchmark", "excess_vs_momentum", "null_pct"]]
-                    .median().to_dict(orient="index") if len(rt) else {}),
+        "returns": returns_summary(rt, firsts, ev.null_draws, ev.seed),
     }
     return {"q1": q1, "q2": q2, "matches": matches, "comovement": como, "returns": rt}
+
+
+def _mark_text_evidence(matches: pd.DataFrame, themes, ctx: RunContext, window_days: int,
+                        min_passages: int) -> pd.DataFrame:
+    """A labelled theme can only be missed if its issuers had text to detect it from.
+    Themes whose issuers had fewer than `min_passages` passages in the matching window
+    are marked not evaluable (reason no_text_evidence) instead of counting as misses."""
+    if not len(matches):
+        return matches
+    m = matches.copy()
+    m["evidence_passages"] = np.nan
+    m["reason"] = np.where(m["evaluable"], "", "no_consensus_date")
+    p = ctx.passages
+    by_id = {th.id: th for th in themes}
+    for i, row in m.iterrows():
+        if not row["evaluable"]:
+            continue
+        th = by_id[row["theme"]]
+        c = pd.Timestamp(th.consensus_marker.date, tz="UTC")
+        n = 0 if p is None or not len(p) else int(
+            (p["symbol"].isin(th.issuers) & (p["available_at"] <= c)
+             & (p["available_at"] > c - pd.Timedelta(days=window_days))).sum())
+        m.at[i, "evidence_passages"] = n
+        if n < min_passages and not row["detected"]:
+            m.at[i, "evaluable"] = False
+            m.at[i, "reason"] = "no_text_evidence"
+    return m
+
+
+def returns_summary(rt: pd.DataFrame, firsts: pd.DataFrame, draws: int, seed: int) -> dict:
+    """Per horizon: counts by status, medians of usable episodes, and the grouped
+    null-percentile summary (episodes sharing issuers over overlapping intervals are
+    pooled before the permutation test)."""
+    if not len(rt):
+        return {}
+    issuers = dict(zip(firsts["candidate_id"], firsts["issuers"], strict=False))
+    ok = rt.loc[rt["status"] == "ok"].assign(issuers=lambda d: d["candidate_id"].map(issuers))
+    grouped = summarise_percentiles(ok, draws, seed) if len(ok) else {}
+    out = {}
+    for h, g in rt.groupby("h"):
+        okh = g.loc[g["status"] == "ok"]
+        out[int(h)] = {
+            "status_counts": g["status"].value_counts().to_dict(),
+            "median_excess_vs_benchmark": float(okh["excess_vs_benchmark"].median())
+            if len(okh) else None,
+            "median_excess_vs_momentum": float(okh["excess_vs_momentum"].median())
+            if len(okh) else None,
+            **grouped.get(int(h), {}),
+        }
+    return out
 
 
 def _jsonable(o):
@@ -308,10 +446,18 @@ def save(ctx: RunContext, results: dict | None, out_dir: Path, inputs: dict) -> 
     """Write outputs. The ledger is written and hashed first."""
     out_dir.mkdir(parents=True, exist_ok=True)
     ctx.ledger_sha256 = write_ledger(ctx.ledger, out_dir)
-    for name in ("exposure", "events", "topics", "edges"):
+    for name in ("exposure", "events", "topics", "edges", "windows", "assignments"):
         df = getattr(ctx, name)
         if df is not None and len(df):
             df.to_parquet(out_dir / f"{name}.parquet", index=False)
+    if ctx.explanations is not None and len(ctx.explanations):
+        ctx.explanations.assign(t=ctx.explanations["t"].astype(str)).to_json(
+            out_dir / "explanations.json", orient="records", indent=1)
+    if ctx.passages is not None and len(ctx.passages):
+        meta = [c for c in ("passage_id", "doc_id", "symbol", "doc_type", "genre", "unit",
+                            "published_at", "available_at", "text_hash", "url")
+                if c in ctx.passages]
+        ctx.passages[meta].to_parquet(out_dir / "passages.parquet", index=False)
     manifest = {
         "themegraph_version": __version__,
         "python": platform.python_version(),
@@ -336,6 +482,17 @@ def save(ctx: RunContext, results: dict | None, out_dir: Path, inputs: dict) -> 
         (out_dir / "results.json").write_text(json.dumps(summary, default=_jsonable, indent=1))
     (out_dir / "manifest.json").write_text(json.dumps(manifest, default=_jsonable, indent=1))
     return manifest
+
+
+def output_bindings(ctx: RunContext, results: dict, manifest: dict) -> dict:
+    """Hashes of everything a holdout result consists of, for verification."""
+    out = {"ledger_sha256": manifest["ledger_sha256"],
+           "results_sha256": manifest.get("results_sha256")}
+    for name in ("matches", "comovement", "returns"):
+        df = results.get(name)
+        out[f"{name}_sha256"] = frame_sha256(df.astype(str)) if df is not None and len(df) \
+            else None
+    return out
 
 
 def frame_sha256(df: pd.DataFrame) -> str:

@@ -76,8 +76,12 @@ def collect(run_dir: Path, universe: UniverseConfig) -> dict:
     exposure, topics, ledger = read("exposure.parquet"), read("topics.parquet"), \
         read("candidate_ledger.parquet")
     tracks = []
+    windows = read("windows.parquet")
     if len(exposure):
-        totals = exposure.groupby("t")["n_passages"].sum()
+        # Same denominator as the detector: all passages in the window, not only the
+        # clustered ones (older runs without windows.parquet fall back to clustered).
+        totals = (windows.set_index("t")["n_passages"] if len(windows)
+                  else exposure.groupby("t")["n_passages"].sum())
         s = exposure.groupby(["track_id", "t"])["n_passages"].sum().reset_index()
         s["share"] = s["n_passages"] / s["t"].map(totals)
         flagged = set(ledger["track_id"]) if len(ledger) else set()
@@ -105,14 +109,16 @@ def collect(run_dir: Path, universe: UniverseConfig) -> dict:
         matched = {}
         if len(matches) and "candidate_id" in matches:
             matched = dict(zip(matches["candidate_id"], matches["theme"], strict=False))
-        kw = {}
-        if len(topics):
-            for tid, g in topics.groupby("track_id"):
-                kw[tid] = list(g.sort_values("n_passages")["keywords"].iloc[-1])[:5]
+        expl = {}
+        path = run_dir / "explanations.json"
+        if path.exists():
+            expl = {e["candidate_id"]: e for e in json.loads(path.read_text())}
         for r in firsts.itertuples():
+            e = expl.get(r.candidate_id, {})
             cands.append({
                 "id": r.candidate_id, "t": r.t, "issuers": list(r.issuers),
-                "segments": list(r.segments), "keywords": kw.get(r.track_id, []),
+                "segments": list(r.segments), "keywords": list(e.get("keywords", []))[:6],
+                "quotes": e.get("quotes", []),
                 "alignment_pct": r.market_affinity_null_pct, "label": matched.get(r.candidate_id),
             })
     return _clean({
@@ -209,8 +215,11 @@ font-size:11px;color:var(--ink2);margin:1px 2px 1px 0}
 </div>
 
 <h2>Topic tracks</h2>
-<p class="sub">Share of all novel passages in each tracked topic over time. Topics that
-produced a candidate are listed first; the dashed line marks the first flag.</p>
+<p class="sub">Share of all passages in each window (the detector's denominator) per
+tracked topic. Topics that produced a candidate are listed first; the dashed line marks
+the first flag. Keywords here are a <b>retrospective</b> label from each topic's largest
+window over the whole run, which may come after the flag; the candidate table below
+shows what was known at the flag.</p>
 <div class="grid2" id="tracks"></div>
 
 <h2>Theme candidates</h2>
@@ -277,8 +286,9 @@ const tiles = [
   ["Negative controls flagged", q1.negative_controls_flagged ?? "–", "hype that faded"],
 ];
 for (const [h, v] of Object.entries(como))
-  tiles.push([`Co-movement percentile, ${h} sessions`, fmt(v.mean_pct, 2),
-              `n=${v.n}, permutation p=${fmt(v.p_value, 3)}`]);
+  tiles.push([`Co-movement percentile, ${h} sessions`, fmt(v.group_mean_pct ?? v.mean_pct, 2),
+              `${v.n_episodes ?? v.n} episodes in ${v.n_groups ?? "?"} dependence groups; ` +
+              `grouped sign-flip p=${fmt(v.p_value_grouped ?? v.p_value, 3)} (descriptive)`]);
 $("#tiles").innerHTML = tiles.map(([k, v, s]) =>
   `<div class="card tile"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div>
    <div class="k">${esc(s)}</div></div>`).join("");
@@ -368,7 +378,11 @@ function table(el, cols, rows){
     : `<tbody><tr><td class="sub">None.</td></tr></tbody>`; }
 const pills = a => (a || []).map(s => `<span class="pill">${esc(s)}</span>`).join("");
 table($("#cands"), [["Candidate", r => esc(r.id)], ["First flag", r => esc(r.t)],
-  ["Issuers", r => pills(r.issuers)], ["Keywords", r => esc((r.keywords || []).join(", "))],
+  ["Issuers", r => pills(r.issuers)],
+  ["As-of keywords and quotes", r => esc((r.keywords || []).join(", ")) +
+    ((r.quotes || []).length ? `<details><summary>${r.quotes.length} supporting passages</summary>` +
+      r.quotes.map(q => `<p><b>${esc(q.symbol)}</b> · ${esc(q.genre || "")} · available ${esc((q.available_at || "").slice(0,10))}` +
+        (q.url ? ` · <a href="${esc(q.url)}">source</a>` : "") + `<br>${esc(q.text)}…</p>`).join("") + `</details>` : "")],
   ["Market alignment pct", r => fmt(r.alignment_pct)], ["Matched label", r => esc(r.label || "–")]],
   D.candidates);
 table($("#matches"), [["Theme", r => esc(r.theme)], ["Kind", r => esc(r.kind)],
@@ -380,7 +394,8 @@ table($("#como"), [["Candidate", r => esc(r.candidate_id)], ["Flag", r => esc(r.
   ["h", r => r.h], ["Issuers", r => r.n], ["Δ affinity", r => fmt(r.delta, 3)],
   ["Null median", r => fmt(r.null_median, 3)], ["Percentile", r => fmt(r.null_pct)]], D.comovement);
 table($("#rets"), [["Candidate", r => esc(r.candidate_id)], ["Flag", r => esc(r.t)],
-  ["h", r => r.h], ["Basket log return", r => fmt(r.basket, 3)],
+  ["h", r => r.h], ["Status", r => esc(r.status || "")],
+  ["Basket return (EW buy-and-hold, next-close entry)", r => fmt(r.basket, 3)],
   ["vs sector ETF", r => fmt(r.excess_vs_benchmark, 3)], ["vs momentum", r => fmt(r.excess_vs_momentum, 3)],
   ["Null percentile", r => fmt(r.null_pct)]], D.returns);
 </script></body></html>

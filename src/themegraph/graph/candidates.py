@@ -40,9 +40,13 @@ def detect(exposure: pd.DataFrame, snapshots: list[pd.Timestamp], cfg: Candidate
     Emergence means: the topic's quarter-smoothed share grows for m steps, by at
     least `min_growth_ratio`, to a level above anything it reached in the
     `new_high_lookback_snapshots` before the growth began (so recurring background
-    topics do not qualify), across at least `min_issuers` issuers but no more than
-    `max_issuer_share` of the issuers with text in the window (so generic topics
-    that every company discusses do not qualify).
+    topics do not qualify), across at least `min_issuers` issuers. A topic that was
+    already discussed by more than `max_issuer_share` of the issuers with text when
+    its growth began is generic (boilerplate every company repeats) and does not
+    qualify. Breadth is judged at the start of growth, not at the flag: a theme that
+    spreads quickly to most companies (AI in 2023) is an emerging theme, not generic.
+    The cap applies only when at least 2 x min_issuers issuers have text; with fewer,
+    min_issuers and the cap could not both be met.
 
     Only information at or before each snapshot is used: exposures from windows
     ending at earlier snapshots and market affinity estimated up to the snapshot.
@@ -71,9 +75,12 @@ def detect(exposure: pd.DataFrame, snapshots: list[pd.Timestamp], cfg: Candidate
                 continue  # back to an old level: a recurring topic, not an emerging one
             if s.loc[t, "n_issuers"] < cfg.min_issuers:
                 continue
-            if active_issuers is not None and t in active_issuers.index and \
-                    s.loc[t, "n_issuers"] > cfg.max_issuer_share * active_issuers[t]:
-                continue  # generic: most companies with text in the window discuss it
+            t0 = snaps[g0]
+            if active_issuers is not None and t0 in active_issuers.index and \
+                    active_issuers[t0] >= 2 * cfg.min_issuers and \
+                    np.nan_to_num(s.loc[t0, "n_issuers"]) > \
+                    cfg.max_issuer_share * active_issuers[t0]:
+                continue  # generic: already broad before it grew
             e = exposure.loc[(exposure["track_id"] == tid) & (exposure["t"] == t)]
             issuers = sorted(e.loc[e["exposure"] >= cfg.min_exposure, "symbol"])
             segs = sorted({segments.get(x, "?") for x in issuers})

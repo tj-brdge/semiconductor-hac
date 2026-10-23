@@ -112,7 +112,7 @@ def ingest_fmp_transcripts(client: F.FMPClient, cfg: PipelineConfig, universe: U
 
 def ingest_edgar(client: E.EdgarClient, cfg: PipelineConfig, universe: UniverseConfig,
                  store: Store, end: dt.date, symbols: list[str] | None = None,
-                 forms=("10-K", "10-Q", "20-F", "8-K"), log=_log) -> Path:
+                 forms=("10-K", "10-Q", "20-F", "8-K", "6-K"), log=_log) -> Path:
     tickers = client.ticker_map()
     frames = []
     wanted = [i for i in universe.issuers
@@ -128,10 +128,16 @@ def ingest_edgar(client: E.EdgarClient, cfg: PipelineConfig, universe: UniverseC
         texts: dict[str, dict[str, str]] = {}
         for r in _bar(list(filings.itertuples()), f"  {iss.symbol}", "filing", leave=False):
             try:
-                if r.form == "8-K":
+                if r.form in ("8-K", "6-K"):
+                    # Current reports: the substance (press releases, interim results
+                    # of foreign issuers such as TSM, ASML, UMC) is in exhibit 99; a
+                    # 6-K without one carries it in the primary document.
                     names = E.exhibit_names(client.filing_index(cik, r.accessionNumber))
                     body = "\n\n".join(E.html_to_text(client.document(cik, r.accessionNumber, n))
                                        for n in names)
+                    if not body.strip() and r.form == "6-K":
+                        body = E.html_to_text(client.document(cik, r.accessionNumber,
+                                                             r.primaryDocument))
                     if body.strip():
                         texts[r.accessionNumber] = {"ex99": body}
                 else:
@@ -148,25 +154,26 @@ def ingest_edgar(client: E.EdgarClient, cfg: PipelineConfig, universe: UniverseC
 
 # ------------------------------------------------------------------ loaders
 
-def load_prices(store: Store) -> pd.DataFrame:
-    return store.read("prices")
+def load_prices(store: Store, upto: str | None = None) -> pd.DataFrame:
+    return store.read("prices", upto=upto)
 
 
-def load_documents(store: Store) -> pd.DataFrame:
+def load_documents(store: Store, upto: str | None = None) -> pd.DataFrame:
     frames = []
     for table in ("documents_transcripts", "documents_edgar"):
         if store.vintages(table):
-            frames.append(store.read(table))
+            frames.append(store.read(table, upto=upto))
     if not frames:
         return pd.DataFrame(columns=["symbol", "doc_id", "doc_type", "published_at",
                                      "available_at", "text"])
     return pd.concat(frames, ignore_index=True)
 
 
-def load_factors(store: Store, cfg: PipelineConfig) -> pd.DataFrame | None:
+def load_factors(store: Store, cfg: PipelineConfig,
+                 upto: str | None = None) -> pd.DataFrame | None:
     if not store.vintages("macro"):
         return None
-    m = store.read("macro")
+    m = store.read("macro", upto=upto)
     daily, kinds, cpi = {}, {}, None
     for name, g in m.groupby("series"):
         s = g.set_index(pd.to_datetime(g["date"]))["value"].sort_index()

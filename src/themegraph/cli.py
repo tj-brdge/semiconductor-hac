@@ -69,27 +69,34 @@ def cmd_coverage(a):
 def cmd_run(a):
     from . import ingest as I
     from . import pipeline as P
-    from .eval.freeze import guard_holdout, log_holdout
+    from .eval.freeze import begin_holdout, complete_holdout, completed_attempt, verify_holdout
     from .eval.labels import load_labels
     from .report.build import build_report
     from .text.embed import make_embedder
 
     cfg, u = load_pipeline(), load_universe()
-    if a.period == "holdout":
-        state = guard_holdout()
-        if state["already_run"] and not a.verify_identical:
-            sys.exit("holdout already run under this freeze; pass --verify-identical to "
-                     "re-run and check the result matches")
+    if a.verify_identical and a.period != "holdout":
+        sys.exit("--verify-identical applies to holdout runs only")
+    if a.period == "holdout" and a.verify_identical:
+        completed_attempt()  # refuse before loading anything if there is nothing to verify
     store = _store()
-    prices, docs, factors = I.load_prices(store), I.load_documents(store), \
-        I.load_factors(store, cfg)
+    up = a.input_vintage
+    prices, docs, factors = I.load_prices(store, up), I.load_documents(store, up), \
+        I.load_factors(store, cfg, up)
     out = Path(a.out or RUNS / f"{a.period}-{dt.datetime.now(dt.UTC):%Y%m%dT%H%M%SZ}")
-    ctx = P.build(prices, docs, cfg, u, make_embedder(cfg.embedding), DATA / "cache",
-                  a.period, factors)
     inputs = {
         "prices": P.frame_sha256(prices), "documents": P.frame_sha256(docs[["doc_id", "text"]])
         if len(docs) else None,
+        "vintages": dict(store.used),
+        "input_vintage_upto": up,
+        # Historical runs reconstruct availability from publication times plus lags;
+        # they cannot undo later revisions or survivorship in present-day vintages.
+        "availability_basis": "reconstructed",
     }
+    if a.period == "holdout" and not a.verify_identical:
+        attempt = begin_holdout(inputs, a.new_attempt_reason)
+    ctx = P.build(prices, docs, cfg, u, make_embedder(cfg.embedding), DATA / "cache",
+                  a.period, factors)
     # Save layers and the hashed candidate ledger before any outcome is computed, so
     # the ledger is fixed first and a failure in evaluation never loses a finished build.
     P.save(ctx, None, out, inputs)
@@ -97,9 +104,12 @@ def cmd_run(a):
     res = P.evaluate(ctx, load_labels())
     manifest = P.save(ctx, res, out, inputs)
     if a.period == "holdout":
-        guard_holdout(manifest["results_sha256"])
-        if not a.verify_identical:
-            log_holdout(manifest["results_sha256"])
+        outputs = P.output_bindings(ctx, res, manifest)
+        if a.verify_identical:
+            verify_holdout(inputs, outputs)
+            print("holdout verified: identical inputs and outputs")
+        else:
+            complete_holdout(attempt, outputs)
     print("report:", build_report(out, u, f"Theme graph · {a.period}"))
 
 
@@ -113,6 +123,15 @@ def cmd_topics(a):
     from .text.embed import make_embedder
 
     cfg = load_pipeline()
+    late = [d for d in a.dates if pd.Timestamp(d).date() > cfg.periods.dev_end]
+    if late:
+        if not a.allow_holdout_dates:
+            sys.exit(f"{late} fall after the development period ({cfg.periods.dev_end}). "
+                     "Reading holdout topics contaminates the holdout; pass "
+                     "--allow-holdout-dates to do it anyway (it is logged).")
+        from .eval.freeze import _append
+        _append(ROOT, {"event": "holdout_topic_inspection", "dates": late,
+                       "note": "holdout topics inspected before evaluation: not clean"})
     docs = I.load_documents(_store())
     p, V = P.prepare_passages(docs, cfg, make_embedder(cfg.embedding), DATA / "cache")
     for d in a.dates:
@@ -121,6 +140,46 @@ def cmd_topics(a):
                 update={"cluster_distance": dist})})
             print(P.describe_window(p, V, snapshot_ts(pd.Timestamp(d)), c, a.top))
             print()
+
+
+def cmd_adjudicate(a):
+    """Create/refresh a run's adjudication worksheet and print adjudicated counts."""
+    from .eval import adjudication as A
+
+    run = Path(a.run_dir)
+    path = A.write_worksheet(run)
+    res = json.loads((run / "results.json").read_text()) if (run / "results.json").exists() \
+        else {}
+    n = res.get("q1", {}).get("themes_evaluable", 0)
+    print(path)
+    print(json.dumps(A.summary(A.load(path), n), indent=1))
+
+
+def cmd_forward(a):
+    """Forward log: record as-of predictions, or append matured outcomes."""
+    import pandas as pd
+
+    from . import forward as Fw
+    from . import ingest as I
+    from .text.embed import make_embedder
+
+    cfg, u = load_pipeline(), load_universe()
+    store = _store()
+    out = ROOT / "forward"
+    prices = I.load_prices(store)
+    if a.action == "predict":
+        cutoff = dt.date.fromisoformat(a.cutoff) if a.cutoff else dt.date.today()
+        recs = Fw.predict(prices, I.load_documents(store), cfg, u, make_embedder(cfg.embedding),
+                          DATA / "cache", out, cutoff)
+        print(f"{len(recs)} prediction records for cutoff {cutoff} in {out / Fw.PREDICTIONS}")
+        return
+    closes = prices.pivot_table(index="date", columns="symbol", values="close")
+    closes.index = pd.DatetimeIndex(closes.index).tz_localize(None).normalize() \
+        .tz_localize("UTC") + pd.Timedelta(hours=22)
+    delisted = {i.symbol: i.delisted for i in u.issuers if i.delisted}
+    new = Fw.evaluate_outcomes(out, closes, cfg.market.sector_benchmark,
+                               cfg.evaluation.forward_sessions, closes.index.max(), delisted)
+    print(f"{len(new)} new outcome records in {out / Fw.OUTCOMES}")
 
 
 def cmd_freeze(a):
@@ -160,13 +219,27 @@ def main(argv=None):
     s = sub.add_parser("run", help="build layers, candidates, evaluation and report")
     s.add_argument("--period", choices=["dev", "holdout"], default="dev")
     s.add_argument("--out")
-    s.add_argument("--verify-identical", action="store_true")
+    s.add_argument("--verify-identical", action="store_true",
+                   help="re-run the completed holdout attempt and check every binding")
+    s.add_argument("--new-attempt-reason",
+                   help="required for any holdout attempt after the first; logged, not clean")
+    s.add_argument("--input-vintage", help="use, per table, the latest stored vintage at "
+                   "or before this ID (e.g. 20261023T120000Z); default: latest")
     s.set_defaults(fn=cmd_run)
     s = sub.add_parser("topics", help="print topics for sample windows (calibration)")
     s.add_argument("--dates", nargs="+", default=["2012-06-30", "2016-06-30", "2020-06-30"])
     s.add_argument("--distances", nargs="+", type=float, default=[0.5, 0.6, 0.7])
     s.add_argument("--top", type=int, default=12)
+    s.add_argument("--allow-holdout-dates", action="store_true",
+                   help="inspect dates after dev_end; logged as holdout contamination")
     s.set_defaults(fn=cmd_topics)
+    s = sub.add_parser("forward", help="as-of prediction log (predict) and outcomes")
+    s.add_argument("action", choices=["predict", "outcomes"])
+    s.add_argument("--cutoff", help="prediction date YYYY-MM-DD (default today)")
+    s.set_defaults(fn=cmd_forward)
+    s = sub.add_parser("adjudicate", help="write/refresh a run's adjudication worksheet")
+    s.add_argument("run_dir")
+    s.set_defaults(fn=cmd_adjudicate)
     s = sub.add_parser("freeze", help="hash code/config/labels before the holdout run")
     s.set_defaults(fn=cmd_freeze)
     s = sub.add_parser("labels", help="validate labels/themes.yaml")
