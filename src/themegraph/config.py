@@ -54,11 +54,17 @@ class Text(_Strict):
     min_chunk_words: int = 40
     exact_dup_drop: bool = True
     novelty_max_similarity: float = 0.95
-    cluster_distance: float = 0.35
+    max_numeric_share: float = 0.15
+    drop_financial_statements: bool = True
+    center_by_genre: bool = True
+    remove_top_components: int = 0
+    cluster_distance: float = 0.6
     min_cluster_passages: int = 4
     min_cluster_issuers: int = 2
     track_link_similarity: float = 0.8
+    track_link_overlap: float = 0.3
     keywords_per_topic: int = 8
+    parallel_jobs: int = 4
 
 
 class Embedding(_Strict):
@@ -73,6 +79,8 @@ class Candidates(_Strict):
     min_consecutive_growth_windows: int = 2
     growth_step_snapshots: int = 3
     min_growth_ratio: float = 1.25
+    new_high_lookback_snapshots: int = 24
+    max_issuer_share: float = 0.5
     min_issuers: int = 3
     min_exposure: float = 0.05
     market_alignment_window: int = 63

@@ -33,8 +33,16 @@ def detect(exposure: pd.DataFrame, snapshots: list[pd.Timestamp], cfg: Candidate
            segments: dict[str, str], market_aff: dict[pd.Timestamp, pd.DataFrame | None],
            rng_seed: int = 0, null_draws: int = 200,
            window_totals: pd.Series | None = None,
-           warmup_until: pd.Timestamp | None = None) -> pd.DataFrame:
+           warmup_until: pd.Timestamp | None = None,
+           active_issuers: pd.Series | None = None) -> pd.DataFrame:
     """One ledger row per (track, snapshot) where the emergence rule holds.
+
+    Emergence means: the topic's quarter-smoothed share grows for m steps, by at
+    least `min_growth_ratio`, to a level above anything it reached in the
+    `new_high_lookback_snapshots` before the growth began (so recurring background
+    topics do not qualify), across at least `min_issuers` issuers but no more than
+    `max_issuer_share` of the issuers with text in the window (so generic topics
+    that every company discusses do not qualify).
 
     Only information at or before each snapshot is used: exposures from windows
     ending at earlier snapshots and market affinity estimated up to the snapshot.
@@ -57,8 +65,15 @@ def detect(exposure: pd.DataFrame, snapshots: list[pd.Timestamp], cfg: Candidate
                 continue
             if steps[0] > 0 and steps[-1] / steps[0] < cfg.min_growth_ratio:
                 continue
+            g0 = i - m * k
+            prior = smooth.iloc[max(0, g0 - cfg.new_high_lookback_snapshots):g0].dropna()
+            if len(prior) and steps[-1] <= prior.max():
+                continue  # back to an old level: a recurring topic, not an emerging one
             if s.loc[t, "n_issuers"] < cfg.min_issuers:
                 continue
+            if active_issuers is not None and t in active_issuers.index and \
+                    s.loc[t, "n_issuers"] > cfg.max_issuer_share * active_issuers[t]:
+                continue  # generic: most companies with text in the window discuss it
             e = exposure.loc[(exposure["track_id"] == tid) & (exposure["t"] == t)]
             issuers = sorted(e.loc[e["exposure"] >= cfg.min_exposure, "symbol"])
             segs = sorted({segments.get(x, "?") for x in issuers})

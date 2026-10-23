@@ -53,6 +53,7 @@ uv run themegraph ingest fmp-macro         # yields, CPI (release-lagged), oil, 
 uv run themegraph ingest fmp-transcripts
 uv run themegraph ingest edgar             # 10-K/10-Q/20-F sections, 8-K exhibit 99
 uv run themegraph coverage                 # per-issuer gaps, before trusting anything
+uv run themegraph topics                   # read sample topics; calibrate cluster_distance
 uv run themegraph run --period dev         # -> runs/dev-<timestamp>/report.html
 ```
 

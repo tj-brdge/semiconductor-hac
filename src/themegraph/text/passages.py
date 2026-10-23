@@ -66,12 +66,43 @@ def passages_from_documents(docs: pd.DataFrame, size: int, min_words: int) -> pd
                     "available_at": d.available_at,
                     "text": chunk,
                     "text_hash": text_hash(chunk),
+                    "genre": genre_of(d.doc_type, unit),
                 })
                 n += 1
     return pd.DataFrame(recs)
+
+
+def genre_of(doc_type: str, unit: str) -> str:
+    """Kind of text a passage is (call remarks vs Q&A, filing section). Each kind has
+    its own register, which embeddings pick up alongside subject matter."""
+    if doc_type == "transcript":
+        return "transcript:qa" if unit.endswith("|qa") else "transcript:prepared"
+    return doc_type
 
 
 def drop_exact_duplicates(passages: pd.DataFrame) -> pd.DataFrame:
     """Keep only the first available occurrence of identical text per issuer."""
     p = passages.sort_values(["available_at", "passage_id"])
     return p.drop_duplicates(["symbol", "text_hash"], keep="first").reset_index(drop=True)
+
+
+NUMERIC_TOKEN = re.compile(r"^[($-]*[\d.,%]+[)%]*$")
+STATEMENT_PHRASES = re.compile(
+    r"(three|six|nine|twelve) months ended|non-gaap|per diluted share|"
+    r"weighted[- ]average shares|reconciliation of|net income \(loss\)|"
+    r"forward[- ]looking statements|safe harbor", re.I)
+
+
+def substantive_mask(passages: pd.DataFrame, max_numeric_share: float,
+                     drop_financial_statements: bool) -> pd.Series:
+    """False for passages that are mostly numbers (tables) or financial-statement and
+    safe-harbour boilerplate. Those cluster by wording shared across every issuer
+    rather than by subject, so they crowd out themes."""
+    def numeric_share(text: str) -> float:
+        toks = text.split()
+        return sum(bool(NUMERIC_TOKEN.match(t)) for t in toks) / max(len(toks), 1)
+
+    keep = passages["text"].map(numeric_share) <= max_numeric_share
+    if drop_financial_statements:
+        keep &= passages["text"].map(lambda s: len(STATEMENT_PHRASES.findall(s)) < 2)
+    return keep

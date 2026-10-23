@@ -323,6 +323,38 @@ docs/        DESIGN.md
 - **Embeddings:** a hashing embedder exists for tests and the demo only; reports
   warn whenever a run did not use the configured research model.
 
+### Text layer revision after the first real run (2010–2021 development data)
+
+The first run produced 190 candidates (16 a year). Its largest topics were call
+small talk ("think, just, really, question"), financial-statement wording
+("months ended, non-GAAP") and risk-factor language, and topic tracking created
+about 14,600 topic IDs over 144 windows, so persisting subjects were repeatedly
+"reborn" and re-flagged. Changes, made by reading topics, not by looking at
+returns:
+
+- **Filters:** passages that are mostly numbers, or contain repeated
+  financial-statement or safe-harbour phrases, are dropped before clustering.
+- **Genre centring:** each window's vectors are centred within their genre (call
+  remarks, call Q&A, each filing section), removing the shared register of each
+  kind of text. Removing the window's top principal directions is available
+  (`remove_top_components`) but off: on synthetic data it removed the topics
+  themselves.
+- **Tracking:** a cluster continues a topic if it shares at least 30% of its
+  passages with the topic's previous cluster (consecutive windows overlap) or its
+  centroid is close. Each run reports churn (`text_tracking` in the manifest:
+  births per window, median topic life).
+- **Emergence:** a candidate's smoothed share must reach a level above anything
+  the topic reached in the previous 24 snapshots, and the topic must not be
+  discussed by more than half of the issuers with text in that window.
+- **Keywords:** computed once per topic from its largest window, with a stop-list
+  for call filler and calendar/accounting words.
+- **Speed:** micro-clustering in a 128-dimension PCA space with HAC on
+  full-dimension centroids, windows clustered in parallel and cached by their
+  passages and settings. About 20 s per 19,000-passage window instead of 150 s.
+- **Calibration:** `themegraph topics --dates ... --distances ...` prints the
+  topics a window yields at several cluster distances, so the threshold is chosen
+  by reading topics. It must be fixed before the freeze.
+
 ## 12. Open questions
 
 1. Include the adjacency ring (§4.2) in v1? Recommended: yes, for text only.

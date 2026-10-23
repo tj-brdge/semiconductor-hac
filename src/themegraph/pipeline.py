@@ -16,6 +16,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from joblib import Parallel, delayed
 from tqdm.auto import tqdm
 
 from . import __version__
@@ -30,17 +31,18 @@ from .graph.layers import matrix_edges, text_affinity
 from .market.hac import market_snapshot
 from .market.macro import exposure_similarity, macro_exposures, monthly_returns
 from .market.returns import log_returns, price_panel
-from .text.cluster import cluster_window
+from .text.cluster import ClusterCache, cluster_subset, cluster_window, window_mask
 from .text.embed import Embedder, EmbeddingCache
 from .text.keywords import ctfidf_keywords
 from .text.novelty import novelty_mask
-from .text.passages import drop_exact_duplicates, passages_from_documents
+from .text.passages import drop_exact_duplicates, passages_from_documents, substantive_mask
 from .text.track import Tracker, track_events, window_exposure
 from .universe.membership import roles, segments, symbols_as_of
 
 
-def _bar(items, desc: str):
-    return tqdm(items, desc=desc, unit="snapshot", disable=None, dynamic_ncols=True)
+def _bar(items, desc: str, total: int | None = None):
+    return tqdm(items, desc=desc, unit="snapshot", total=total, disable=None,
+                dynamic_ncols=True)
 
 
 @dataclass
@@ -59,6 +61,7 @@ class RunContext:
     ledger: pd.DataFrame | None = None
     ledger_sha256: str | None = None
     passages: pd.DataFrame | None = None
+    track_stats: dict = field(default_factory=dict)
     embedder_id: str = ""
     _aff_cache: dict = field(default_factory=dict)
 
@@ -134,38 +137,31 @@ def build(prices: pd.DataFrame, docs: pd.DataFrame, cfg: PipelineConfig,
 
     log("text layer")
     ctx.embedder_id = embedder.model_id
-    exposures, topics, totals = [], [], {}
+    exposures, totals, active, best = [], {}, {}, {}
     if len(docs):
-        p = passages_from_documents(docs, cfg.text.chunk_words, cfg.text.min_chunk_words)
-        if cfg.text.exact_dup_drop:
-            p = drop_exact_duplicates(p)
-        p = p.sort_values(["available_at", "passage_id"]).reset_index(drop=True)
-        cache = EmbeddingCache(cache_dir / "embeddings", embedder)
-        V = cache.get(p["text_hash"].tolist(), p["text"].tolist())
-        keep = novelty_mask(p, V, cfg.text.novelty_max_similarity)
-        p, V = p.loc[keep].reset_index(drop=True), V[keep]
-        log(f"  {len(p)} novel passages ({int((~keep).sum())} near-duplicates dropped)")
+        p, V = prepare_passages(docs, cfg, embedder, cache_dir, log)
         ctx.passages = p
-        tracker = Tracker(cfg.text.track_link_similarity)
-        for t in _bar(snaps, "Text clustering"):
-            wc = cluster_window(p, V, t, cfg.text, seed=cfg.evaluation.seed)
+        windows = cluster_windows(p, V, snaps, cfg, embedder.model_id,
+                                  cache_dir / "clusters", log)
+        tracker = Tracker(cfg.text.track_link_similarity,
+                          link_overlap=cfg.text.track_link_overlap)
+        for wc in windows:
+            t = wc.t
             assign = tracker.step(wc)
             totals[t] = len(wc.labels)
+            active[t] = len(np.unique(wc.symbols))
             ex = window_exposure(wc, assign)
             exposures.append(ex)
-            if wc.centroids:
-                texts = p.set_index("passage_id").loc[wc.passage_ids, "text"].to_numpy()
-                docs_by = {assign[c]: " ".join(texts[wc.labels == c]) for c in wc.centroids}
-                kw = ctfidf_keywords(docs_by, cfg.text.keywords_per_topic)
-                for tid, words in kw.items():
-                    topics.append({"t": t, "track_id": tid, "keywords": words,
-                                   "n_passages": int(ex.loc[ex.track_id == tid,
-                                                            "n_passages"].sum())})
+            for c, tid in assign.items():
+                idx = np.flatnonzero(wc.labels == c)
+                if len(idx) > best.get(tid, (0,))[0]:
+                    best[tid] = (len(idx), t, [wc.passage_ids[i] for i in idx])
             edges.append(matrix_edges(t, "text", text_affinity(ex)))
         ctx.events = track_events(tracker)
+        ctx.track_stats = tracker.stats()
+        log(f"  topic tracking: {ctx.track_stats}")
     ctx.exposure = (pd.concat(exposures, ignore_index=True) if exposures else
                     pd.DataFrame(columns=["t", "track_id", "symbol", "n_passages", "exposure"]))
-    ctx.topics = pd.DataFrame(topics)
     ctx.edges = pd.concat([e for e in edges if len(e)], ignore_index=True) if edges else None
 
     log("theme candidates")
@@ -175,8 +171,96 @@ def build(prices: pd.DataFrame, docs: pd.DataFrame, cfg: PipelineConfig,
     ctx.ledger = detect(ctx.exposure, snaps, cfg.candidates, segments(universe),
                         ctx.affinity.get(main_w, {}), cfg.evaluation.seed,
                         min(cfg.evaluation.null_draws, 200), pd.Series(totals),
-                        warmup) if len(ctx.exposure) else pd.DataFrame()
+                        warmup, pd.Series(active)) if len(ctx.exposure) else pd.DataFrame()
+    ctx.topics = topic_labels(ctx, best, cfg.text.keywords_per_topic)
     return ctx
+
+
+def prepare_passages(docs: pd.DataFrame, cfg: PipelineConfig, embedder: Embedder,
+                     cache_dir: Path, log=print) -> tuple[pd.DataFrame, np.ndarray]:
+    """Documents -> filtered, embedded, novel passages (shared by runs and diagnostics)."""
+    p = passages_from_documents(docs, cfg.text.chunk_words, cfg.text.min_chunk_words)
+    if cfg.text.exact_dup_drop:
+        p = drop_exact_duplicates(p)
+    sub = substantive_mask(p, cfg.text.max_numeric_share, cfg.text.drop_financial_statements)
+    p = p.loc[sub].sort_values(["available_at", "passage_id"]).reset_index(drop=True)
+    cache = EmbeddingCache(cache_dir / "embeddings", embedder)
+    V = cache.get(p["text_hash"].tolist(), p["text"].tolist())
+    keep = novelty_mask(p, V, cfg.text.novelty_max_similarity)
+    log(f"  {int(keep.sum())} passages ({int((~sub).sum())} tables/boilerplate and "
+        f"{int((~keep).sum())} near-duplicates dropped)")
+    return p.loc[keep].reset_index(drop=True), V[keep]
+
+
+def describe_window(p: pd.DataFrame, V: np.ndarray, t: pd.Timestamp, cfg: PipelineConfig,
+                    top: int = 12) -> str:
+    """Readable summary of one window's clusters, for calibrating cluster_distance by
+    reading topics (never by looking at returns)."""
+    wc = cluster_window(p, V, t, cfg.text, seed=cfg.evaluation.seed)
+    n = len(wc.labels)
+    clustered = int((wc.labels >= 0).sum())
+    lines = [f"{t.date()}  distance {cfg.text.cluster_distance:.2f}: {len(wc.centroids)} topics,"
+             f" {clustered}/{n} passages clustered ({clustered / max(n, 1):.0%})"]
+    text = p.set_index("passage_id")["text"]
+    sizes = {c: int((wc.labels == c).sum()) for c in wc.centroids}
+    biggest = sorted(sizes, key=lambda c: -sizes[c])[:top]
+    docs = {c: " ".join(text.loc[[wc.passage_ids[i] for i in
+                                  np.flatnonzero(wc.labels == c)[:200]]]) for c in biggest}
+    kw = ctfidf_keywords(docs, cfg.text.keywords_per_topic) if docs else {}
+    for c in biggest:
+        syms = pd.Series(wc.symbols[wc.labels == c]).value_counts()
+        lines.append(f"  {sizes[c]:5d} passages, {len(syms):2d} issuers | "
+                     f"{', '.join(kw[c][:7])} | {', '.join(syms.index[:6])}")
+    return "\n".join(lines)
+
+
+def cluster_windows(p: pd.DataFrame, V: np.ndarray, snaps: list[pd.Timestamp],
+                    cfg: PipelineConfig, embedder_id: str, cache_root: Path, log=print):
+    """Cluster every window, reusing cached windows and running the rest in parallel.
+    Windows are independent; tracking then walks them in time order."""
+    cache = ClusterCache(cache_root, embedder_id, cfg.text, cfg.evaluation.seed)
+    ids, syms, genres = (p["passage_id"].to_numpy(), p["symbol"].to_numpy(),
+                         p["genre"].to_numpy())
+    out, todo = {}, []
+    for t in snaps:
+        idx = np.flatnonzero(window_mask(p, t, cfg.text.window_days))
+        key = cache.key(ids[idx])
+        hit = cache.get(key, t, ids[idx], syms[idx])
+        if hit is not None:
+            out[t] = hit
+        else:
+            todo.append((t, idx, key))
+    log(f"  clustering {len(todo)} windows ({len(snaps) - len(todo)} cached)")
+    if todo:
+        results = Parallel(n_jobs=cfg.text.parallel_jobs, return_as="generator")(
+            delayed(_cluster_idx)(t, ids[idx], syms[idx], genres[idx], V, idx, cfg.text,
+                                  cfg.evaluation.seed) for t, idx, _ in todo)
+        for (t, _, key), wc in zip(todo, _bar(results, "Text clustering", total=len(todo)),
+                                   strict=True):
+            cache.put(key, wc)
+            out[t] = wc
+    return [out[t] for t in snaps]
+
+
+def _cluster_idx(t, ids, syms, genres, V, idx, cfg, seed):
+    return cluster_subset(t, ids, syms, V[idx], cfg, seed, genres)
+
+
+def topic_labels(ctx: RunContext, best: dict, top_n: int, extra: int = 200,
+                 max_passages: int = 200) -> pd.DataFrame:
+    """Keywords once per topic, from the window where it was largest. Labelled: every
+    topic in the candidate ledger plus the `extra` largest others."""
+    if not best or ctx.passages is None:
+        return pd.DataFrame(columns=["t", "track_id", "keywords", "n_passages"])
+    flagged = set(ctx.ledger["track_id"]) if ctx.ledger is not None and len(ctx.ledger) \
+        else set()
+    largest = sorted(best, key=lambda k: -best[k][0])[:extra]
+    chosen = [tid for tid in best if tid in flagged or tid in set(largest)]
+    text = ctx.passages.set_index("passage_id")["text"]
+    docs = {tid: " ".join(text.loc[best[tid][2][:max_passages]]) for tid in chosen}
+    kw = ctfidf_keywords(docs, top_n)
+    return pd.DataFrame([{"t": best[tid][1], "track_id": tid, "keywords": kw[tid],
+                          "n_passages": best[tid][0]} for tid in chosen])
 
 
 def evaluate(ctx: RunContext, labels: LabelFile) -> dict:
@@ -239,6 +323,7 @@ def save(ctx: RunContext, results: dict | None, out_dir: Path, inputs: dict) -> 
         "config_sha256": {p.name: file_sha256(p) for p in sorted(CONFIG_DIR.glob("*.yaml"))},
         "inputs": inputs,
         "ledger_sha256": ctx.ledger_sha256,
+        "text_tracking": ctx.track_stats,
     }
     if results is not None:
         for name in ("matches", "comovement", "returns"):
