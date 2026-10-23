@@ -148,9 +148,10 @@ def normalise_transcripts(rows: list[dict], symbol: str, rules: Availability) ->
         content = r.get("content") or ""
         if not content.strip():
             continue
+        quarter = r.get("period", r.get("quarter"))
         recs.append({
             "symbol": symbol,
-            "doc_id": f"fmp:transcript:{symbol}:{r.get('year')}Q{r.get('period', r.get('quarter'))}",
+            "doc_id": f"fmp:transcript:{symbol}:{r.get('year')}Q{quarter}",
             "doc_type": "transcript",
             "period": f"{r.get('year')}{r.get('period', '')}",
             "published_at": pd.Timestamp(r["date"], tz="UTC"),
