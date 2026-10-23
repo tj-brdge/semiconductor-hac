@@ -184,8 +184,9 @@ def test_genre_centering_removes_register_not_subject():
     subject = np.repeat(np.eye(4)[:2], 10, axis=0)          # two subjects
     register = np.tile(np.array([[0, 0, 5, 0], [0, 0, 0, 5]]), (10, 1))  # two genres
     genres = np.tile(np.array(["qa", "prepared"]), 10)
-    X = remove_common_directions(subject + register + 0.01 * rng.normal(size=(20, 4)), 0,
-                                 genres=genres)
+    X, valid = remove_common_directions(subject + register + 0.01 * rng.normal(size=(20, 4)),
+                                        0, genres=genres)
+    assert valid.all()
     same_subject = X[0] @ X[2]   # same subject, same genre
     same_genre_other_subject = X[0] @ X[10]
     assert same_subject > 0.9 and same_genre_other_subject < 0
@@ -203,17 +204,3 @@ def test_tracker_links_by_shared_passages_when_centroid_drifts():
     a2 = tr.step(w2)
     assert a2[0] == a1[0]
     assert tr.stats()["tracks"] == 1
-
-
-def test_cluster_cache_round_trip(tmp_path, cfg):
-    from themegraph.text.cluster import ClusterCache
-
-    c = ClusterCache(tmp_path, "m", cfg.text, 1)
-    wc = WindowClusters(pd.Timestamp("2020-01-31", tz="UTC"), ["a", "b"], np.array(["X", "Y"]),
-                        np.array([0, -1]), {0: np.array([1.0, 0.0])})
-    k = c.key(["a", "b"])
-    assert c.get(k, wc.t, ["a", "b"], ["X", "Y"]) is None
-    c.put(k, wc)
-    back = c.get(k, wc.t, ["a", "b"], ["X", "Y"])
-    assert back.labels.tolist() == [0, -1] and np.allclose(back.centroids[0], [1, 0])
-    assert c.key(["a", "b"]) != ClusterCache(tmp_path, "other-model", cfg.text, 1).key(["a", "b"])

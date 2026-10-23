@@ -62,6 +62,9 @@ class RunContext:
     ledger_sha256: str | None = None
     passages: pd.DataFrame | None = None
     track_stats: dict = field(default_factory=dict)
+    windows: pd.DataFrame | None = None
+    assignments: pd.DataFrame | None = None
+    explanations: pd.DataFrame | None = None
     embedder_id: str = ""
     _aff_cache: dict = field(default_factory=dict)
 
@@ -137,7 +140,7 @@ def build(prices: pd.DataFrame, docs: pd.DataFrame, cfg: PipelineConfig,
 
     log("text layer")
     ctx.embedder_id = embedder.model_id
-    exposures, totals, active, best = [], {}, {}, {}
+    exposures, totals, active, best, assigned, win_rows = [], {}, {}, {}, [], []
     if len(docs):
         p, V = prepare_passages(docs, cfg, embedder, cache_dir, log)
         ctx.passages = p
@@ -150,15 +153,22 @@ def build(prices: pd.DataFrame, docs: pd.DataFrame, cfg: PipelineConfig,
             assign = tracker.step(wc)
             totals[t] = len(wc.labels)
             active[t] = len(np.unique(wc.symbols))
+            win_rows.append({"t": t, "n_passages": len(wc.labels),
+                             "n_clustered": int((wc.labels >= 0).sum()),
+                             "n_excluded_degenerate": wc.excluded,
+                             "n_issuers_with_text": active[t], "n_topics": len(assign)})
             ex = window_exposure(wc, assign)
             exposures.append(ex)
             for c, tid in assign.items():
                 idx = np.flatnonzero(wc.labels == c)
+                assigned.append(pd.DataFrame({"t": t, "track_id": tid,
+                                              "passage_id": [wc.passage_ids[i] for i in idx]}))
                 if len(idx) > best.get(tid, (0,))[0]:
                     best[tid] = (len(idx), t, [wc.passage_ids[i] for i in idx])
             edges.append(matrix_edges(t, "text", text_affinity(ex)))
         ctx.events = track_events(tracker)
-        ctx.track_stats = tracker.stats()
+        ctx.track_stats = {**tracker.stats(),
+                           "passages_excluded_degenerate": int(sum(w.excluded for w in windows))}
         log(f"  topic tracking: {ctx.track_stats}")
     ctx.exposure = (pd.concat(exposures, ignore_index=True) if exposures else
                     pd.DataFrame(columns=["t", "track_id", "symbol", "n_passages", "exposure"]))
@@ -172,7 +182,11 @@ def build(prices: pd.DataFrame, docs: pd.DataFrame, cfg: PipelineConfig,
                         ctx.affinity.get(main_w, {}), cfg.evaluation.seed,
                         min(cfg.evaluation.null_draws, 200), pd.Series(totals),
                         warmup, pd.Series(active)) if len(ctx.exposure) else pd.DataFrame()
+    ctx.windows = pd.DataFrame(win_rows)
+    ctx.assignments = (pd.concat(assigned, ignore_index=True) if assigned else
+                       pd.DataFrame(columns=["t", "track_id", "passage_id"]))
     ctx.topics = topic_labels(ctx, best, cfg.text.keywords_per_topic)
+    ctx.explanations = asof_explanations(ctx, V if len(docs) else None, cfg)
     return ctx
 
 
@@ -224,8 +238,8 @@ def cluster_windows(p: pd.DataFrame, V: np.ndarray, snaps: list[pd.Timestamp],
     out, todo = {}, []
     for t in snaps:
         idx = np.flatnonzero(window_mask(p, t, cfg.text.window_days))
-        key = cache.key(ids[idx])
-        hit = cache.get(key, t, ids[idx], syms[idx])
+        key = cache.key(ids[idx], syms[idx], genres[idx], V[idx])
+        hit = cache.get(key, t, ids[idx], syms[idx], V.shape[1])
         if hit is not None:
             out[t] = hit
         else:
@@ -248,8 +262,11 @@ def _cluster_idx(t, ids, syms, genres, V, idx, cfg, seed):
 
 def topic_labels(ctx: RunContext, best: dict, top_n: int, extra: int = 200,
                  max_passages: int = 200) -> pd.DataFrame:
-    """Keywords once per topic, from the window where it was largest. Labelled: every
-    topic in the candidate ledger plus the `extra` largest others."""
+    """RETROSPECTIVE labels: keywords once per topic, from the window where it was
+    largest over the whole run, which can be after a candidate's flag. Display
+    metadata only (never used by detection); historical explanations of a flag use
+    `asof_explanations`. Labelled: every topic in the candidate ledger plus the
+    `extra` largest others."""
     if not best or ctx.passages is None:
         return pd.DataFrame(columns=["t", "track_id", "keywords", "n_passages"])
     flagged = set(ctx.ledger["track_id"]) if ctx.ledger is not None and len(ctx.ledger) \
@@ -260,7 +277,54 @@ def topic_labels(ctx: RunContext, best: dict, top_n: int, extra: int = 200,
     docs = {tid: " ".join(text.loc[best[tid][2][:max_passages]]) for tid in chosen}
     kw = ctfidf_keywords(docs, top_n)
     return pd.DataFrame([{"t": best[tid][1], "track_id": tid, "keywords": kw[tid],
-                          "n_passages": best[tid][0]} for tid in chosen])
+                          "n_passages": best[tid][0], "basis": "retrospective_peak_window"}
+                         for tid in chosen])
+
+
+QUOTE_CHARS = 500
+
+
+def asof_explanations(ctx: RunContext, V: np.ndarray | None, cfg: PipelineConfig,
+                      n_quotes: int = 3, background: int = 400) -> pd.DataFrame:
+    """Why each candidate was flagged, using only what was available at its first
+    flag: keywords contrasting the topic's passages in that window with the rest of
+    the window, and the passages closest to the topic's centre as quotations (with
+    issuer, document, genre, speaker/section and availability time)."""
+    cols = ["candidate_id", "track_id", "t", "keywords", "quotes"]
+    led, p = ctx.ledger, ctx.passages
+    if V is None or led is None or not len(led) or p is None or not len(ctx.assignments):
+        return pd.DataFrame(columns=cols)
+    pos = pd.Series(np.arange(len(p)), index=p["passage_id"])
+    A = ctx.assignments
+    rows = []
+    for r in led.loc[led["t"] == led["t_first_flag"]].itertuples():
+        members = A.loc[(A["t"] == r.t) & (A["track_id"] == r.track_id), "passage_id"]
+        mi = pos.loc[members].to_numpy()
+        win = np.flatnonzero(window_mask(p, r.t, cfg.text.window_days))
+        bg = np.setdiff1d(win, mi)[:background]
+        kw = ctfidf_keywords({0: " ".join(p["text"].to_numpy()[mi[:200]]),
+                              1: " ".join(p["text"].to_numpy()[bg])},
+                             cfg.text.keywords_per_topic)[0] if len(mi) else []
+        cent = V[mi].mean(axis=0)
+        order = mi[np.argsort(-(V[mi] @ cent), kind="stable")]
+        # Closest passages to the topic centre, one per issuer first, then any.
+        picked, seen = [], set()
+        for i in order:
+            if p["symbol"].iat[i] not in seen:
+                picked.append(i)
+                seen.add(p["symbol"].iat[i])
+        picked += [i for i in order if i not in set(picked)]
+        quotes = []
+        for i in picked[:n_quotes]:
+            row = p.iloc[i]
+            quotes.append({"passage_id": row["passage_id"], "symbol": row["symbol"],
+                           "doc_id": row["doc_id"], "genre": row.get("genre"),
+                           "context": row.get("unit"), "url": row.get("url"),
+                           "available_at": pd.Timestamp(row["available_at"]).isoformat(),
+                           "text": row["text"][:QUOTE_CHARS]})
+        rows.append({"candidate_id": r.candidate_id, "track_id": int(r.track_id), "t": r.t,
+                     "keywords": kw, "quotes": quotes})
+    return pd.DataFrame(rows, columns=cols)
 
 
 def evaluate(ctx: RunContext, labels: LabelFile) -> dict:
@@ -308,10 +372,18 @@ def save(ctx: RunContext, results: dict | None, out_dir: Path, inputs: dict) -> 
     """Write outputs. The ledger is written and hashed first."""
     out_dir.mkdir(parents=True, exist_ok=True)
     ctx.ledger_sha256 = write_ledger(ctx.ledger, out_dir)
-    for name in ("exposure", "events", "topics", "edges"):
+    for name in ("exposure", "events", "topics", "edges", "windows", "assignments"):
         df = getattr(ctx, name)
         if df is not None and len(df):
             df.to_parquet(out_dir / f"{name}.parquet", index=False)
+    if ctx.explanations is not None and len(ctx.explanations):
+        ctx.explanations.assign(t=ctx.explanations["t"].astype(str)).to_json(
+            out_dir / "explanations.json", orient="records", indent=1)
+    if ctx.passages is not None and len(ctx.passages):
+        meta = [c for c in ("passage_id", "doc_id", "symbol", "doc_type", "genre", "unit",
+                            "published_at", "available_at", "text_hash", "url")
+                if c in ctx.passages]
+        ctx.passages[meta].to_parquet(out_dir / "passages.parquet", index=False)
     manifest = {
         "themegraph_version": __version__,
         "python": platform.python_version(),
