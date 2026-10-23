@@ -7,7 +7,6 @@ model id, and reports flag any run that did not use the configured research mode
 
 from __future__ import annotations
 
-import os
 import re
 import time
 from pathlib import Path
@@ -17,8 +16,10 @@ import httpx
 import numpy as np
 import pandas as pd
 from sklearn.feature_extraction.text import HashingVectorizer
+from tqdm.auto import tqdm
 
 from ..config import Embedding
+from ..data.http import env_value
 
 VOYAGE_URL = "https://api.voyageai.com/v1/embeddings"
 
@@ -53,7 +54,7 @@ class VoyageEmbedder:
                  client: httpx.Client | None = None):
         self.model_id = model
         self.batch_size = batch_size
-        key = api_key or os.environ.get("VOYAGE_API_KEY")
+        key = env_value("VOYAGE_API_KEY", api_key)
         if not key and client is None:
             raise RuntimeError("VOYAGE_API_KEY is not set (add it as an environment secret)")
         self.client = client or httpx.Client(
@@ -62,7 +63,8 @@ class VoyageEmbedder:
 
     def embed(self, texts: list[str]) -> np.ndarray:
         out = []
-        for i in range(0, len(texts), self.batch_size):
+        starts = range(0, len(texts), self.batch_size)
+        for i in tqdm(starts, desc="Embedding", unit="batch", disable=None, dynamic_ncols=True):
             batch = texts[i:i + self.batch_size]
             for attempt in range(5):
                 r = self.client.post(VOYAGE_URL, json={

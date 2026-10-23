@@ -9,14 +9,13 @@ from __future__ import annotations
 
 import datetime as dt
 import json
-import os
 from pathlib import Path
 
 import pandas as pd
 
 from ..config import Availability
 from .cache import RawCache
-from .http import CachedFetcher
+from .http import CachedFetcher, env_value
 from .pit import macro_available_at, price_available_at, transcript_available_at
 
 BASE = "https://financialmodelingprep.com/stable"
@@ -35,7 +34,7 @@ FX_PAIRS = {"KRW": "USDKRW", "TWD": "USDTWD", "JPY": "USDJPY"}
 class FMPClient:
     def __init__(self, cache_dir: Path, api_key: str | None = None, offline: bool = False,
                  fetcher: CachedFetcher | None = None):
-        self.api_key = api_key or os.environ.get("FMP_API_KEY")
+        self.api_key = env_value("FMP_API_KEY", api_key)
         if not self.api_key and not offline and fetcher is None:
             raise RuntimeError("FMP_API_KEY is not set (add it as an environment secret)")
         self.f = fetcher or CachedFetcher("fmp", RawCache(cache_dir), min_interval=0.2,

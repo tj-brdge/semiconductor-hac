@@ -72,3 +72,35 @@ def test_filings_pages_and_selection(fake_fetcher, cfg):
 def test_exhibit_names():
     assert E.exhibit_names(["a8k.htm", "ex99-1.htm", "EX-99.2.htm", "ex99.jpg"]) == \
         ["ex99-1.htm", "EX-99.2.htm"]
+
+
+def test_ingest_edgar_end_to_end(fake_fetcher, cfg, tmp_path):
+    import datetime as dt
+
+    from themegraph.config import Issuer, UniverseConfig
+    from themegraph.data.store import Store
+    from themegraph.ingest import ingest_edgar
+
+    cols = ["accessionNumber", "filingDate", "reportDate", "acceptanceDateTime", "form",
+            "primaryDocument"]
+    recent = dict(zip(cols, [["0001-24-000002"], ["2024-03-01"], ["2023-12-31"],
+                             ["2024-03-01T17:00:00.000Z"], ["10-K"], ["k.htm"]], strict=True))
+    f = fake_fetcher({
+        "company_tickers.json": json.dumps({"0": {"cik_str": 1, "ticker": "XYZ"}}).encode(),
+        "CIK0000000001.json": json.dumps({"filings": {"recent": recent}}).encode(),
+        "k.htm": b"<p>Item 7. Management's Discussion " + b"demand " * 80 + b"</p>",
+    })
+    u = UniverseConfig(benchmarks=[], issuers=[
+        Issuer(symbol="XYZ", segment="memory", role="core"),
+        Issuer(symbol="ABC", segment="memory", role="core"),  # not in ticker map
+    ])
+    messages = []
+    path = ingest_edgar(E.EdgarClient(None, fetcher=f), cfg, u, Store(tmp_path),
+                        dt.date(2024, 12, 31), log=messages.append)
+    docs = Store(tmp_path).read("documents_edgar")
+    assert path.exists() and docs["doc_type"].tolist() == ["10-K:mdna"]
+    assert any("ABC" in m and "no CIK" in m for m in messages)
+
+    with pytest.raises(RuntimeError, match="no EDGAR documents"):
+        ingest_edgar(E.EdgarClient(None, fetcher=f), cfg, u, Store(tmp_path / "b"),
+                     dt.date(2024, 12, 31), symbols=["ABC"], log=messages.append)
