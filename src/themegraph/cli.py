@@ -133,7 +133,17 @@ def cmd_topics(a):
         _append(ROOT, {"event": "holdout_topic_inspection", "dates": late,
                        "note": "holdout topics inspected before evaluation: not clean"})
     docs = I.load_documents(_store())
-    p, V = P.prepare_passages(docs, cfg, make_embedder(cfg.embedding), DATA / "cache")
+    # Only what the sample windows need: each window plus the novelty filter's
+    # lookback, so a diagnostic does not embed the whole history.
+    from .text.novelty import LOOKBACK_DAYS
+    needed = pd.Series(False, index=docs.index)
+    for d in a.dates:
+        hi = snapshot_ts(pd.Timestamp(d))
+        lo = hi - pd.Timedelta(days=cfg.text.window_days + LOOKBACK_DAYS)
+        needed |= (docs["available_at"] > lo) & (docs["available_at"] <= hi)
+    print(f"{int(needed.sum())} of {len(docs)} documents needed for these dates")
+    p, V = P.prepare_passages(docs.loc[needed], cfg, make_embedder(cfg.embedding),
+                              DATA / "cache")
     for d in a.dates:
         for dist in a.distances:
             c = cfg.model_copy(update={"text": cfg.text.model_copy(
@@ -227,7 +237,7 @@ def main(argv=None):
                    "or before this ID (e.g. 20261023T120000Z); default: latest")
     s.set_defaults(fn=cmd_run)
     s = sub.add_parser("topics", help="print topics for sample windows (calibration)")
-    s.add_argument("--dates", nargs="+", default=["2012-06-30", "2016-06-30", "2020-06-30"])
+    s.add_argument("--dates", nargs="+", default=["2016-06-30"])
     s.add_argument("--distances", nargs="+", type=float, default=[0.5, 0.6, 0.7])
     s.add_argument("--top", type=int, default=12)
     s.add_argument("--allow-holdout-dates", action="store_true",

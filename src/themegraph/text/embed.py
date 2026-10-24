@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Protocol
 
@@ -52,39 +53,72 @@ class HashingEmbedder:
         return _normalise(np.log1p(X))
 
 
+RETRYABLE_STATUS = (429, 500, 502, 503, 504)
+MAX_ATTEMPTS = 8
+MAX_BACKOFF = 120.0
+
+
 class VoyageEmbedder:
+    """Batches of `batch_size` texts, up to `concurrency` requests in flight. Rate
+    limits (429), server errors and network timeouts are retried with exponential
+    backoff (honouring Retry-After); other errors stop the run with the API's own
+    message. Throughput is set by the account's rate limits: on Voyage's free tier
+    (no payment method) it is a few requests per minute whatever this code does."""
+
     def __init__(self, model: str, batch_size: int = 64, api_key: str | None = None,
-                 client: httpx.Client | None = None, endpoint: str = "voyage"):
+                 client: httpx.Client | None = None, endpoint: str = "voyage",
+                 concurrency: int = 4, sleep=time.sleep):
         self.model_id = model
         self.endpoint = endpoint
         self.url = ENDPOINTS[endpoint]
         self.batch_size = batch_size
+        self.concurrency = max(1, concurrency)
+        self._sleep = sleep
         key = env_value("VOYAGE_API_KEY", api_key)
         if not key and client is None:
             raise RuntimeError("VOYAGE_API_KEY is not set (add it as an environment secret)")
         self.client = client or httpx.Client(
-            headers={"Authorization": f"Bearer {key}"}, timeout=120.0
+            headers={"Authorization": f"Bearer {key}"},
+            timeout=httpx.Timeout(300.0, connect=30.0),
         )
 
-    def embed(self, texts: list[str]) -> np.ndarray:
-        out = []
-        for i in range(0, len(texts), self.batch_size):
-            batch = texts[i:i + self.batch_size]
-            for attempt in range(5):
+    def _post(self, batch: list[str]) -> np.ndarray:
+        last = "no attempt made"
+        for attempt in range(MAX_ATTEMPTS):
+            wait = min(MAX_BACKOFF, 2.0 ** (attempt + 1))
+            try:
                 r = self.client.post(self.url, json={
-                    "input": batch, "model": self.model_id, "input_type": "document",
-                })
-                if r.status_code == 200:
-                    break
-                if r.status_code in (429, 500, 502, 503, 504):
-                    time.sleep(2 ** (attempt + 1))
-                    continue
-                raise RuntimeError(_voyage_error(r, self.model_id, self.endpoint))
-            else:
-                raise RuntimeError("Voyage embeddings: retries exhausted")
-            data = sorted(r.json()["data"], key=lambda d: d["index"])
-            out.append(np.array([d["embedding"] for d in data], dtype=np.float32))
-        return _normalise(np.vstack(out)) if out else np.zeros((0, 0), np.float32)
+                    "input": batch, "model": self.model_id, "input_type": "document"})
+            except (httpx.TimeoutException, httpx.TransportError) as e:
+                last = f"{type(e).__name__} (network)"
+                self._sleep(wait)
+                continue
+            if r.status_code == 200:
+                data = sorted(r.json()["data"], key=lambda d: d["index"])
+                return np.array([d["embedding"] for d in data], dtype=np.float32)
+            if r.status_code in RETRYABLE_STATUS:
+                last = f"HTTP {r.status_code}"
+                retry_after = r.headers.get("retry-after")
+                try:
+                    wait = max(wait, float(retry_after)) if retry_after else wait
+                except ValueError:
+                    pass
+                self._sleep(min(MAX_BACKOFF, wait))
+                continue
+            raise RuntimeError(_voyage_error(r, self.model_id, self.endpoint))
+        raise RuntimeError(f"Voyage embeddings: {MAX_ATTEMPTS} attempts failed, last: {last}. "
+                           "Already-embedded passages are cached; re-run to resume.")
+
+    def embed(self, texts: list[str]) -> np.ndarray:
+        batches = [texts[i:i + self.batch_size] for i in range(0, len(texts), self.batch_size)]
+        if not batches:
+            return np.zeros((0, 0), np.float32)
+        if self.concurrency == 1 or len(batches) == 1:
+            out = [self._post(b) for b in batches]
+        else:
+            with ThreadPoolExecutor(max_workers=self.concurrency) as pool:
+                out = list(pool.map(self._post, batches))  # map keeps input order
+        return _normalise(np.vstack(out))
 
 
 def _voyage_error(r: httpx.Response, model: str, endpoint: str = "voyage") -> str:
@@ -110,7 +144,8 @@ def _voyage_error(r: httpx.Response, model: str, endpoint: str = "voyage") -> st
 def make_embedder(cfg: Embedding) -> Embedder:
     if cfg.provider == "hashing":
         return HashingEmbedder(cfg.dimensions)
-    return VoyageEmbedder(cfg.model, cfg.batch_size, endpoint=cfg.endpoint)
+    return VoyageEmbedder(cfg.model, cfg.batch_size, endpoint=cfg.endpoint,
+                          concurrency=cfg.concurrency)
 
 
 class EmbeddingCache:

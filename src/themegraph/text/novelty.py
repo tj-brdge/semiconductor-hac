@@ -5,9 +5,11 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+LOOKBACK_DAYS = 730
+
 
 def novelty_mask(passages: pd.DataFrame, vectors: np.ndarray, max_similarity: float,
-                 lookback_days: int = 730) -> np.ndarray:
+                 lookback_days: int = LOOKBACK_DAYS) -> np.ndarray:
     """True where a passage is novel: its cosine similarity to every earlier-available
     passage of the same issuer within `lookback_days` is at most `max_similarity`.
     Only strictly earlier passages are compared, so the rule is point-in-time."""

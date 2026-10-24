@@ -73,6 +73,7 @@ class Embedding(_Strict):
     endpoint: Literal["voyage", "mongodb"] = "voyage"
     model: str = "voyage-finance-2"
     batch_size: int = 64
+    concurrency: int = 4
     dimensions: int = 1024
 
 

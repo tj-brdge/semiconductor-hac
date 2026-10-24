@@ -65,6 +65,7 @@ embedding:
   endpoint: mongodb
   model: voyage-finance-2
   batch_size: 64
+  concurrency: 4                # requests in flight; rate limits are retried with backoff
   dimensions: 1024
 
 candidates:
