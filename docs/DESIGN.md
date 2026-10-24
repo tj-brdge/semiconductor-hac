@@ -426,6 +426,15 @@ Pushed back / deferred:
   change-in-control/severance; those phrases joined the list (still two distinct
   hits). Single-company topics are left alone: `min_issuers` keeps them out of
   candidates. Generic recurring topics (gross margin) are left to the new-high rule.
+- **Second window, 2019-06-30.** 0.60 again separates subjects that 0.70 merges
+  (Tesla with ENPH and ON; Vistra with MU) and clusters 67% of passages, so
+  `cluster_distance` stays 0.60. Real subjects lead: 5G infrastructure/baseband
+  (XLNX, QRVO, SWKS, LSCC, QCOM; 25 issuers), memory/NAND recovery, US-China
+  tariffs (33 issuers at 0.70), Xeon data-centre platforms, Tesla Gigafactory.
+  New residual: SPAC wording ("initial business combination", "trust account")
+  from VRT's pre-merger filings, now filtered. Generic risk-factor, inventory,
+  opex and gross-margin topics recur in both windows and are left to the
+  new-high rule.
 
 ## 12. Open questions
 
