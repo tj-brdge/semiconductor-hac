@@ -264,6 +264,7 @@ def test_housekeeping_filter_drops_corporate_boilerplate_keeps_themes():
         "Our indebtedness could limit flexibility; conflict minerals rules add supply costs",
         "We test goodwill for impairment when the carrying value may exceed fair value",
         "Awards vest on a change in control and severance is paid on termination",
+        "If we do not complete our initial business combination, the trust account is returned",
     ]
     keep = [
         "16 nanometer revenue grew as customers moved to the new node and capacity filled",

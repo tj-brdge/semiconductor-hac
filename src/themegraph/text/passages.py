@@ -114,7 +114,8 @@ HOUSEKEEPING_PHRASES = re.compile(
     r"conflict minerals|fair value|impairment|carrying (?:value|amount)|goodwill|"
     r"change (?:in|of) control|severance|"
     r"joining us(?: today)?|thank you for joining|webcast|investor relations website|"
-    r"conference call|replay)\b", re.I)
+    r"conference call|replay|initial business combination|trust account|"
+    r"blank check company|summary compensation table)\b", re.I)
 
 
 def housekeeping_hits(text: str) -> int:
