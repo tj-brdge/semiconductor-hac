@@ -418,6 +418,14 @@ Pushed back / deferred:
   (two distinct hits from a specific multi-word list) now drops these before
   embedding; fixtures check that thematic text, including investment tax credits
   for fabs and export controls, is kept.
+- **Second pass, same window.** Housekeeping clusters fell sharply (15,250 of
+  41,549 passages dropped as tables/boilerplate) and real subjects led: node
+  ramp/EUV, automotive ADAS, wireless/IoT, optical datacom, cloud, solar.
+  Residual non-thematic clusters were call openings ("thank you for joining…
+  webcast"), indebtedness, conflict minerals, impairment/fair value, and
+  change-in-control/severance; those phrases joined the list (still two distinct
+  hits). Single-company topics are left alone: `min_issuers` keeps them out of
+  candidates. Generic recurring topics (gross margin) are left to the new-high rule.
 
 ## 12. Open questions
 

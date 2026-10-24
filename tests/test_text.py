@@ -260,6 +260,10 @@ def test_housekeeping_filter_drops_corporate_boilerplate_keeps_themes():
         "In 2016 the FASB issued Accounting Standards Update ASU 2016-02 on leases",
         "The compensation committee of the board of directors approved executive compensation",
         "We may face patent infringement and infringement claims over intellectual property rights",
+        "Good afternoon and thank you for joining us today; this conference call is being webcast",
+        "Our indebtedness could limit flexibility; conflict minerals rules add supply costs",
+        "We test goodwill for impairment when the carrying value may exceed fair value",
+        "Awards vest on a change in control and severance is paid on termination",
     ]
     keep = [
         "16 nanometer revenue grew as customers moved to the new node and capacity filled",
@@ -267,6 +271,8 @@ def test_housekeeping_filter_drops_corporate_boilerplate_keeps_themes():
         "Export controls require licenses for advanced tools shipped to customers in China",
         "The investment tax credit supports new semiconductor manufacturing capacity in Arizona",
         "Cloud data center customers are deploying 400G switching across their networks",
+        "Our patents on GaN power devices cover the fast chargers ramping this quarter",
+        "We took an impairment on legacy LED capacity and redirected it to SiC for EVs",
     ]
     p = pd.DataFrame({"text": drop + keep})
     m = substantive_mask(p, 0.35, True, True).tolist()
