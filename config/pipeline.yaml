@@ -70,6 +70,10 @@ text:
   anchor_lookback_days: 730
   anchor_assign_similarity: 0.45
   anchor_match_similarity: 0.70
+  # A refit topic is a split of an old topic when this share of its training passages
+  # were assigned to that topic (shared text, not shared companies); a retiring topic
+  # merged when this share of its passages went to one continuing topic.
+  anchor_lineage_share: 0.5
   parallel_jobs: 4              # windows clustered in parallel (~0.5 GB each); -1 = all cores
 
 embedding:

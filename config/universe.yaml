@@ -25,7 +25,8 @@ issuers:
   - {symbol: QCOM, segment: compute, role: core}
   - {symbol: MRVL, segment: compute, role: core}
   - {symbol: ARM, segment: compute, role: core, listed: 2023-09-14}  # verify
-  - {symbol: XLNX, segment: compute, role: core, delisted: 2022-02-14, cik: 743988}  # verify
+  - {symbol: XLNX, segment: compute, role: core, delisted: 2022-02-14, cik: 743988,
+     successor: {symbol: AMD, shares: 1.7234, source: "https://www.sec.gov/Archives/edgar/data/743988/000110465922021762/tm226258d1_8k.htm"}}
   # --- foundry / packaging
   - {symbol: TSM, segment: foundry, role: core}
   - {symbol: UMC, segment: foundry, role: core}
@@ -45,8 +46,10 @@ issuers:
   - {symbol: QRVO, segment: analog, role: core}
   - {symbol: LSCC, segment: analog, role: core}
   - {symbol: SLAB, segment: analog, role: core}
-  - {symbol: MXIM, segment: analog, role: core, delisted: 2021-08-26, cik: 743316}  # verify
-  - {symbol: LLTC, segment: analog, role: core, delisted: 2017-03-10, cik: 791907}  # verify
+  - {symbol: MXIM, segment: analog, role: core, delisted: 2021-08-26, cik: 743316,
+     successor: {symbol: ADI, shares: 0.63, source: "https://www.sec.gov/Archives/edgar/data/743316/000119312521257603/d203144d8k.htm"}}
+  - {symbol: LLTC, segment: analog, role: core, delisted: 2017-03-10, cik: 791907,
+     successor: {symbol: ADI, shares: 0.2321, cash: 46.0, source: "https://www.sec.gov/Archives/edgar/data/791907/000119312517078946/d340243d8k.htm"}}
   # --- equipment / materials / test
   - {symbol: AMAT, segment: equipment, role: core}
   - {symbol: LRCX, segment: equipment, role: core}

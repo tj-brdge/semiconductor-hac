@@ -11,6 +11,7 @@ import datetime as dt
 import hashlib
 import json
 import platform
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -24,6 +25,7 @@ from .config import CONFIG_DIR, PipelineConfig, UniverseConfig, file_sha256
 from .data.pit import snapshot_ts
 from .eval.comovement import comovement_test, summarise_percentiles
 from .eval.detection import detection_metrics, match_candidates
+from .eval.diagnostics import topic_diagnostics
 from .eval.labels import LabelFile
 from .eval.returns import returns_test
 from .graph.candidates import detect, write_ledger
@@ -68,6 +70,10 @@ class RunContext:
     windows: pd.DataFrame | None = None
     assignments: pd.DataFrame | None = None
     explanations: pd.DataFrame | None = None
+    topic_history: pd.DataFrame | None = None  # anchored: point-in-time pre-birth shares
+    refits: pd.DataFrame | None = None         # anchored: continuity at each refit
+    timings: dict = field(default_factory=dict)  # seconds per stage
+    diagnostics: dict = field(default_factory=dict)  # eval/diagnostics.py
     embedder_id: str = ""
     _aff_cache: dict = field(default_factory=dict)
 
@@ -136,6 +142,7 @@ def build(prices: pd.DataFrame, docs: pd.DataFrame, cfg: PipelineConfig,
     ctx = RunContext(cfg, universe, period, end_ts, snaps, rets, closes=closes,
                      rets_known=rets_known)
 
+    clock = time.perf_counter()
     log(f"market layer: {len(snaps)} snapshots, windows {cfg.market.windows}")
     for w in cfg.market.windows:
         ctx.affinity[w] = {}
@@ -156,6 +163,8 @@ def build(prices: pd.DataFrame, docs: pd.DataFrame, cfg: PipelineConfig,
             expo = macro_exposures(mrets, factors, cfg.market.benchmark, cfg.macro, tt)
             edges.append(matrix_edges(t, "macro", exposure_similarity(expo)))
 
+    ctx.timings["market_s"] = round(time.perf_counter() - clock, 1)
+    clock = time.perf_counter()
     log("text layer")
     ctx.embedder_id = embedder.model_id
     exposures, totals, active, best, assigned, win_rows = [], {}, {}, {}, [], []
@@ -166,8 +175,15 @@ def build(prices: pd.DataFrame, docs: pd.DataFrame, cfg: PipelineConfig,
         if anchored:
             cache = ClusterCache(cache_dir / "clusters", embedder.model_id, cfg.text,
                                  cfg.evaluation.seed)
-            windows, model = anchored_windows(p, V, snaps, cfg.text, cfg.evaluation.seed,
-                                              cache, _bar)
+            c = cfg.candidates
+            windows, model = anchored_windows(
+                p, V, snaps, cfg.text, cfg.evaluation.seed, cache, _bar,
+                min_exposure=c.min_exposure,
+                # enough pre-birth windows for the new-high lookback and growth steps
+                history_snapshots=c.new_high_lookback_snapshots
+                + c.min_consecutive_growth_windows * c.growth_step_snapshots
+                + c.growth_step_snapshots - 1)
+            ctx.topic_history, ctx.refits = model.history_frame(), model.refits_frame()
         else:
             windows = cluster_windows(p, V, snaps, cfg, embedder.model_id,
                                       cache_dir / "clusters", log)
@@ -206,6 +222,8 @@ def build(prices: pd.DataFrame, docs: pd.DataFrame, cfg: PipelineConfig,
     ctx.edges = pd.concat(usable, ignore_index=True) if usable else \
         pd.DataFrame(columns=["t", "layer", "a", "b", "weight"])
 
+    ctx.timings["text_s"] = round(time.perf_counter() - clock, 1)
+    clock = time.perf_counter()
     log("theme candidates")
     first_doc = docs["available_at"].min() if len(docs) else None
     warmup = first_doc + pd.Timedelta(days=cfg.text.window_days) if first_doc is not None \
@@ -213,25 +231,48 @@ def build(prices: pd.DataFrame, docs: pd.DataFrame, cfg: PipelineConfig,
     ctx.ledger = detect(ctx.exposure, snaps, cfg.candidates, segments(universe),
                         ctx.affinity.get(main_w, {}), cfg.evaluation.seed,
                         min(cfg.evaluation.null_draws, 200), pd.Series(totals),
-                        warmup, pd.Series(active), split_parents(ctx.events)) \
+                        warmup, pd.Series(active),
+                        # Window tracks inherit a split parent's history; anchored topics
+                        # carry their own reconstructed history instead (anchored.py).
+                        {} if ctx.topic_history is not None else split_parents(ctx.events),
+                        history=ctx.topic_history) \
         if len(ctx.exposure) else pd.DataFrame()
     ctx.windows = pd.DataFrame(win_rows)
     ctx.assignments = (pd.concat(assigned, ignore_index=True) if assigned else
                        pd.DataFrame(columns=["t", "track_id", "passage_id"]))
     ctx.topics = topic_labels(ctx, best, cfg.text.keywords_per_topic)
     ctx.explanations = asof_explanations(ctx, V if len(docs) else None, cfg)
+    ctx.timings["candidates_s"] = round(time.perf_counter() - clock, 1)
+    if len(docs):
+        clock = time.perf_counter()
+        ctx.diagnostics = topic_diagnostics(ctx.windows, ctx.assignments, p, V, span,
+                                            ctx.ledger)
+        ctx.timings["diagnostics_s"] = round(time.perf_counter() - clock, 1)
     return ctx
 
 
 def prepare_passages(docs: pd.DataFrame, cfg: PipelineConfig, embedder: Embedder,
-                     cache_dir: Path, log=print) -> tuple[pd.DataFrame, np.ndarray]:
-    """Documents -> filtered, embedded, novel passages (shared by runs and diagnostics)."""
+                     cache_dir: Path, log=print,
+                     ranges: list[tuple[pd.Timestamp, pd.Timestamp]] | None = None
+                     ) -> tuple[pd.DataFrame, np.ndarray]:
+    """Documents -> filtered, embedded, novel passages (shared by runs and diagnostics).
+
+    `ranges` (diagnostics): embed only passages available within these (lo, hi]
+    intervals. Chunking, exact-duplicate removal and the boilerplate filter always
+    run on the full history first, so a passage is eligible exactly when it would be
+    in a full run (a repeat of text first seen before the ranges is still dropped).
+    Each range must include the novelty lookback before the windows it serves."""
     p = passages_from_documents(docs, cfg.text.chunk_words, cfg.text.min_chunk_words)
     if cfg.text.exact_dup_drop:
         p = drop_exact_duplicates(p)
     sub = substantive_mask(p, cfg.text.max_numeric_share, cfg.text.drop_financial_statements,
                            cfg.text.drop_corporate_housekeeping)
     p = p.loc[sub].sort_values(["available_at", "passage_id"]).reset_index(drop=True)
+    if ranges is not None:
+        inside = pd.Series(False, index=p.index)
+        for lo, hi in ranges:
+            inside |= (p["available_at"] > lo) & (p["available_at"] <= hi)
+        p = p.loc[inside].reset_index(drop=True)
     cache = EmbeddingCache(cache_dir / "embeddings", embedder)
     V = cache.get(p["text_hash"].tolist(), p["text"].tolist())
     keep = novelty_mask(p, V, cfg.text.novelty_max_similarity)
@@ -391,7 +432,8 @@ def evaluate(ctx: RunContext, labels: LabelFile) -> dict:
     delisted = {i.symbol: i.delisted for i in ctx.universe.issuers if i.delisted}
     rt = returns_test(firsts, ctx.closes, core, cfg.market.sector_benchmark,
                       ev.forward_sessions, segs, ev.null_draws, ev.seed, ctx.end,
-                      delisted) if len(firsts) else pd.DataFrame()
+                      delisted, successors={i.symbol: i.successor for i in ctx.universe.issuers
+                                            if i.successor}) if len(firsts) else pd.DataFrame()
     q2 = {
         "comovement": summarise_percentiles(como, ev.null_draws, ev.seed) if len(como) else {},
         "returns": returns_summary(rt, firsts, ev.null_draws, ev.seed),
@@ -467,7 +509,8 @@ def save(ctx: RunContext, results: dict | None, out_dir: Path, inputs: dict) -> 
     """Write outputs. The ledger is written and hashed first."""
     out_dir.mkdir(parents=True, exist_ok=True)
     ctx.ledger_sha256 = write_ledger(ctx.ledger, out_dir)
-    for name in ("exposure", "events", "topics", "edges", "windows", "assignments"):
+    for name in ("exposure", "events", "topics", "edges", "windows", "assignments",
+                 "topic_history", "refits"):
         df = getattr(ctx, name)
         if df is not None and len(df):
             df.to_parquet(out_dir / f"{name}.parquet", index=False)
@@ -491,6 +534,8 @@ def save(ctx: RunContext, results: dict | None, out_dir: Path, inputs: dict) -> 
         "inputs": inputs,
         "ledger_sha256": ctx.ledger_sha256,
         "text_tracking": ctx.track_stats,
+        "timings": ctx.timings,
+        "diagnostics": ctx.diagnostics,
     }
     if results is not None:
         for name in ("matches", "comovement", "returns"):
@@ -519,3 +564,47 @@ def output_bindings(ctx: RunContext, results: dict, manifest: dict) -> dict:
 def frame_sha256(df: pd.DataFrame) -> str:
     return hashlib.sha256(pd.util.hash_pandas_object(df, index=False).to_numpy().tobytes()
                           ).hexdigest()
+
+
+INPUT_HASH_SCHEME = 2
+
+
+def canonical_sha256(df: pd.DataFrame, exclude: tuple[str, ...] = ()) -> str | None:
+    """Order-independent hash of every column that can affect a run (eligibility,
+    attribution, construction): issuer, type, publication and availability times,
+    text, section, URL... Columns are sorted by name and rows by their canonical text,
+    so the same data read in another order hashes the same; values are rendered as
+    text (timestamps in UTC ISO form) so dtype changes that alter nothing also do not
+    change the hash. `exclude` drops bookkeeping columns (vintage IDs)."""
+    if df is None or not len(df):
+        return None
+    cols = sorted(c for c in df.columns if c not in exclude)
+    canon = pd.DataFrame({c: _canon(df[c]) for c in cols})
+    rows = canon[cols[0]].str.cat([canon[c] for c in cols[1:]], sep="\x1f") if cols \
+        else pd.Series([], dtype=str)
+    h = hashlib.sha256(("\x1e".join(cols) + "\x1d").encode())
+    for line in sorted(rows.tolist()):
+        h.update(line.encode())
+        h.update(b"\x1e")
+    return h.hexdigest()
+
+
+def _canon(col: pd.Series) -> pd.Series:
+    if pd.api.types.is_datetime64_any_dtype(col):
+        c = pd.to_datetime(col, utc=True)
+        return c.map(lambda x: "" if pd.isna(x) else x.isoformat())
+    if pd.api.types.is_float_dtype(col):
+        return col.map(lambda x: "" if pd.isna(x) else repr(float(x)))
+    return col.map(lambda x: "" if x is None or (isinstance(x, float) and np.isnan(x))
+                   else str(x))
+
+
+def input_bindings(prices: pd.DataFrame, docs: pd.DataFrame, observed: bool) -> dict:
+    """Input fingerprints for manifests, holdout verification and the forward log.
+    Historical runs reconstruct availability from publication times, so when a row
+    was first downloaded does not affect them; forward ("observed") runs filter on
+    it, so there it is part of the input."""
+    skip = ("vintage",) if observed else ("vintage", "first_seen_at")
+    return {"scheme": INPUT_HASH_SCHEME,
+            "prices": canonical_sha256(prices, skip),
+            "documents": canonical_sha256(docs, skip)}

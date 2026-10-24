@@ -94,8 +94,7 @@ def cmd_run(a):
     tag = f"-{a.topic_mode}" if overrides else ""
     out = Path(a.out or RUNS / f"{a.period}{tag}-{dt.datetime.now(dt.UTC):%Y%m%dT%H%M%SZ}")
     inputs = {
-        "prices": P.frame_sha256(prices), "documents": P.frame_sha256(docs[["doc_id", "text"]])
-        if len(docs) else None,
+        **P.input_bindings(prices, docs, observed=False),
         "vintages": dict(store.used),
         "input_vintage_upto": up,
         # Historical runs reconstruct availability from publication times plus lags;
@@ -144,17 +143,15 @@ def cmd_topics(a):
         _append(ROOT, {"event": "holdout_topic_inspection", "dates": late,
                        "note": "holdout topics inspected before evaluation: not clean"})
     docs = I.load_documents(_store())
-    # Only what the sample windows need: each window plus the novelty filter's
-    # lookback, so a diagnostic does not embed the whole history.
+    # Embed only what the sample windows need (each window plus the novelty filter's
+    # lookback); eligibility is still decided on the full history, as in a run.
     from .text.novelty import LOOKBACK_DAYS
-    needed = pd.Series(False, index=docs.index)
+    ranges = []
     for d in a.dates:
         hi = snapshot_ts(pd.Timestamp(d))
-        lo = hi - pd.Timedelta(days=cfg.text.window_days + LOOKBACK_DAYS)
-        needed |= (docs["available_at"] > lo) & (docs["available_at"] <= hi)
-    print(f"{int(needed.sum())} of {len(docs)} documents needed for these dates")
-    p, V = P.prepare_passages(docs.loc[needed], cfg, make_embedder(cfg.embedding),
-                              DATA / "cache")
+        ranges.append((hi - pd.Timedelta(days=cfg.text.window_days + LOOKBACK_DAYS), hi))
+    p, V = P.prepare_passages(docs, cfg, make_embedder(cfg.embedding), DATA / "cache",
+                              ranges=ranges)
     for d in a.dates:
         for dist in a.distances:
             c = cfg.model_copy(update={"text": cfg.text.model_copy(
@@ -176,6 +173,15 @@ def cmd_adjudicate(a):
     print(json.dumps(A.summary(A.load(path), n), indent=1))
 
 
+def cmd_compare(a):
+    """Side-by-side development comparison of two runs (declared criteria)."""
+    from .eval.compare import compare, render
+    result = compare(Path(a.run_a), Path(a.run_b))
+    print(render(result))
+    if not result["comparable"]:
+        sys.exit(1)
+
+
 def cmd_forward(a):
     """Forward log: record as-of predictions, or append matured outcomes."""
     import pandas as pd
@@ -187,19 +193,23 @@ def cmd_forward(a):
     cfg, u = load_pipeline(), load_universe()
     store = _store()
     out = ROOT / "forward"
-    prices = I.load_prices(store)
     if a.action == "predict":
         cutoff = dt.date.fromisoformat(a.cutoff) if a.cutoff else dt.date.today()
-        recs = Fw.predict(prices, I.load_documents(store), cfg, u, make_embedder(cfg.embedding),
-                          DATA / "cache", out, cutoff)
+        # Only vintages downloaded by the end of the cutoff day: replaying an earlier
+        # cutoff after a refresh sees what was available then, not today's revisions.
+        upto = f"{cutoff:%Y%m%d}T235959Z"
+        recs = Fw.predict(I.load_prices(store, upto), I.load_documents(store, upto), cfg, u,
+                          make_embedder(cfg.embedding), DATA / "cache", out, cutoff)
         print(f"{len(recs)} prediction records for cutoff {cutoff} in {out / Fw.PREDICTIONS}")
         return
+    prices = I.load_prices(store)
     closes = prices.pivot_table(index="date", columns="symbol", values="close")
     closes.index = pd.DatetimeIndex(closes.index).tz_localize(None).normalize() \
         .tz_localize("UTC") + pd.Timedelta(hours=22)
     delisted = {i.symbol: i.delisted for i in u.issuers if i.delisted}
     new = Fw.evaluate_outcomes(out, closes, cfg.market.sector_benchmark,
-                               cfg.evaluation.forward_sessions, closes.index.max(), delisted)
+                               cfg.evaluation.forward_sessions, closes.index.max(), delisted,
+                               {i.symbol: i.successor for i in u.issuers if i.successor})
     print(f"{len(new)} new outcome records in {out / Fw.OUTCOMES}")
 
 
@@ -264,6 +274,10 @@ def main(argv=None):
     s = sub.add_parser("adjudicate", help="write/refresh a run's adjudication worksheet")
     s.add_argument("run_dir")
     s.set_defaults(fn=cmd_adjudicate)
+    s = sub.add_parser("compare", help="compare two development runs (window vs anchored)")
+    s.add_argument("run_a")
+    s.add_argument("run_b")
+    s.set_defaults(fn=cmd_compare)
     s = sub.add_parser("freeze", help="hash code/config/labels before the holdout run")
     s.set_defaults(fn=cmd_freeze)
     s = sub.add_parser("labels", help="validate labels/themes.yaml")

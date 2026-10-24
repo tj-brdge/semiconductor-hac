@@ -35,7 +35,8 @@ def detect(exposure: pd.DataFrame, snapshots: list[pd.Timestamp], cfg: Candidate
            window_totals: pd.Series | None = None,
            warmup_until: pd.Timestamp | None = None,
            active_issuers: pd.Series | None = None,
-           parents: dict[int, int] | None = None) -> pd.DataFrame:
+           parents: dict[int, int] | None = None,
+           history: pd.DataFrame | None = None) -> pd.DataFrame:
     """One ledger row per (track, snapshot) where the emergence rule holds.
 
     Emergence means: the topic's quarter-smoothed share grows for m steps, by at
@@ -56,6 +57,10 @@ def detect(exposure: pd.DataFrame, snapshots: list[pd.Timestamp], cfg: Candidate
       it was born, so a fragment of a recurring topic is not new.
     - Spread: the number of issuers must grow by `min_issuer_growth` between the
       start of growth and the flag; one issuer talking more is not a theme spreading.
+    - Reconstructed history (anchored topics): `history` gives, for snapshots before
+      a topic existed, the share and issuer count its subject already had, computed
+      when it was born from text available then. It fills those snapshots for the
+      growth and new-high tests; no flag is ever raised at a reconstructed snapshot.
 
     Only information at or before each snapshot is used: exposures from windows
     ending at earlier snapshots and market affinity estimated up to the snapshot.
@@ -66,6 +71,15 @@ def detect(exposure: pd.DataFrame, snapshots: list[pd.Timestamp], cfg: Candidate
     L = cfg.new_high_lookback_snapshots
     parents = parents or {}
     by_track = {tid: s.set_index("t").reindex(snaps) for tid, s in series.groupby("track_id")}
+    if history is not None and len(history):
+        for tid, h in history.groupby("track_id"):
+            if tid not in by_track:
+                continue
+            s = by_track[tid]
+            h = h.drop_duplicates("t", keep="last").set_index("t")
+            fill = s["n_passages"].isna() & s.index.isin(h.index)
+            s.loc[fill, "share"] = h["share"].reindex(s.index[fill]).to_numpy()
+            s.loc[fill, "n_issuers"] = h["n_issuers"].reindex(s.index[fill]).to_numpy()
     # A window without the track means the topic had no passages: share 0.
     smoothed = {tid: s["share"].fillna(0.0).rolling(k, min_periods=k).mean()
                 for tid, s in by_track.items()}

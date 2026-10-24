@@ -127,9 +127,8 @@ class Tracker:
     def stats(self, window_span: int = 1) -> dict:
         """Churn diagnostics. With overlapping windows a passage stays in
         `window_span` consecutive windows, so any topic appearing once lives about
-        that long; persistence is reported beyond that span. Drift is the cosine
-        between a topic's first and last centroid: low values mean the track drifted
-        into a different subject."""
+        that long; persistence is reported beyond that span. Drift and consistency
+        are measured for both topic modes in eval/diagnostics.py."""
         if not self.tracks:
             return {"tracks": 0}
         n_win = max(len(self.windows), 1)
@@ -137,9 +136,6 @@ class Tracker:
                               if e[1] in ("birth", "split", "continue")})
                          for tr in self.tracks.values()])
         beyond = np.maximum(life - window_span, 0)
-        long = [tr for tr, n in zip(self.tracks.values(), life, strict=True)
-                if n > 2 * window_span]
-        drift = [float(self.first_centroid[tr.track_id] @ tr.centroid) for tr in long]
         return {
             "tracks": len(self.tracks),
             "windows": n_win,
@@ -148,7 +144,6 @@ class Tracker:
             "median_track_life_windows": float(np.median(life)),
             "median_life_beyond_window_span": float(np.median(beyond)),
             "share_tracks_persisting_beyond_span": round(float(np.mean(beyond > 0)), 3),
-            "median_first_last_centroid_cosine": float(np.median(drift)) if drift else None,
         }
 
 

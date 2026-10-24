@@ -183,7 +183,8 @@ class ClusterCache:
         # covered by the vectors in the key), so they do not invalidate entries.
         settings = cfg.model_dump(exclude={"topic_mode", "anchor_refit_snapshots",
                                            "anchor_lookback_days", "anchor_assign_similarity",
-                                           "anchor_match_similarity"})
+                                           "anchor_match_similarity",
+                                           "anchor_lineage_share"})
         self.salt = json.dumps([CLUSTER_VERSION, MIN_GENRE_PASSAGES, DEGENERATE_NORM,
                                 MAX_HAC_POINTS, MICRO_DIMS, embedder_id, settings,
                                 seed], sort_keys=True, default=str)

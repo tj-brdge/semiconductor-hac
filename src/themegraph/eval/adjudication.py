@@ -101,7 +101,45 @@ def write_worksheet(run_dir: Path) -> Path:
         merged.append(e)
     merged += [{**e, "stale": True} for e in old.values()]  # kept, never silently dropped
     path.write_text(yaml.safe_dump(merged, sort_keys=False, allow_unicode=True))
+    write_packet(run_dir, merged)
     return path
+
+
+PACKET = "adjudication_packet.md"
+
+
+def write_packet(run_dir: Path, entries: list[dict]) -> Path:
+    """Reading copy for reviewers: each entry's as-of keywords and quoted passages,
+    flag date and issuers. No returns, market alignment or co-movement: semantic
+    judgements are made without outcomes (report.html shows them; don't use it
+    while adjudicating). Unmatched entries also show no theme name."""
+    run_dir = Path(run_dir)
+    expl = _explanations(run_dir)
+    led = pd.read_parquet(run_dir / "candidate_ledger.parquet")
+    firsts = led.loc[led["t"] == led["t_first_flag"]].drop_duplicates("candidate_id") \
+        .set_index("candidate_id") if len(led) else pd.DataFrame()
+    lines = ["# Adjudication packet", "",
+             "Record decisions in adjudication.yaml. Judge from the text only.", ""]
+    for e in entries:
+        if e.get("stale"):
+            continue
+        cid = e["candidate_id"]
+        head = f"## {e['id']}" if e["kind"] != "unmatched_candidate" else f"## {cid}"
+        lines.append(head)
+        if cid in firsts.index:
+            r = firsts.loc[cid]
+            lines.append(f"First flag {pd.Timestamp(r['t']).date()} · issuers "
+                         f"{', '.join(r['issuers'])}")
+        x = expl.get(cid, {})
+        lines.append(f"Keywords: {', '.join(x.get('keywords', []))}")
+        for q in x.get("quotes", []):
+            lines.append(f"> [{q.get('symbol')} · {str(q.get('available_at'))[:10]} · "
+                         f"{q.get('passage_id')}] {q.get('text', '')}")
+        lines.append(f"Decision: {e['decision']}")
+        lines.append("")
+    out = run_dir / PACKET
+    out.write_text("\n".join(lines))
+    return out
 
 
 def summary(entries: list[dict], themes_evaluable: int) -> dict:

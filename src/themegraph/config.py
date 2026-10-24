@@ -75,6 +75,7 @@ class Text(_Strict):
     anchor_lookback_days: int = 730
     anchor_assign_similarity: float = 0.45
     anchor_match_similarity: float = 0.70
+    anchor_lineage_share: float = 0.5
 
 
 class Embedding(_Strict):
@@ -119,6 +120,15 @@ class PipelineConfig(_Strict):
     evaluation: Evaluation
 
 
+class Successor(_Strict):
+    """What one share became when the issuer was acquired: `shares` of `symbol` plus
+    `cash` (in the issuer's currency). `source`: the filing stating the terms."""
+    symbol: str
+    shares: float = 0.0
+    cash: float = 0.0
+    source: str
+
+
 class Issuer(_Strict):
     symbol: str
     segment: str
@@ -127,6 +137,7 @@ class Issuer(_Strict):
     sec_filer: bool = True
     listed: dt.date | None = None
     delisted: dt.date | None = None
+    successor: Successor | None = None
     cik: int | None = None
 
 

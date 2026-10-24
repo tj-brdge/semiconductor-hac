@@ -15,10 +15,26 @@ Here topics are discovered on a schedule and then held fixed:
    cluster meeting the minimum size and issuer rules becomes a new topic at once,
    without waiting for the next refit. This is where emerging subjects first appear.
 
-At a refit, each new centre takes over the identity of the existing topic it is
-closest to (one-to-one, cosine >= `anchor_match_similarity`); the rest are new
-topics, and old topics with no successor retire. Genre centring uses the genre means
-of the refit's training passages, so vectors from different months are comparable.
+At a refit, new centres take over the identities of existing topics through a
+one-to-one matching restricted to pairs with cosine >= `anchor_match_similarity`
+(`match_identities`: most continuations first, then highest total similarity). The
+rest are new topics, and old topics with no successor retire. Genre centring uses the
+genre means of the refit's training passages, so vectors from different months are
+comparable.
+
+Ancestry and recurring fragments. A refit can cut an existing topic into pieces; only
+one piece can keep its identity. Lineage events record where the others came from,
+judged by shared passages (the same text), not by shared companies: an unmatched new
+topic most of whose training passages the old topic held is a `split` of it, and a
+retiring topic most of whose passages went to one continuing topic is a `merge`.
+For candidate detection, every newly born topic (at a refit or from unclaimed text)
+also gets a point-in-time history: at birth, the windows before it are re-assigned
+with the codebook as it stands then, giving the share the new topic's subject already
+had. A recurring fragment therefore carries its old level and cannot pass the
+new-high test, while a genuinely new subject, which earlier windows did not contain,
+starts from a low history and stays discoverable. This uses the subject's own past
+rather than its parent's, so a new theme split out of a large, loud topic is not
+held to the parent's level.
 """
 
 from __future__ import annotations
@@ -85,6 +101,26 @@ def _fit_means(V: np.ndarray, genres: np.ndarray | None) -> tuple[dict, np.ndarr
     return means, pooled
 
 
+def match_identities(S: np.ndarray, threshold: float) -> list[tuple[int, int]]:
+    """One-to-one matches (row, column) using only pairs with S >= threshold.
+
+    Objective, in priority order: (1) keep as many valid continuations as possible,
+    (2) among those, the highest total similarity. Invalid pairs are never chosen,
+    so an unconstrained assignment cannot trade a valid match for two invalid ones.
+    Rows and columns may stay unmatched; counts may differ."""
+    if S.size == 0:
+        return []
+    valid = S >= threshold
+    if not valid.any():
+        return []
+    # Each valid pair is worth a constant larger than any possible gain in total
+    # similarity, so cardinality dominates; similarity breaks ties.
+    bonus = 2.0 * min(S.shape) + 1.0
+    W = np.where(valid, bonus + S, 0.0)
+    r, c = linear_sum_assignment(-W)
+    return [(int(i), int(j)) for i, j in zip(r, c, strict=True) if valid[i, j]]
+
+
 class AnchoredTopics:
     def __init__(self, cfg: Text, seed: int = 0, cache: ClusterCache | None = None):
         self.cfg, self.seed, self.cache = cfg, seed, cache
@@ -96,6 +132,13 @@ class AnchoredTopics:
         self.seen: dict[int, list[pd.Timestamp]] = {}
         self.windows: list[pd.Timestamp] = []
         self._last_members: dict[int, set[str]] = {}
+        self.label_of: dict[str, int] = {}  # passage -> topic it was last assigned to
+        self.refits: list[dict] = []
+        self.history: list[dict] = []  # point-in-time pre-birth share of new topics
+        self.born_at: dict[int, pd.Timestamp] = {}
+        self.min_exposure = 0.0
+        self.history_snapshots = 0
+        self._all_snaps: list[pd.Timestamp] = []
 
     # -- discovery -------------------------------------------------------------
     def _cluster(self, t, ids, syms, X) -> WindowClusters:
@@ -109,11 +152,12 @@ class AnchoredTopics:
         self.cache.put(key, wc)
         return wc
 
-    def _new_id(self, t, centre, event: str) -> int:
+    def _new_id(self, t, centre, event: str, other: int | None = None) -> int:
         tid = self.next_id
         self.next_id += 1
         self.first_centre[tid] = centre
-        self.events.append({"track_id": tid, "t": t, "event": event, "other": None})
+        self.born_at[tid] = t
+        self.events.append({"track_id": tid, "t": t, "event": event, "other": other})
         return tid
 
     def refit(self, t, p: pd.DataFrame, V: np.ndarray) -> None:
@@ -134,19 +178,48 @@ class AnchoredTopics:
             if old:
                 old_ids = list(old)
                 S = new @ np.vstack([old[i] for i in old_ids]).T
-                r, c = linear_sum_assignment(-S)
-                for i, j in zip(r, c, strict=True):
-                    if S[i, j] >= self.cfg.anchor_match_similarity:
-                        heirs[i] = old_ids[j]
+                for i, j in match_identities(S, self.cfg.anchor_match_similarity):
+                    heirs[i] = old_ids[j]
+        # Lineage from shared passages: how many of each new topic's training
+        # passages each old topic held when last seen.
+        held = [pd.Series([self.label_of.get(x) for x in ids[wc.labels == c]],
+                          dtype="float").dropna().astype(int).value_counts()
+                for c in labs]
+        size = [int((wc.labels == c).sum()) for c in labs]
+        share = self.cfg.anchor_lineage_share
         retired = set(self.book.ids) - set(heirs.values()) if self.book is not None else set()
-        for tid in sorted(retired):
-            self.events.append({"track_id": tid, "t": t, "event": "end", "other": None})
+        new_ids = []
+        n_split = 0
         for i in range(len(new)):
             tid = heirs.get(i)
             if tid is None:
-                tid = self._new_id(t, new[i], "birth")
+                top = held[i]
+                parent = int(top.index[0]) if len(top) and top.iloc[0] >= share * size[i] \
+                    else None
+                tid = self._new_id(t, new[i], "split" if parent is not None else "birth",
+                                   parent)
+                n_split += parent is not None
+                new_ids.append(tid)
             book.add(tid, new[i])
+        n_merge = 0
+        for tid in sorted(retired):
+            # Where did its passages go? Merged if most went to one continuing topic.
+            total = sum(int(h.get(tid, 0)) for h in held)
+            dest = max(range(len(labs)), key=lambda i: held[i].get(tid, 0), default=None)
+            if total and dest is not None and dest in heirs and \
+                    held[dest].get(tid, 0) >= share * total:
+                self.events.append({"track_id": tid, "t": t, "event": "merge",
+                                    "other": heirs[dest]})
+                n_merge += 1
+            else:
+                self.events.append({"track_id": tid, "t": t, "event": "end", "other": None})
+        self.refits.append({"t": t, "old_topics": len(self.book.ids) if self.book else 0,
+                            "new_topics": len(new), "continued": len(heirs),
+                            "splits": n_split, "births": len(new_ids) - n_split,
+                            "merged": n_merge, "retired": len(retired) - n_merge,
+                            "training_passages": int(valid.sum())})
         self.book = book
+        self._backfill(t, p, V, new_ids)
 
     def _recentre_old(self, p, V, t, book: Codebook) -> dict[int, np.ndarray]:
         """Old topic centres in the new coordinates, from the passages each topic held
@@ -192,11 +265,14 @@ class AnchoredTopics:
         pool = np.flatnonzero(valid & (labels < 0))
         if len(pool) >= self.cfg.min_cluster_passages:
             sub = self._cluster(t, ids[pool], syms[pool], X[pool])
+            born = []
             for c in sorted(sub.centroids):
                 centre = sub.centroids[c]
                 tid = self._new_id(t, centre, "birth")
                 self.book.add(tid, centre)
                 labels[pool[sub.labels == c]] = tid
+                born.append(tid)
+            self._backfill(t, p, V, born)
         # Topics present must meet the same size rules as a window cluster.
         for tid in np.unique(labels[labels >= 0]):
             idx = labels == tid
@@ -213,18 +289,60 @@ class AnchoredTopics:
             self.seen.setdefault(tid, []).append(t)
             members[tid] = set(ids[labels == tid])
         self._last_members = members
+        self.label_of.update({pid: int(lab) for pid, lab in zip(ids, labels, strict=True)
+                              if lab >= 0})
         return wc
+
+    def _backfill(self, t, p: pd.DataFrame, V: np.ndarray, born: list[int]) -> None:
+        """Point-in-time history for topics born at t: re-assign the passages of the
+        preceding windows with the codebook as it stands at t (only text available
+        by then) and record each new topic's share and issuer count there."""
+        if not born or not self.history_snapshots or self.book is None:
+            return
+        past = [w for w in self._all_snaps if w < t][-self.history_snapshots:]
+        if not past:
+            return
+        genres_all = p["genre"].to_numpy() if self.cfg.center_by_genre else None
+        syms_all = p["symbol"].to_numpy()
+        book_ids = np.array(self.book.ids)
+        want = set(born)
+        for w in past:
+            idx = np.flatnonzero(window_mask(p, w, self.cfg.window_days))
+            if not len(idx):
+                continue
+            X, valid = self.book.transform(V[idx],
+                                           genres_all[idx] if genres_all is not None else None)
+            S = X @ self.book.centres.T
+            best = S.argmax(axis=1)
+            ok = valid & (S[np.arange(len(S)), best] >= self.cfg.anchor_assign_similarity)
+            lab = np.where(ok, book_ids[best], -1)
+            syms = syms_all[idx]
+            totals = pd.Series(syms).value_counts()
+            for tid in want:
+                hit = lab == tid
+                if not hit.any():
+                    continue
+                per = pd.Series(syms[hit]).value_counts()
+                expo = per / totals.reindex(per.index)
+                self.history.append({"track_id": tid, "t": w, "known_at": t,
+                                     "n_passages": int(hit.sum()), "share": hit.sum() / len(idx),
+                                     "n_issuers": int((expo >= self.min_exposure).sum())})
+
+    def history_frame(self) -> pd.DataFrame:
+        cols = ["track_id", "t", "known_at", "n_passages", "share", "n_issuers"]
+        return pd.DataFrame(self.history, columns=cols)
 
     # -- diagnostics -------------------------------------------------------------
     def stats(self, window_span: int = 1) -> dict:
-        """Same churn diagnostics as Tracker.stats, for comparison."""
+        """Churn diagnostics shared with Tracker.stats. Topic drift is measured for
+        both modes from actual members in one representation (diagnostics.py), not
+        from centres that may sit in different refits' coordinates."""
         if not self.seen:
             return {"tracks": 0}
         n_win = max(len(self.windows), 1)
         life = np.array([len(v) for v in self.seen.values()])
         beyond = np.maximum(life - window_span, 0)
-        drift = [float(self.first_centre[t] @ self.last_centre[t])
-                 for t, n in zip(self.seen, life, strict=True) if n > 2 * window_span]
+        r = pd.DataFrame(self.refits)
         return {
             "topic_mode": "anchored",
             "tracks": len(self.seen),
@@ -234,8 +352,16 @@ class AnchoredTopics:
             "median_track_life_windows": float(np.median(life)),
             "median_life_beyond_window_span": float(np.median(beyond)),
             "share_tracks_persisting_beyond_span": round(float(np.mean(beyond > 0)), 3),
-            "median_first_last_centroid_cosine": float(np.median(drift)) if drift else None,
+            "refits": len(r),
+            "refit_continued_share": round(float(r["continued"].sum() /
+                                                 max(r["old_topics"].sum(), 1)), 3)
+            if len(r) else None,
+            "refit_splits": int(r["splits"].sum()) if len(r) else 0,
+            "refit_merges": int(r["merged"].sum()) if len(r) else 0,
         }
+
+    def refits_frame(self) -> pd.DataFrame:
+        return pd.DataFrame(self.refits)
 
     def events_frame(self) -> pd.DataFrame:
         cols = ["track_id", "t", "event", "other"]
@@ -247,9 +373,15 @@ class AnchoredTopics:
 
 def anchored_windows(p: pd.DataFrame, V: np.ndarray, snaps: list[pd.Timestamp], cfg: Text,
                      seed: int = 0, cache: ClusterCache | None = None,
-                     progress=lambda x, *_a, **_k: x) -> tuple[list[WindowClusters],
-                                                               AnchoredTopics]:
+                     progress=lambda x, *_a, **_k: x, min_exposure: float = 0.0,
+                     history_snapshots: int = 0) -> tuple[list[WindowClusters],
+                                                          AnchoredTopics]:
+    """`history_snapshots`: how many windows before a topic's birth to reconstruct
+    (point in time) for candidate detection; 0 disables it."""
     model, out = AnchoredTopics(cfg, seed, cache), []
+    model._all_snaps = list(snaps)
+    model.min_exposure = min_exposure
+    model.history_snapshots = history_snapshots
     for i, t in enumerate(progress(snaps, "Anchored topics")):
         if i % cfg.anchor_refit_snapshots == 0:
             model.refit(t, p, V)
