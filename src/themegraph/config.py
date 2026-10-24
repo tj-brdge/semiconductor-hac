@@ -56,6 +56,7 @@ class Text(_Strict):
     novelty_max_similarity: float = 0.95
     max_numeric_share: float = 0.35
     drop_financial_statements: bool = True
+    drop_corporate_housekeeping: bool = True
     center_by_genre: bool = True
     remove_top_components: int = 0
     cluster_distance: float = 0.6

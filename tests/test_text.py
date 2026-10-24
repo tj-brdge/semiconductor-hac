@@ -248,3 +248,26 @@ def test_voyage_retries_timeouts_and_rate_limits_then_keeps_order():
     assert V.shape == (3, 2) and len(slept) == 2 and slept[1] >= 1
     lengths = V[:, 0] / V[:, 1]  # normalised, so compare ratios
     assert np.allclose(lengths, [1, 3, 2])  # input order kept across batches
+
+
+def test_housekeeping_filter_drops_corporate_boilerplate_keeps_themes():
+    from themegraph.text.passages import substantive_mask
+
+    drop = [
+        "Under the share repurchase program we repurchased 4 million shares of common stock",
+        "Our effective tax rate depends on income taxes in multiple tax jurisdictions",
+        "We issued senior notes and amended our revolving credit facility and indenture",
+        "In 2016 the FASB issued Accounting Standards Update ASU 2016-02 on leases",
+        "The compensation committee of the board of directors approved executive compensation",
+        "We may face patent infringement and infringement claims over intellectual property rights",
+    ]
+    keep = [
+        "16 nanometer revenue grew as customers moved to the new node and capacity filled",
+        "HBM demand from AI accelerators exceeded supply and we are adding stacking capacity",
+        "Export controls require licenses for advanced tools shipped to customers in China",
+        "The investment tax credit supports new semiconductor manufacturing capacity in Arizona",
+        "Cloud data center customers are deploying 400G switching across their networks",
+    ]
+    p = pd.DataFrame({"text": drop + keep})
+    m = substantive_mask(p, 0.35, True, True).tolist()
+    assert m == [False] * len(drop) + [True] * len(keep)
