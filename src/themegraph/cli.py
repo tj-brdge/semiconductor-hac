@@ -75,6 +75,14 @@ def cmd_run(a):
     from .text.embed import make_embedder
 
     cfg, u = load_pipeline(), load_universe()
+    overrides = {}
+    if a.topic_mode and a.topic_mode != cfg.text.topic_mode:
+        if a.period != "dev":
+            sys.exit("--topic-mode is for development comparisons; the holdout uses the "
+                     "frozen configuration")
+        cfg = cfg.model_copy(update={"text": cfg.text.model_copy(
+            update={"topic_mode": a.topic_mode})})
+        overrides["text.topic_mode"] = a.topic_mode
     if a.verify_identical and a.period != "holdout":
         sys.exit("--verify-identical applies to holdout runs only")
     if a.period == "holdout" and a.verify_identical:
@@ -83,7 +91,8 @@ def cmd_run(a):
     up = a.input_vintage
     prices, docs, factors = I.load_prices(store, up), I.load_documents(store, up), \
         I.load_factors(store, cfg, up)
-    out = Path(a.out or RUNS / f"{a.period}-{dt.datetime.now(dt.UTC):%Y%m%dT%H%M%SZ}")
+    tag = f"-{a.topic_mode}" if overrides else ""
+    out = Path(a.out or RUNS / f"{a.period}{tag}-{dt.datetime.now(dt.UTC):%Y%m%dT%H%M%SZ}")
     inputs = {
         "prices": P.frame_sha256(prices), "documents": P.frame_sha256(docs[["doc_id", "text"]])
         if len(docs) else None,
@@ -93,6 +102,8 @@ def cmd_run(a):
         # they cannot undo later revisions or survivorship in present-day vintages.
         "availability_basis": "reconstructed",
     }
+    if overrides:
+        inputs["config_overrides"] = overrides
     if a.period == "holdout" and not a.verify_identical:
         attempt = begin_holdout(inputs, a.new_attempt_reason)
     ctx = P.build(prices, docs, cfg, u, make_embedder(cfg.embedding), DATA / "cache",
@@ -235,6 +246,9 @@ def main(argv=None):
                    help="required for any holdout attempt after the first; logged, not clean")
     s.add_argument("--input-vintage", help="use, per table, the latest stored vintage at "
                    "or before this ID (e.g. 20261023T120000Z); default: latest")
+    s.add_argument("--topic-mode", choices=["window", "anchored"],
+                   help="development runs only: override text.topic_mode to compare "
+                   "methods; recorded in the manifest")
     s.set_defaults(fn=cmd_run)
     s = sub.add_parser("topics", help="print topics for sample windows (calibration)")
     s.add_argument("--dates", nargs="+", default=["2016-06-30"])

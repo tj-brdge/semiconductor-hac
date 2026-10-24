@@ -67,6 +67,14 @@ class Text(_Strict):
     track_link_min_similarity: float = 0.5
     keywords_per_topic: int = 8
     parallel_jobs: int = 4
+    # window = re-cluster every window and link clusters into tracks; anchored =
+    # discover topics on a schedule, assign passages to them, find new topics in
+    # what no topic claims (text/anchored.py).
+    topic_mode: Literal["window", "anchored"] = "window"
+    anchor_refit_snapshots: int = 12
+    anchor_lookback_days: int = 730
+    anchor_assign_similarity: float = 0.45
+    anchor_match_similarity: float = 0.70
 
 
 class Embedding(_Strict):

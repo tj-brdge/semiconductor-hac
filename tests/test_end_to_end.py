@@ -103,3 +103,19 @@ def test_sparse_inputs_are_unavailable_evidence_not_negative_findings(cfg, tmp_p
     assert q1["themes_evaluable"] == 0
     assert q1["not_evaluable_reasons"] == {"no_text_evidence": 2}
     assert q1["detection_recall"] != q1["detection_recall"]  # NaN, not 0.0
+
+
+def test_synthetic_anchored_topics(cfg, tmp_path):
+    """Stable topics find the planted theme early, with persistent identities."""
+    cfg = S.demo_config(cfg)
+    cfg = cfg.model_copy(update={"text": cfg.text.model_copy(update={"topic_mode": "anchored"})})
+    u = S.synthetic_universe()
+    dev = P.build(S.synthetic_prices(u), S.synthetic_documents(u), cfg, u,
+                  HashingEmbedder(1024), tmp_path / "c", "dev", log=lambda *a: None)
+    res = P.evaluate(dev, S.synthetic_labels())
+    m = res["matches"].set_index("theme")
+    assert m.loc["planted_ai_buildout", "detected"]
+    assert m.loc["planted_ai_buildout", "lead_days"] > 180
+    assert res["q1"]["unmatched_candidates"] <= 1
+    assert dev.track_stats["topic_mode"] == "anchored"
+    assert dev.track_stats["share_tracks_persisting_beyond_span"] > 0.5

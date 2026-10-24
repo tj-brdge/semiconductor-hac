@@ -112,14 +112,21 @@ def cluster_window(passages: pd.DataFrame, vectors: np.ndarray, t: pd.Timestamp,
 
 def cluster_subset(t: pd.Timestamp, passage_ids: np.ndarray, symbols: np.ndarray,
                    V: np.ndarray, cfg: Text, seed: int = 0,
-                   genres: np.ndarray | None = None) -> WindowClusters:
-    """Cluster one window's passages. Pure function of its inputs (cache-safe)."""
+                   genres: np.ndarray | None = None,
+                   precentred: bool = False) -> WindowClusters:
+    """Cluster one window's passages. Pure function of its inputs (cache-safe).
+    `precentred`: V is already centred and normalised (anchored topics); centring
+    again on these passages' own mean would erase a subject that dominates them."""
     labels = np.full(len(passage_ids), -1)
     wc = WindowClusters(t, list(passage_ids), np.asarray(symbols), labels)
     if len(passage_ids) < cfg.min_cluster_passages:
         return wc
-    X, valid = remove_common_directions(V, cfg.remove_top_components, seed,
-                                        genres if cfg.center_by_genre else None)
+    if precentred:
+        valid = np.linalg.norm(V, axis=1) > DEGENERATE_NORM
+        X = np.where(valid[:, None], _unit(V), 0.0).astype(np.float32)
+    else:
+        X, valid = remove_common_directions(V, cfg.remove_top_components, seed,
+                                            genres if cfg.center_by_genre else None)
     wc.excluded = int((~valid).sum())
     pos = np.flatnonzero(valid)  # cluster valid rows only; keep alignment via pos
     raw = np.zeros(len(passage_ids), dtype=int)  # 0 = not clustered
@@ -172,8 +179,13 @@ class ClusterCache:
     def __init__(self, root: Path, embedder_id: str, cfg: Text, seed: int):
         self.dir = Path(root)
         self.dir.mkdir(parents=True, exist_ok=True)
+        # Topic-mode settings act outside a clustering call (anchored inputs are
+        # covered by the vectors in the key), so they do not invalidate entries.
+        settings = cfg.model_dump(exclude={"topic_mode", "anchor_refit_snapshots",
+                                           "anchor_lookback_days", "anchor_assign_similarity",
+                                           "anchor_match_similarity"})
         self.salt = json.dumps([CLUSTER_VERSION, MIN_GENRE_PASSAGES, DEGENERATE_NORM,
-                                MAX_HAC_POINTS, MICRO_DIMS, embedder_id, cfg.model_dump(),
+                                MAX_HAC_POINTS, MICRO_DIMS, embedder_id, settings,
                                 seed], sort_keys=True, default=str)
 
     def key(self, passage_ids, symbols, genres, V: np.ndarray) -> str:
