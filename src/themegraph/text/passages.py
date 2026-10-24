@@ -110,7 +110,11 @@ HOUSEKEEPING_PHRASES = re.compile(
     r"compensation committee|executive compensation|board of directors|"
     r"annual general meeting|general meeting of shareholders|proxy|director nominees?|"
     r"restricted stock|stock options|intellectual property rights|"
-    r"infringement claims?|patent infringement)\b", re.I)
+    r"infringement claims?|patent infringement|patents?|indebtedness|"
+    r"conflict minerals|fair value|impairment|carrying (?:value|amount)|goodwill|"
+    r"change (?:in|of) control|severance|"
+    r"joining us(?: today)?|thank you for joining|webcast|investor relations website|"
+    r"conference call|replay)\b", re.I)
 
 
 def housekeeping_hits(text: str) -> int:
