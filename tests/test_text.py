@@ -222,3 +222,29 @@ def test_tracker_links_by_shared_passages_when_centroid_drifts():
     a2 = tr.step(w2)
     assert a2[0] == a1[0]
     assert tr.stats()["tracks"] == 1
+
+
+def test_voyage_retries_timeouts_and_rate_limits_then_keeps_order():
+    import httpx
+
+    from themegraph.text.embed import VoyageEmbedder
+
+    calls = {"n": 0}
+
+    def handler(request):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise httpx.ReadTimeout("slow", request=request)
+        if calls["n"] == 2:
+            return httpx.Response(429, headers={"retry-after": "1"}, json={"detail": "rate"})
+        texts = __import__("json").loads(request.content)["input"]
+        return httpx.Response(200, json={"data": [
+            {"index": i, "embedding": [float(len(t)), 1.0]} for i, t in enumerate(texts)]})
+
+    slept = []
+    emb = VoyageEmbedder("m", batch_size=2, concurrency=1, sleep=slept.append,
+                         client=httpx.Client(transport=httpx.MockTransport(handler)))
+    V = emb.embed(["a", "bbb", "cc"])
+    assert V.shape == (3, 2) and len(slept) == 2 and slept[1] >= 1
+    lengths = V[:, 0] / V[:, 1]  # normalised, so compare ratios
+    assert np.allclose(lengths, [1, 3, 2])  # input order kept across batches
