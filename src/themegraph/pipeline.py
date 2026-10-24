@@ -202,7 +202,8 @@ def build(prices: pd.DataFrame, docs: pd.DataFrame, cfg: PipelineConfig,
     ctx.ledger = detect(ctx.exposure, snaps, cfg.candidates, segments(universe),
                         ctx.affinity.get(main_w, {}), cfg.evaluation.seed,
                         min(cfg.evaluation.null_draws, 200), pd.Series(totals),
-                        warmup, pd.Series(active)) if len(ctx.exposure) else pd.DataFrame()
+                        warmup, pd.Series(active), split_parents(ctx.events)) \
+        if len(ctx.exposure) else pd.DataFrame()
     ctx.windows = pd.DataFrame(win_rows)
     ctx.assignments = (pd.concat(assigned, ignore_index=True) if assigned else
                        pd.DataFrame(columns=["t", "track_id", "passage_id"]))
@@ -347,6 +348,14 @@ def asof_explanations(ctx: RunContext, V: np.ndarray | None, cfg: PipelineConfig
         rows.append({"candidate_id": r.candidate_id, "track_id": int(r.track_id), "t": r.t,
                      "keywords": kw, "quotes": quotes})
     return pd.DataFrame(rows, columns=cols)
+
+
+def split_parents(events: pd.DataFrame | None) -> dict[int, int]:
+    """track -> the track it split from."""
+    if events is None or not len(events):
+        return {}
+    sp = events.loc[(events["event"] == "split") & events["other"].notna()]
+    return {int(a): int(b) for a, b in zip(sp["track_id"], sp["other"], strict=True)}
 
 
 def evaluate(ctx: RunContext, labels: LabelFile) -> dict:

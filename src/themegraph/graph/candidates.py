@@ -34,7 +34,8 @@ def detect(exposure: pd.DataFrame, snapshots: list[pd.Timestamp], cfg: Candidate
            rng_seed: int = 0, null_draws: int = 200,
            window_totals: pd.Series | None = None,
            warmup_until: pd.Timestamp | None = None,
-           active_issuers: pd.Series | None = None) -> pd.DataFrame:
+           active_issuers: pd.Series | None = None,
+           parents: dict[int, int] | None = None) -> pd.DataFrame:
     """One ledger row per (track, snapshot) where the emergence rule holds.
 
     Emergence means: the topic's quarter-smoothed share grows for m steps, by at
@@ -48,34 +49,52 @@ def detect(exposure: pd.DataFrame, snapshots: list[pd.Timestamp], cfg: Candidate
     The cap applies only when at least 2 x min_issuers issuers have text; with fewer,
     min_issuers and the cap could not both be met.
 
+    Three further guards (DESIGN.md calibration log, 2026-10-24 dev run):
+    - Full history: the whole new-high lookback must lie after the text warm-up,
+      so nothing qualifies merely because there is no history yet.
+    - Lineage: a track split from another inherits its ancestors' share from before
+      it was born, so a fragment of a recurring topic is not new.
+    - Spread: the number of issuers must grow by `min_issuer_growth` between the
+      start of growth and the flag; one issuer talking more is not a theme spreading.
+
     Only information at or before each snapshot is used: exposures from windows
     ending at earlier snapshots and market affinity estimated up to the snapshot.
     """
     m, k = cfg.min_consecutive_growth_windows, cfg.growth_step_snapshots
     series = topic_series(exposure, cfg.min_exposure, window_totals)
     snaps = sorted(snapshots)
+    L = cfg.new_high_lookback_snapshots
+    parents = parents or {}
+    by_track = {tid: s.set_index("t").reindex(snaps) for tid, s in series.groupby("track_id")}
+    # A window without the track means the topic had no passages: share 0.
+    smoothed = {tid: s["share"].fillna(0.0).rolling(k, min_periods=k).mean()
+                for tid, s in by_track.items()}
+    born = {tid: s["n_passages"].first_valid_index() for tid, s in by_track.items()}
     rows = []
-    for tid, s in series.groupby("track_id"):
-        s = s.set_index("t").reindex(snaps)
-        # A window without the track means the topic had no passages: share 0.
-        smooth = s["share"].fillna(0.0).rolling(k, min_periods=k).mean()
+    for tid, s in by_track.items():
+        smooth = smoothed[tid]
         for i, t in enumerate(snaps):
             if pd.isna(s.loc[t, "n_passages"]) or i < m * k + k - 1:
                 continue
-            if warmup_until is not None and snaps[i - m * k - k + 1] <= warmup_until:
-                continue  # the earliest window used was still filling up
+            first = i - m * k - L - (k - 1)  # earliest window behind the lookback
+            if first < 0 or (warmup_until is not None and snaps[first] <= warmup_until):
+                continue  # not enough history to tell a new high from a recurring one
             steps = smooth.iloc[[i - j * k for j in range(m, -1, -1)]].to_numpy()
             if not (np.diff(steps) > 0).all():
                 continue
             if steps[0] > 0 and steps[-1] / steps[0] < cfg.min_growth_ratio:
                 continue
             g0 = i - m * k
-            prior = smooth.iloc[max(0, g0 - cfg.new_high_lookback_snapshots):g0].dropna()
-            if len(prior) and steps[-1] <= prior.max():
+            prior = smooth.iloc[g0 - L:g0].dropna()
+            if len(prior) and steps[-1] <= _lineage_max(tid, prior.max(), g0 - L, g0,
+                                                        snaps, smoothed, parents, born):
                 continue  # back to an old level: a recurring topic, not an emerging one
             if s.loc[t, "n_issuers"] < cfg.min_issuers:
                 continue
             t0 = snaps[g0]
+            if s.loc[t, "n_issuers"] - np.nan_to_num(s.loc[t0, "n_issuers"]) < \
+                    cfg.min_issuer_growth:
+                continue  # not spreading to more issuers
             if active_issuers is not None and t0 in active_issuers.index and \
                     active_issuers[t0] >= 2 * cfg.min_issuers and \
                     np.nan_to_num(s.loc[t0, "n_issuers"]) > \
@@ -99,6 +118,23 @@ def detect(exposure: pd.DataFrame, snapshots: list[pd.Timestamp], cfg: Candidate
     ledger["t_first_flag"] = first
     ledger["candidate_id"] = ledger["track_id"].map(lambda x: f"cand-{x:05d}")
     return ledger.sort_values(["t", "track_id"]).reset_index(drop=True)
+
+
+def _lineage_max(tid, own, lo, hi, snaps, smoothed, parents, born) -> float:
+    """Highest smoothed share in snapshots [lo, hi) of the track or, before each
+    split, of the track it split from (and so on up the chain)."""
+    best, child, seen = own, tid, {tid}
+    while child in parents and parents[child] not in seen:
+        par = parents[child]
+        seen.add(par)
+        if par in smoothed and born.get(child) is not None:
+            cut = min(hi, snaps.index(born[child]))
+            if cut > lo:
+                prior = smoothed[par].iloc[lo:cut].dropna()
+                if len(prior):
+                    best = max(best, float(prior.max()))
+        child = par
+    return best
 
 
 def _alignment(issuers, t, snaps, market_aff, cfg, segments, seed, draws) -> dict:
