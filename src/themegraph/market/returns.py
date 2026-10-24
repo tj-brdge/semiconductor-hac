@@ -16,6 +16,36 @@ def log_returns(panel: pd.DataFrame) -> pd.DataFrame:
     return np.log(panel).diff().iloc[1:]
 
 
+def calendar_returns(panel: pd.DataFrame, known: pd.DataFrame,
+                     calendar: str | None) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Log returns on one trading calendar, with when each became known.
+
+    Each stock's return runs between its own consecutive closes, so a day its market
+    is shut (a US holiday on which Asian markets trade, or the reverse) does not
+    erase its returns. Returns are then summed onto the sessions of `calendar` (the
+    benchmark): a foreign stock's moves on non-calendar days land on the next
+    calendar session. A return is known when the later of its two closes is.
+    Without the calendar symbol, the union of all trading days is used."""
+    cal = panel[calendar].dropna().index if calendar in panel else panel.index
+    rets, kn = {}, {}
+    for c in panel.columns:
+        s = panel[c].dropna()
+        s = s[s > 0]
+        if len(s) < 2:
+            continue
+        r = np.log(s).diff().iloc[1:]
+        k = known[c].reindex(s.index)
+        k = pd.concat([k, k.shift(1)], axis=1).max(axis=1).iloc[1:]
+        pos = cal.searchsorted(r.index)
+        ok = pos < len(cal)
+        bucket = cal[pos[ok]]
+        rets[c] = r[ok].groupby(bucket).sum(min_count=1)
+        kn[c] = k[ok].groupby(bucket).max()
+    R = pd.DataFrame(rets).reindex(cal[1:])
+    K = pd.DataFrame(kn).reindex(index=R.index, columns=R.columns)
+    return R, K
+
+
 def window_residuals(rets: pd.DataFrame, benchmarks: list[str]) -> pd.DataFrame:
     """OLS residuals of every non-benchmark column on the benchmark returns,
     estimated within this window only (no look-ahead from later data)."""

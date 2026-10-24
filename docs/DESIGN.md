@@ -481,6 +481,16 @@ Pushed back / deferred:
   Unknowns to check on real data: the share of passages left unassigned at 0.45 and
   the number of new topics born from the unassigned pool each month.
 
+- **Bug: mixed exchange calendars erased returns (fixed).** The return panel used
+  the union of US, Korean, Japanese and Taiwanese trading days. On a day only one
+  market traded, every other stock's return that day and the next became missing,
+  so windows spanning US holidays (Thanksgiving to MLK Day) dropped US stocks
+  below `min_observations_share`. Snapshots for January–February 2017 and 2019 lost
+  almost every US issuer, which left candidates flagged then without a market
+  alignment score. Every other window lost some observations too. Returns now run
+  between each stock's own consecutive closes and are summed onto the benchmark's
+  (SPY) sessions. All market-layer results change slightly; rerun before comparing.
+
 ## 12. Open questions
 
 1. Include the adjacency ring (§4.2) in v1? Recommended: yes, for text only.
