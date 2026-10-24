@@ -31,6 +31,7 @@ from .graph.layers import matrix_edges, text_affinity
 from .market.hac import market_snapshot
 from .market.macro import exposure_similarity, macro_exposures, monthly_returns
 from .market.returns import log_returns, price_panel
+from .text.anchored import anchored_windows
 from .text.cluster import ClusterCache, cluster_subset, cluster_window, window_mask
 from .text.embed import Embedder, EmbeddingCache
 from .text.keywords import ctfidf_keywords
@@ -161,14 +162,22 @@ def build(prices: pd.DataFrame, docs: pd.DataFrame, cfg: PipelineConfig,
     if len(docs):
         p, V = prepare_passages(docs, cfg, embedder, cache_dir, log)
         ctx.passages = p
-        windows = cluster_windows(p, V, snaps, cfg, embedder.model_id,
-                                  cache_dir / "clusters", log)
-        tracker = Tracker(cfg.text.track_link_similarity,
-                          link_overlap=cfg.text.track_link_overlap,
-                          link_min_similarity=cfg.text.track_link_min_similarity)
+        anchored = cfg.text.topic_mode == "anchored"
+        if anchored:
+            cache = ClusterCache(cache_dir / "clusters", embedder.model_id, cfg.text,
+                                 cfg.evaluation.seed)
+            windows, model = anchored_windows(p, V, snaps, cfg.text, cfg.evaluation.seed,
+                                              cache, _bar)
+        else:
+            windows = cluster_windows(p, V, snaps, cfg, embedder.model_id,
+                                      cache_dir / "clusters", log)
+            tracker = Tracker(cfg.text.track_link_similarity,
+                              link_overlap=cfg.text.track_link_overlap,
+                              link_min_similarity=cfg.text.track_link_min_similarity)
         for wc in windows:
             t = wc.t
-            assign = tracker.step(wc)
+            # Anchored topics carry their own identities; window clusters are linked.
+            assign = {c: c for c in wc.centroids} if anchored else tracker.step(wc)
             totals[t] = len(wc.labels)
             active[t] = len(np.unique(wc.symbols))
             win_rows.append({"t": t, "n_passages": len(wc.labels),
@@ -184,9 +193,11 @@ def build(prices: pd.DataFrame, docs: pd.DataFrame, cfg: PipelineConfig,
                 if len(idx) > best.get(tid, (0,))[0]:
                     best[tid] = (len(idx), t, [wc.passage_ids[i] for i in idx])
             edges.append(matrix_edges(t, "text", text_affinity(ex)))
-        ctx.events = track_events(tracker)
+        ctx.events = model.events_frame() if anchored else track_events(tracker)
         step = (snaps[1] - snaps[0]).days if len(snaps) > 1 else cfg.text.window_days
-        ctx.track_stats = {**tracker.stats(int(np.ceil(cfg.text.window_days / max(step, 1)))),
+        span = int(np.ceil(cfg.text.window_days / max(step, 1)))
+        ctx.track_stats = {**(model.stats(span) if anchored else
+                              {"topic_mode": "window", **tracker.stats(span)}),
                            "passages_excluded_degenerate": int(sum(w.excluded for w in windows))}
         log(f"  topic tracking: {ctx.track_stats}")
     ctx.exposure = (pd.concat(exposures, ignore_index=True) if exposures else

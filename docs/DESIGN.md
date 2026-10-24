@@ -466,6 +466,21 @@ Pushed back / deferred:
   keywords. The node theme appearing as four tracks is the tracking churn that
   the stable-topic upgrade is meant to fix.
 
+- **Stable topics (`text.topic_mode: anchored`), added as a variant.** The window
+  method still re-cuts topics monthly (median life 2 windows; the node/FinFET theme
+  appeared as four candidates). The anchored method discovers topics every 12
+  snapshots from the trailing two years of text (past only), assigns each window's
+  passages to the nearest topic centre (cosine >= 0.45 after genre centring with the
+  refit's genre means), and clusters what no topic claims into new topics at once.
+  At a refit, new centres inherit the identity of the closest old topic (one-to-one,
+  cosine >= 0.70, old centres re-expressed through their latest members). On the
+  synthetic demo it finds the planted theme 333 days before consensus with 8 topics
+  that persist for the whole period. Comparison on development data:
+  `themegraph run --period dev --topic-mode anchored` against the window run (145
+  ledger rows), on topic life, duplicate candidates, and how the list reads.
+  Unknowns to check on real data: the share of passages left unassigned at 0.45 and
+  the number of new topics born from the unassigned pool each month.
+
 ## 12. Open questions
 
 1. Include the adjacency ring (§4.2) in v1? Recommended: yes, for text only.

@@ -59,6 +59,17 @@ text:
   track_link_similarity: 0.80
   track_link_min_similarity: 0.50  # overlap links also need this centroid cosine
   keywords_per_topic: 8
+  # How topics persist over time. `window` re-clusters every window and links the
+  # clusters into tracks. `anchored` discovers topics every anchor_refit_snapshots
+  # from the trailing anchor_lookback_days, assigns each window's passages to the
+  # nearest topic (cosine >= anchor_assign_similarity), and makes new topics from
+  # what no topic claims. Compare on development data with
+  # `themegraph run --period dev --topic-mode anchored`.
+  topic_mode: window
+  anchor_refit_snapshots: 12
+  anchor_lookback_days: 730
+  anchor_assign_similarity: 0.45
+  anchor_match_similarity: 0.70
   parallel_jobs: 4              # windows clustered in parallel (~0.5 GB each); -1 = all cores
 
 embedding:
