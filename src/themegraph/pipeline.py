@@ -30,7 +30,7 @@ from .graph.candidates import detect, write_ledger
 from .graph.layers import matrix_edges, text_affinity
 from .market.hac import market_snapshot
 from .market.macro import exposure_similarity, macro_exposures, monthly_returns
-from .market.returns import log_returns, price_panel
+from .market.returns import calendar_returns, price_panel
 from .text.anchored import anchored_windows
 from .text.cluster import ClusterCache, cluster_subset, cluster_window, window_mask
 from .text.embed import Embedder, EmbeddingCache
@@ -121,15 +121,15 @@ def build(prices: pd.DataFrame, docs: pd.DataFrame, cfg: PipelineConfig,
         snaps.append(end_ts)
     panel = price_panel(prices)
     panel.index = pd.DatetimeIndex(panel.index).tz_localize(None).normalize()
-    rets = log_returns(panel)
-    rets.index = rets.index.tz_localize("UTC") + pd.Timedelta(hours=22)
-    # When each return became known: the later of its two closes' availability.
     known = prices.pivot_table(index="date", columns="symbol", values="available_at",
                                aggfunc="max")
     known.index = pd.DatetimeIndex(known.index).tz_localize(None).normalize()
     known = known.reindex(index=panel.index, columns=panel.columns)
     known = known.apply(lambda c: pd.to_datetime(c, utc=True))
-    rets_known = np.maximum(known, known.shift(1)).iloc[1:]
+    # Returns on the benchmark's trading calendar, each from the stock's own previous
+    # close; mixing exchanges' calendars otherwise erases returns around holidays.
+    rets, rets_known = calendar_returns(panel, known, cfg.market.benchmark)
+    rets.index = rets.index.tz_localize("UTC") + pd.Timedelta(hours=22)
     rets_known.index = rets.index
     closes = panel.copy()
     closes.index = closes.index.tz_localize("UTC") + pd.Timedelta(hours=22)
