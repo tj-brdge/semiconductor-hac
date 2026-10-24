@@ -6,7 +6,7 @@ import datetime as dt
 import numpy as np
 import pandas as pd
 
-from themegraph.config import load_pipeline
+from themegraph.config import Successor, load_pipeline
 from themegraph.eval.comovement import (
     dependence_groups,
     matched_null_sets,
@@ -102,3 +102,35 @@ def test_correlation_survives_staggered_gaps():
     snap = market_snapshot(rets, idx[-1], 60, cfg.model_copy(
         update={"min_observations_share": 0.7}), list("ABCD"), ["S"])
     assert snap["affinity"] is not None
+
+
+def _flat_panel(n=30, members=("A", "B", "C", "D", "E", "ACQ")):
+    idx = pd.date_range("2020-01-01", periods=n, freq="B", tz="UTC") + pd.Timedelta(hours=22)
+    return pd.DataFrame({m: 100.0 for m in members}, index=idx)
+
+
+def test_missing_exit_price_makes_basket_unvalued_not_ok():
+    """Four of five members +10%, one with no exit price: not reported as +10%."""
+    panel = _flat_panel()
+    t = panel.index[0]
+    panel.iloc[-5:, :4] = 110.0
+    panel.loc[panel.index[10]:, "E"] = np.nan  # quotes stop, no delisting record
+    b = holding_return(panel, ["A", "B", "C", "D", "E"], t, 25, panel.index[-1])
+    assert b["status"] == "unvalued_position" and np.isnan(b["value"])
+    assert b["statuses"]["E"] == "unvalued" and b["n_unvalued"] == 1
+    assert np.isclose(b["worst_case"], (4 * 0.10 - 1.0) / 5)  # lower bound only
+
+
+def test_acquired_member_converts_into_acquirer_shares():
+    panel = _flat_panel()
+    t = panel.index[0]
+    panel.loc[panel.index[10]:, "E"] = np.nan
+    panel.loc[panel.index[10]:, "ACQ"] = 150.0
+    terms = {"E": Successor(symbol="ACQ", shares=0.5, cash=20.0, source="test")}
+    b = holding_return(panel, ["A", "E"], t, 25, panel.index[-1],
+                       {"E": panel.index[10].date()}, terms)
+    assert b["statuses"]["E"] == "converted" and b["status"] == "ok"
+    assert np.isclose(b["value"], (0.0 + (0.5 * 150 + 20) / 100 - 1) / 2)
+    # Without recorded terms: last close held as cash, flagged as an assumption.
+    b = holding_return(panel, ["A", "E"], t, 25, panel.index[-1], {"E": panel.index[10].date()})
+    assert b["statuses"]["E"] == "delisted" and b["n_delisted_assumed"] == 1

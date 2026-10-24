@@ -25,18 +25,20 @@ and inspected), **deferred** (not built).
 | Point-in-time store, raw cache, FMP + EDGAR clients, per-vintage refresh | tested; **live-validated**: real ingestion has run (prices, macro, transcripts, EDGAR) |
 | Market and macro layers | tested; live-validated in the first development run |
 | Text layer as of the first development run (2010–2021, `voyage-finance-2`) | live-validated, and found wanting: 190 candidates (16 a year), topics dominated by call small talk and statement boilerplate, ~14,600 topic IDs over 144 windows |
-| Revised text layer (PR #7 and the review fixes: filters, genre centring, overlap tracking with a similarity floor, new-high and breadth rules, content-addressed cache, as-of explanations) | tested on synthetic data and fixtures; **not yet live-validated** |
+| Revised text layer, window topics (filters, genre centring, overlap tracking, new-high, history, lineage and spread rules) | tested; **live-validated on 2010–2021**: 145 flagged months, leading candidates are real subjects (FinFET, RF/LTE, etch, memory) but topics are re-cut monthly (median life 2 windows) |
+| Anchored topics (`--topic-mode anchored`: yearly discovery, monthly assignment, new topics from unclaimed text) | tested; one live run **before** the latest fixes (57 flagged months, median life 6 windows, ~30% of passages assigned). Refit matching, lineage, pre-birth history and diagnostics changed since: rerun needed |
+| Window vs anchored comparison (`themegraph compare`, declared criteria in DESIGN.md) | tested on synthetic data; **real comparison pending** (needs label approval, both runs, adjudication) |
 | Evaluation: detection, co-movement, buy-and-hold returns, dependence-grouped inference, adjudication | tested |
 | Holdout lifecycle (attempt logged before outcomes, one clean attempt, verification) | tested; the real holdout has **not** been run |
 | Forward prediction log (`themegraph forward`) | tested; not yet used on live data |
-| Theme labels (`labels/themes.yaml`) | **draft**: themes listed, every date and source still blank, not frozen |
+| Theme labels (`labels/themes.yaml`) | dates and sources still blank; proposed markers with provenance in `labels/themes_draft.yaml` await human approval |
 | Layer ablations (text-only vs market-only), beta matching, follow-through/fundamentals layer | deferred |
 
 ## Quick start
 
 ```bash
 uv sync
-uv run pytest -q              # 75 tests, ~2 min, fully offline
+uv run pytest -q              # ~4 min, fully offline
 uv run themegraph demo        # synthetic planted themes -> runs/demo/{dev,holdout}/report.html
 ```
 
@@ -103,12 +105,32 @@ Repeating a cutoff with the same inputs adds nothing; with different inputs it i
 refused. `themegraph forward outcomes` appends outcomes for horizons that have
 elapsed (`forward/outcomes.jsonl`) and never modifies predictions.
 
+### Comparing topic modes (development data only)
+
+```bash
+themegraph run --period dev --out runs/cmp-window
+themegraph run --period dev --topic-mode anchored --out runs/cmp-anchored
+themegraph adjudicate runs/cmp-window      # then decide entries from
+themegraph adjudicate runs/cmp-anchored    # adjudication_packet.md (text only)
+themegraph compare runs/cmp-window runs/cmp-anchored
+```
+
+Run both from the same commit, config and data (`compare` refuses otherwise), and
+adjudicate before opening either `report.html`. The decision rule is fixed in
+DESIGN.md ("Window vs anchored comparison").
+
 ### Conventions worth knowing
 
 - **Returns:** bought at the first close after the snapshot, sold h sessions later;
-  equal-weight buy-and-hold simple return; membership fixed at the flag;
-  constituents tagged complete/delisted/stale/missing; baskets under 80% coverage
-  and horizons past the data are reported, not scored.
+  equal-weight buy-and-hold simple return; membership fixed at the flag. Members
+  without an entry close are not bought (under 80% bought: not scored). Every bought
+  position must be valued at exit (exit close, stale close within 5 sessions, or
+  conversion into the acquirer on the terms in `universe.yaml`); otherwise the basket
+  is `unvalued_position` with no return, only a worst-case bound. Delistings without
+  recorded terms are valued at the last close and counted as an assumption.
+- **Vintages:** reads combine every vintage up to the requested one (latest version
+  of each record), so partial batches never hide data; `first_seen_at` is the first
+  vintage holding a record's exact content, so revisions are never backdated.
 - **Availability:** historical runs reconstruct availability from publication
   times plus lags (`availability_basis: reconstructed`); this cannot undo later
   revisions or survivorship in present-day data. Forward predictions use the

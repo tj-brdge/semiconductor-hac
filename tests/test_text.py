@@ -279,3 +279,34 @@ def test_housekeeping_filter_drops_corporate_boilerplate_keeps_themes():
     p = pd.DataFrame({"text": drop + keep})
     m = substantive_mask(p, 0.35, True, True).tolist()
     assert m == [False] * len(drop) + [True] * len(keep)
+
+
+def test_calibration_subset_has_same_eligibility_as_full_run(cfg, tmp_path):
+    """`themegraph topics` embeds only recent passages, but a repeat of text first
+    seen long before the calibration lookback must still be dropped as in a run."""
+    from themegraph import pipeline as P
+    from themegraph import synthetic as S
+    from themegraph.data.pit import snapshot_ts
+    from themegraph.text.embed import HashingEmbedder
+    from themegraph.text.novelty import LOOKBACK_DAYS
+
+    u = S.synthetic_universe(per_segment=2)
+    docs = S.synthetic_documents(u, start="2016-01-01", end="2019-12-31")
+    old = docs.loc[docs["published_at"] < pd.Timestamp("2016-07-01", tz="UTC")].iloc[0]
+    late = pd.Timestamp("2019-05-15", tz="UTC")
+    repeat = old.copy()
+    repeat["doc_id"], repeat["published_at"], repeat["available_at"] = "repeat", late, late
+    docs = pd.concat([docs, repeat.to_frame().T], ignore_index=True)
+    docs[["published_at", "available_at"]] = docs[["published_at", "available_at"]].apply(
+        pd.to_datetime, utc=True)
+    hi = snapshot_ts("2019-06-30")
+    lo = hi - pd.Timedelta(days=cfg.text.window_days + LOOKBACK_DAYS)
+    assert old["available_at"] <= lo  # first occurrence predates the calibration range
+    emb = HashingEmbedder(256)
+    full, _ = P.prepare_passages(docs, cfg, emb, tmp_path, log=lambda *a: None)
+    sub, _ = P.prepare_passages(docs, cfg, emb, tmp_path, log=lambda *a: None,
+                                ranges=[(lo, hi)])
+    in_window = lambda p: set(p.loc[(p["available_at"] > hi - pd.Timedelta(  # noqa: E731
+        days=cfg.text.window_days)) & (p["available_at"] <= hi), "passage_id"])
+    assert in_window(sub) == in_window(full)
+    assert not full["doc_id"].eq("repeat").any() and not sub["doc_id"].eq("repeat").any()

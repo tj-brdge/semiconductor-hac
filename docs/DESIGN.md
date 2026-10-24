@@ -491,6 +491,123 @@ Pushed back / deferred:
   between each stock's own consecutive closes and are summed onto the benchmark's
   (SPY) sessions. All market-layer results change slightly; rerun before comparing.
 
+### Review fixes after the anchored-topics PR (2026-10-25)
+
+Verified against HEAD 06daa45 before changing anything; each has a regression test.
+
+- **Refit matching** (`text/anchored.py: match_identities`). The Hungarian assignment
+  ran over all similarities and then dropped pairs below 0.70, so
+  `[[0.75, 0.65], [0.69, 0.00]]` lost the valid 0.75 continuation. Matching now runs
+  over valid pairs only, maximising first the number of continued identities, then
+  total similarity.
+- **Ancestry and recurring fragments.** A refit that cut a topic in two kept one
+  piece's identity and made the other an unrelated birth, which then looked brand new
+  to the candidate rules. Two changes. Lineage events: an unmatched new topic is a
+  `split` of the old topic that held at least `anchor_lineage_share` (0.5) of its
+  training passages; a retiring topic whose passages mostly went to one continuing
+  topic is a `merge`. Parentage uses shared text, never shared companies. For
+  detection, every anchored birth (refit or unclaimed text) gets a point-in-time
+  history (`topic_history.parquet`): at birth, the preceding windows are re-assigned
+  with the codebook of that moment, and the new topic's share and issuer count there
+  fill its pre-birth snapshots for the growth, new-high and spread tests. A recurring
+  fragment carries its old level and is not flagged; a subject absent from earlier
+  text starts low and stays discoverable. Anchored mode uses this history instead of
+  the window mode's parent inheritance, which would hold a new theme split out of a
+  large, loud topic to the parent's level.
+- **Forward replay and partial vintages** (`data/store.py`). Ingestion stamped every
+  row with the ingest time, and reads took only the latest vintage: replaying an
+  earlier cutoff after a refresh lost data, and a partial EDGAR batch
+  (`--symbols`) hid every other issuer's filings, in development runs too. Reads now
+  combine all vintages up to the requested one, latest version per record;
+  `first_seen_at` is the earliest vintage holding exactly that content, so unchanged
+  records keep their first-seen time and revisions are never backdated.
+  `forward predict` reads only vintages downloaded by the end of the cutoff day.
+- **Input identity** (`pipeline.input_bindings`). Fingerprints were row-order
+  dependent and covered only `doc_id` and text for documents. They now hash every
+  column except bookkeeping, order-independently; `first_seen_at` is included for
+  forward (observed-basis) inputs only. Holdout verification compares the same
+  fingerprints, plus a scheme number.
+- **Basket accounting** (`eval/returns.py`). A position without an exit value used
+  to be dropped and the rest averaged (four members at +10% and one missing gave
+  "ok, +10%"). Now any unvalued bought position makes the basket
+  `unvalued_position` with no return, plus a worst-case bound (missing at -100%).
+  Members never bought (no entry close) are excluded at entry as before. Acquired
+  members convert into the acquirer's shares and cash on the recorded terms
+  (universe `successor`, terms checked against the closing 8-Ks: XLNX 1.7234 AMD;
+  MXIM 0.6300 ADI; LLTC $46.00 + 0.2321 ADI); a delisting without recorded terms is
+  still valued at the last close, counted as an assumption.
+- **Calibration parity** (`prepare_passages(ranges=...)`). `themegraph topics`
+  cropped documents before exact-duplicate removal, so text first seen before the
+  crop survived calibration but not a run. Eligibility is now decided on the full
+  history; only embedding is restricted.
+- **Comparable diagnostics** (`eval/diagnostics.py`). The anchored drift compared
+  centres from different refits' coordinates. Both modes now report the same
+  member-based measures in one representation: unassigned share, births and lasting
+  births per window, month-to-month and first-to-last member cosine, tightness, and
+  near-duplicate candidates; manifests also record stage timings.
+
+### Window vs anchored comparison (criteria declared before results)
+
+Both runs: same vintages and canonical input hashes, same embeddings and cache, same
+`config/pipeline.yaml`, differing only by `--topic-mode`; `themegraph compare`
+refuses otherwise. Adjudication is done from `adjudication_packet.md` (text only, no
+returns or market data); `report.html` is not opened until both worksheets are done.
+
+Primary, in order:
+1. Labelled development themes confirmed by adjudication, and their lead time before
+   consensus (compared per theme, not only as medians: six development themes is a
+   small sample).
+2. Confirmed false alarms: negative-control matches confirmed, plus unmatched
+   candidates judged noise, per year.
+
+Secondary (diagnostic, never decisive alone): candidates judged duplicate and
+near-duplicate pairs; member-based consistency (month-to-month cosine, drift,
+tightness); unassigned share; births per window; runtime.
+
+Decision rule: make `anchored` the default only if it confirms at least as many
+labelled themes as `window`, misses none that `window` confirms (or the report states
+the trade explicitly), and has no more confirmed noise per year. Longer topic life
+does not count in its favour on its own. If the primary criteria tie, keep `window`
+unless anchored has materially fewer duplicates (at least 30% fewer) with no worse
+consistency. Prerequisite: approved label dates; without them no theme is evaluable
+and only sections 3-5 of the comparison can be read.
+
+### Label verification (2026-10-25)
+
+Every proposed marker in `labels/themes_draft.yaml` was checked against SEC EDGAR,
+the only source reachable from the build environment (five quotes re-checked
+independently). Result per marker (`verification.status`): 6 verified, 1 verified
+with a correction (AI power emergence moves to Vertiv's 2023-04-26 release), 23 with
+an SEC primary alternative, 4 unverifiable here (press-only). Nothing is approved.
+
+Definitions applied: emergence = earliest dated public disclosure naming the driver
+as affecting business or demand (publication date recorded beside the event date);
+consensus = treated as a market-wide theme by major press. SEC filings can verify
+emergence but rarely consensus, so most consensus markers still need a press check.
+
+Open judgement calls (listed per theme as `review_needed`):
+- Ordering: for crypto GPUs (2017), HBM and advanced packaging the earliest issuer
+  filing comes after, or close to, the press-based consensus. Either emergence may
+  rest on press and trade sources, or these themes cannot test early detection from
+  SEC text alone.
+- Scope: AI networking vs optics (SEC evidence 2023-05 vs 2023-08) and AI power
+  equipment vs power generation (2023-04 vs 2024-05) look like two themes each.
+  Proposed splits, not applied.
+- Negative controls: the metaverse chip issuers disclosed no metaverse exposure
+  (zero mentions in NVDA's FY22 10-K and QCOM's 2021 10-K), so "not flagged" is weak
+  evidence; crypto mining 2021 is a fair control for NVDA.
+
+### Before freezing and running the holdout
+
+1. Approve labels: resolve the calls above, confirm press-only markers, copy approved
+   dates into `labels/themes.yaml` (`themegraph labels` must report no problems).
+2. Rerun both topic modes on development data from one commit and data state, and
+   adjudicate both from the packets; `themegraph compare` must report comparable runs
+   and complete adjudication.
+3. Choose `text.topic_mode` by the declared rule above; record the decision and the
+   comparison output here.
+4. Only then `themegraph freeze` and the single holdout run.
+
 ## 12. Open questions
 
 1. Include the adjacency ring (§4.2) in v1? Recommended: yes, for text only.

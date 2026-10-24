@@ -1,5 +1,7 @@
 """The pipeline must recover planted themes and stay quiet on planted noise."""
 
+import json
+
 import pandas as pd
 
 from themegraph import pipeline as P
@@ -119,3 +121,37 @@ def test_synthetic_anchored_topics(cfg, tmp_path):
     assert res["q1"]["unmatched_candidates"] <= 1
     assert dev.track_stats["topic_mode"] == "anchored"
     assert dev.track_stats["share_tracks_persisting_beyond_span"] > 0.5
+    d = dev.diagnostics
+    assert d["candidates"] >= 1 and d["step_cosine_median"] > 0.5
+    assert 0 <= d["unassigned_share_median"] <= 1
+
+
+def test_window_vs_anchored_comparison_is_checked_for_comparability(cfg, tmp_path):
+    from themegraph.eval import adjudication as A
+    from themegraph.eval.compare import compare, render
+
+    base = S.demo_config(cfg)
+    u = S.synthetic_universe()
+    prices, docs = S.synthetic_prices(u), S.synthetic_documents(u)
+    inputs = {**P.input_bindings(prices, docs, observed=False), "vintages": {}}
+    runs = {}
+    for mode in ("window", "anchored"):
+        c = base.model_copy(update={"text": base.text.model_copy(update={"topic_mode": mode})})
+        ctx = P.build(prices, docs, c, u, HashingEmbedder(1024), tmp_path / "c", "dev",
+                      log=lambda *a: None)
+        res = P.evaluate(ctx, S.synthetic_labels())
+        runs[mode] = tmp_path / mode
+        P.save(ctx, res, runs[mode], {**inputs, "config_overrides": {"text.topic_mode": mode}})
+        A.write_worksheet(runs[mode])
+        packet = (runs[mode] / A.PACKET).read_text()
+        assert "Keywords:" in packet and "return" not in packet.lower()
+    out = compare(runs["window"], runs["anchored"])
+    assert out["comparable"], out["problems"]
+    assert not out["adjudication_complete"]  # nothing reviewed yet: no conclusion
+    assert {"window", "anchored"} <= set(out["table"].columns)
+    assert "Adjudication incomplete" in render(out)
+    # Different inputs are refused.
+    m = json.loads((runs["anchored"] / "manifest.json").read_text())
+    m["inputs"]["documents"] = "other"
+    (runs["anchored"] / "manifest.json").write_text(json.dumps(m))
+    assert compare(runs["window"], runs["anchored"])["problems"] == ["inputs.documents differ"]

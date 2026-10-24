@@ -98,9 +98,7 @@ def predict(prices: pd.DataFrame, docs: pd.DataFrame, cfg: PipelineConfig,
     prices_o, basis_p = observed(prices, cut)
     docs_o, basis_d = observed(docs, cut)
     spec = spec if spec is not None else spec_hashes()
-    inputs = {"prices": P.frame_sha256(prices_o.drop(columns=["first_seen_at", "vintage"],
-                                                     errors="ignore")),
-              "documents": P.frame_sha256(docs_o[["doc_id", "text"]]) if len(docs_o) else None}
+    inputs = P.input_bindings(prices_o, docs_o, observed=True)
     log_path = Path(out_dir) / PREDICTIONS
     previous = [r for r in _read(log_path) if r["cutoff"] == str(cutoff)
                 and r["spec_sha256"] == _sha(spec)]
@@ -152,7 +150,8 @@ def predict(prices: pd.DataFrame, docs: pd.DataFrame, cfg: PipelineConfig,
 
 def evaluate_outcomes(out_dir: Path, closes: pd.DataFrame, benchmark: str,
                       horizons: list[int], data_end: pd.Timestamp,
-                      delisted: dict | None = None) -> list[dict]:
+                      delisted: dict | None = None,
+                      successors: dict | None = None) -> list[dict]:
     """Append outcomes for (prediction, horizon) pairs whose horizon has elapsed and
     that have no outcome yet. Predictions are read, never modified."""
     out_dir = Path(out_dir)
@@ -165,13 +164,14 @@ def evaluate_outcomes(out_dir: Path, closes: pd.DataFrame, benchmark: str,
         for h in horizons:
             if (p["prediction_id"], h) in done:
                 continue
-            b = holding_return(closes, p["issuers"], t, h, data_end, delisted)
+            b = holding_return(closes, p["issuers"], t, h, data_end, delisted, successors)
             if b["status"] == "incomplete_horizon":
                 continue  # not yet knowable; evaluated on a later call
             bench = holding_return(closes, [benchmark], t, h, data_end)
             new.append({"prediction_id": p["prediction_id"], "h": h, "status": b["status"],
                         "entry": str(b["entry"]), "exit": str(b["exit"]),
-                        "basket": b["value"], "benchmark": bench["value"],
+                        "basket": b["value"], "worst_case": b["worst_case"],
+                        "benchmark": bench["value"],
                         "excess_vs_benchmark": b["value"] - bench["value"],
                         "constituents": b["statuses"],
                         "evaluated_at": dt.datetime.now(dt.UTC).isoformat()})
