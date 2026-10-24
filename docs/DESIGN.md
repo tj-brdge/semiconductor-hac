@@ -445,7 +445,7 @@ Pushed back / deferred:
   can come from one issuer writing more. Three rule changes, made on development
   data, logged here before re-running:
   1. *Full history*: no flag until the whole 24-snapshot new-high lookback lies
-     after the text warm-up (first possible flag about 2013-01 for 2010 data).
+     after the text warm-up (first possible flag about 2013-03 for data starting 2010-01).
   2. *Lineage*: a split-off track inherits its ancestors' share from before it was
      born for the new-high test. Risk accepted: a real theme that splits off a
      larger, louder topic is suppressed until it outgrows the parent's level.
