@@ -265,6 +265,7 @@ def test_housekeeping_filter_drops_corporate_boilerplate_keeps_themes():
         "We test goodwill for impairment when the carrying value may exceed fair value",
         "Awards vest on a change in control and severance is paid on termination",
         "If we do not complete our initial business combination, the trust account is returned",
+        "Indicate by check mark whether the registrant files annual reports under Form 20-F",
     ]
     keep = [
         "16 nanometer revenue grew as customers moved to the new node and capacity filled",
