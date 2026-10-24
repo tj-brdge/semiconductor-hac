@@ -217,7 +217,8 @@ def prepare_passages(docs: pd.DataFrame, cfg: PipelineConfig, embedder: Embedder
     p = passages_from_documents(docs, cfg.text.chunk_words, cfg.text.min_chunk_words)
     if cfg.text.exact_dup_drop:
         p = drop_exact_duplicates(p)
-    sub = substantive_mask(p, cfg.text.max_numeric_share, cfg.text.drop_financial_statements)
+    sub = substantive_mask(p, cfg.text.max_numeric_share, cfg.text.drop_financial_statements,
+                           cfg.text.drop_corporate_housekeeping)
     p = p.loc[sub].sort_values(["available_at", "passage_id"]).reset_index(drop=True)
     cache = EmbeddingCache(cache_dir / "embeddings", embedder)
     V = cache.get(p["text_hash"].tolist(), p["text"].tolist())

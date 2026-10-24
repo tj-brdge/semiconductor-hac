@@ -40,6 +40,9 @@ text:
   # numeric and are kept (0.15 dropped them).
   max_numeric_share: 0.35
   drop_financial_statements: true
+  # Buybacks, debt, tax, accounting standards, governance, generic IP risk: real but
+  # not themes; they were the largest clusters in the 2016 development window.
+  drop_corporate_housekeeping: true
   # Before clustering, centre each window's vectors within their genre (call remarks,
   # call Q&A, each filing section) so clusters form around subject matter rather than
   # register. remove_top_components > 0 also strips the window's strongest shared

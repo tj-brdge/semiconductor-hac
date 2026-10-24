@@ -405,6 +405,20 @@ Pushed back / deferred:
   into dependence groups before sign-flip tests. With few groups the results are
   descriptive; no stronger inference is claimed.
 
+### Calibration log (development data only)
+
+- **2026-10-24, window 2016-06-30, distances 0.50 / 0.60 / 0.70.** 0.50 fragments
+  (59% of passages clustered); 0.70 merges distinct subjects into a 39-issuer
+  "semiconductor manufacturing demand" topic; 0.60 separates real subjects (the
+  16/14nm node ramp: UMC, TSM, ONTO, XLNX, LRCX, SNPS; cloud: ORCL, MSFT, SMCI, HPE;
+  networking: ANET, CIEN, CSCO). `cluster_distance` stays 0.60.
+- The largest clusters at every distance were corporate housekeeping (buybacks,
+  tax, senior notes, ASU/FASB, compensation committee, board meetings from 6-K
+  annual-meeting documents, generic IP risk). A housekeeping phrase filter
+  (two distinct hits from a specific multi-word list) now drops these before
+  embedding; fixtures check that thematic text, including investment tax credits
+  for fabs and export controls, is kept.
+
 ## 12. Open questions
 
 1. Include the adjacency ring (§4.2) in v1? Recommended: yes, for text only.

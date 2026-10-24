@@ -94,11 +94,36 @@ STATEMENT_PHRASES = re.compile(
     r"forward[- ]looking statements|safe harbor", re.I)
 
 
+# Corporate housekeeping: capital returns, debt, tax, accounting standards,
+# governance and generic legal/IP risk. Real subjects, but not investment themes;
+# in the first development windows they formed the largest clusters (buybacks,
+# tax, senior notes, ASU/FASB, compensation committee, board meetings). Phrases are
+# multi-word and specific so thematic text (e.g. "investment tax credit" for fabs,
+# export controls) is not caught; two distinct hits are needed to drop a passage.
+HOUSEKEEPING_PHRASES = re.compile(
+    r"\b(share repurchases?|repurchase program|stock repurchase|repurchased|"
+    r"treasury stock|common stock|cash dividends?|senior (?:unsecured )?notes|"
+    r"credit facility|revolving credit|credit agreement|indenture|commercial paper|"
+    r"credit ratings?|effective tax rate|deferred tax|valuation allowance|"
+    r"income tax(?:es)?|tax jurisdictions|unrecognized tax benefits|"
+    r"accounting standards? update|asu \d{4}|fasb|recently (?:issued|adopted) accounting|"
+    r"compensation committee|executive compensation|board of directors|"
+    r"annual general meeting|general meeting of shareholders|proxy|director nominees?|"
+    r"restricted stock|stock options|intellectual property rights|"
+    r"infringement claims?|patent infringement)\b", re.I)
+
+
+def housekeeping_hits(text: str) -> int:
+    return len({m.lower() for m in HOUSEKEEPING_PHRASES.findall(text)})
+
+
 def substantive_mask(passages: pd.DataFrame, max_numeric_share: float,
-                     drop_financial_statements: bool) -> pd.Series:
-    """False for passages that are mostly numbers (tables) or financial-statement and
-    safe-harbour boilerplate. Those cluster by wording shared across every issuer
-    rather than by subject, so they crowd out themes."""
+                     drop_financial_statements: bool,
+                     drop_housekeeping: bool = False) -> pd.Series:
+    """False for passages that are mostly numbers (tables), financial-statement or
+    safe-harbour boilerplate, or (optionally) corporate housekeeping. Those cluster
+    by wording shared across every issuer rather than by theme, so they crowd out
+    themes."""
     def numeric_share(text: str) -> float:
         toks = text.split()
         return sum(bool(NUMERIC_TOKEN.match(t)) for t in toks) / max(len(toks), 1)
@@ -106,4 +131,6 @@ def substantive_mask(passages: pd.DataFrame, max_numeric_share: float,
     keep = passages["text"].map(numeric_share) <= max_numeric_share
     if drop_financial_statements:
         keep &= passages["text"].map(lambda s: len(STATEMENT_PHRASES.findall(s)) < 2)
+    if drop_housekeeping:
+        keep &= passages["text"].map(housekeeping_hits) < 2
     return keep
