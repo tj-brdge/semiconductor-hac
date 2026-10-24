@@ -85,6 +85,7 @@ class Candidates(_Strict):
     new_high_lookback_snapshots: int = 24
     max_issuer_share: float = 0.5
     min_issuers: int = 3
+    min_issuer_growth: int = 1
     min_exposure: float = 0.05
     market_alignment_window: int = 63
     market_alignment_baseline_snapshots: int = 6

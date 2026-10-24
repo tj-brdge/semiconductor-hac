@@ -83,6 +83,10 @@ candidates:
   # in this many snapshots before the growth began.
   new_high_lookback_snapshots: 24
   min_issuers: 3
+  # Spread: issuers in the topic must rise by this many from the start of growth to
+  # the flag. A split-off topic is judged against its parent's earlier share, and no
+  # flag is raised until the whole new-high lookback lies after the text warm-up.
+  min_issuer_growth: 1
   # Generic topics: skip if more than this share of issuers with text already discussed
   # it when its growth began (applies only with >= 2 x min_issuers issuers with text).
   max_issuer_share: 0.5

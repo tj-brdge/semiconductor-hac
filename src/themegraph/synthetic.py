@@ -83,6 +83,8 @@ def demo_config(cfg: PipelineConfig) -> PipelineConfig:
         "text": cfg.text.model_copy(update={"cluster_distance": 0.75, "window_days": 120}),
         # Planted themes ramp within months and the demo spans five years, so the
         # demo keeps short horizons; the research config uses 1-3 years.
+        # The demo's development period is 3.5 years, so a year of new-high history.
+        "candidates": cfg.candidates.model_copy(update={"new_high_lookback_snapshots": 12}),
         "evaluation": cfg.evaluation.model_copy(update={
             "null_draws": 200, "forward_sessions": [63, 126],
             "label_match_window_days": 540}),

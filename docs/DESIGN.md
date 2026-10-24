@@ -436,6 +436,26 @@ Pushed back / deferred:
   opex and gross-margin topics recur in both windows and are left to the
   new-high rule.
 
+- **Full development run, 2010-2021 (first run after calibration).** Tracking
+  churned: 15,376 tracks, ~107 births per monthly window, median life 2 windows
+  against a 7-window passage span, 6.9% of tracks outliving the span. Candidates
+  were mostly three-issuer supply-chain fragments ("suppliers, manufacturing,
+  capacity, demand"), several flagged in 2010. Diagnosis: a fresh or split-off
+  track has no history, so the new-high test passes trivially, and share growth
+  can come from one issuer writing more. Three rule changes, made on development
+  data, logged here before re-running:
+  1. *Full history*: no flag until the whole 24-snapshot new-high lookback lies
+     after the text warm-up (first possible flag about 2013-01 for 2010 data).
+  2. *Lineage*: a split-off track inherits its ancestors' share from before it was
+     born for the new-high test. Risk accepted: a real theme that splits off a
+     larger, louder topic is suppressed until it outgrows the parent's level.
+  3. *Spread*: issuers in the topic must rise by `min_issuer_growth` (1) between the
+     start of growth and the flag.
+  Plausible flags in the pre-change run, to check they survive: China LTE /
+  TD-SCDMA (MRVL, QRVO, SWKS, 2011-10) and foundry capex (LRCX, TSM, UMC; AMAT,
+  ASML, KLAC, 2011). The China LTE flag falls before the new earliest flag date,
+  so it will not survive rule 1 on this data; that is the cost of the warm-up.
+
 ## 12. Open questions
 
 1. Include the adjacency ring (§4.2) in v1? Recommended: yes, for text only.

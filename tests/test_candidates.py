@@ -4,34 +4,58 @@ import pandas as pd
 from themegraph.graph.candidates import detect, midrank_pct, write_ledger
 
 
-def _exposure(shares: dict[int, list[float]], snaps, issuers=("A", "B", "C")):
+def _track(tid, snaps, issuers_at, shares):
+    """One track: k issuers at each snapshot sharing the topic's passages."""
     rows = []
-    for tid, series in shares.items():
-        for t, sh in zip(snaps, series, strict=True):
-            for s in issuers:
-                rows.append({"t": t, "track_id": tid, "symbol": s,
-                             "n_passages": int(round(sh * 100)), "exposure": 0.2})
+    for t, k, sh in zip(snaps, issuers_at, shares, strict=True):
+        for j in range(k):
+            rows.append({"t": t, "track_id": tid, "symbol": f"S{j}",
+                         "n_passages": max(1, int(round(sh * 100 / k))), "exposure": 0.2})
     return pd.DataFrame(rows)
 
 
+SNAPS = list(pd.date_range("2016-01-31", periods=60, freq="ME", tz="UTC"))
+FLAT = 36  # quiet history long enough to fill the new-high lookback
+GROW_K = [3] * FLAT + [min(8, 3 + i // 3) for i in range(60 - FLAT)]
+GROW_SH = [0.02] * FLAT + list(np.linspace(0.02, 0.30, 60 - FLAT))
+TOTALS = pd.Series(100, index=SNAPS)
+
+
 def test_growing_topic_flagged_sawtooth_not(cfg):
-    snaps = list(pd.date_range("2020-01-31", periods=18, freq="ME", tz="UTC"))
-    grow = list(np.linspace(0.02, 0.30, 18))
-    saw = [0.10, 0.14, 0.18] * 6
-    ex = _exposure({1: grow, 2: saw}, snaps)
-    totals = pd.Series(100, index=snaps)
-    led = detect(ex, snaps, cfg.candidates, {}, {}, window_totals=totals)
+    saw = [0.10, 0.14, 0.18] * 20
+    ex = pd.concat([_track(1, SNAPS, GROW_K, GROW_SH),
+                    _track(2, SNAPS, [3, 4, 5] * 20, saw)])
+    led = detect(ex, SNAPS, cfg.candidates, {}, {}, window_totals=TOTALS)
     assert set(led["track_id"]) == {1}
-    assert led["t_first_flag"].iloc[0] == snaps[8]
+    assert led["t_first_flag"].iloc[0] > SNAPS[FLAT]
 
 
-def test_warmup_suppresses_early_flags(cfg):
-    snaps = list(pd.date_range("2020-01-31", periods=18, freq="ME", tz="UTC"))
-    ex = _exposure({1: list(np.linspace(0.02, 0.30, 18))}, snaps)
-    totals = pd.Series(100, index=snaps)
-    led = detect(ex, snaps, cfg.candidates, {}, {}, window_totals=totals,
-                 warmup_until=snaps[5])
-    assert led["t"].min() > snaps[8]
+def test_no_flag_without_full_lookback_history(cfg):
+    early = list(np.linspace(0.02, 0.30, 20)) + [0.30] * 40
+    k = [min(8, 3 + i // 3) for i in range(20)] + [8] * 40
+    led = detect(_track(1, SNAPS, k, early), SNAPS, cfg.candidates, {}, {},
+                 window_totals=TOTALS)
+    assert led.empty  # grew before 24 snapshots of history existed
+    led = detect(_track(1, SNAPS, GROW_K, GROW_SH), SNAPS, cfg.candidates, {}, {},
+                 window_totals=TOTALS, warmup_until=SNAPS[30])
+    assert led.empty  # lookback would reach into the warm-up
+
+
+def test_spread_required(cfg):
+    led = detect(_track(1, SNAPS, [4] * 60, GROW_SH), SNAPS, cfg.candidates, {}, {},
+                 window_totals=TOTALS)
+    assert led.empty  # share grew but no new issuers joined
+
+
+def test_split_fragment_judged_against_parent_history(cfg):
+    parent = _track(1, SNAPS, [8] * 60, [0.40] * 60)
+    # The child appears at FLAT, split from the parent, and grows to 0.30 < 0.40.
+    child = _track(2, SNAPS[FLAT - 9:], GROW_K[FLAT - 9:], GROW_SH[FLAT - 9:])
+    ex = pd.concat([parent, child])
+    assert set(detect(ex, SNAPS, cfg.candidates, {}, {}, window_totals=TOTALS)["track_id"]) \
+        == {2}
+    assert detect(ex, SNAPS, cfg.candidates, {}, {}, window_totals=TOTALS,
+                  parents={2: 1}).empty
 
 
 def test_midrank_and_ledger_hash_stable(tmp_path):
@@ -45,11 +69,9 @@ def test_midrank_and_ledger_hash_stable(tmp_path):
 
 
 def test_recurring_topic_not_flagged_emerging_one_is(cfg):
-    snaps = list(pd.date_range("2018-01-31", periods=48, freq="ME", tz="UTC"))
-    recurring = [0.30] * 20 + list(np.linspace(0.10, 0.30, 28))  # back to an old level
-    emerging = [0.02] * 20 + list(np.linspace(0.02, 0.30, 28))
-    ex = _exposure({1: recurring, 2: emerging}, snaps)
-    led = detect(ex, snaps, cfg.candidates, {}, {}, window_totals=pd.Series(100, index=snaps))
+    recurring = [0.30] * FLAT + list(np.linspace(0.10, 0.30, 60 - FLAT))  # old level
+    ex = pd.concat([_track(1, SNAPS, GROW_K, recurring), _track(2, SNAPS, GROW_K, GROW_SH)])
+    led = detect(ex, SNAPS, cfg.candidates, {}, {}, window_totals=TOTALS)
     assert set(led["track_id"]) == {2}
 
 
@@ -63,26 +85,25 @@ def _breadth(snaps, issuers_at, shares):
 
 
 def test_generic_means_broad_before_growth_not_broad_at_flag(cfg):
-    snaps = list(pd.date_range("2018-01-31", periods=48, freq="ME", tz="UTC"))
+    snaps, totals = SNAPS, TOTALS
     active = pd.Series(20, index=snaps)
-    totals = pd.Series(100, index=snaps)
-    # Spreads from 2 to all 20 issuers within three months (AI in 2023): emerging.
-    k = [1] * 20 + [min(20, 2 + 6 * i) for i in range(28)]
-    sh = [0.0] * 20 + [min(0.3, 0.02 + 0.03 * i) for i in range(28)]
-    fast = _breadth(snaps, k, sh).query("n_passages > 0")
-    fast = fast.loc[fast["t"] >= snaps[20]]
+    # Spreads from 2 to all 20 issuers within months (AI in 2023): emerging.
+    k = [1] * FLAT + [min(20, 2 + 3 * i) for i in range(60 - FLAT)]
+    sh = [0.0] * FLAT + [min(0.3, 0.02 + 0.02 * i) for i in range(60 - FLAT)]
+    fast = _breadth(snaps, k, sh)
+    fast = fast.loc[fast["t"] >= snaps[FLAT]]
     assert not detect(fast, snaps, cfg.candidates, {}, {}, window_totals=totals,
                       active_issuers=active).empty
     # Discussed by 15 of 20 issuers throughout, share drifting up: generic.
-    always = _breadth(snaps, [15] * 48, [0.02] * 20 + list(np.linspace(0.02, 0.3, 28)))
+    always = _breadth(snaps, [15] * 60, GROW_SH)
     assert detect(always, snaps, cfg.candidates, {}, {}, window_totals=totals,
                   active_issuers=active).empty
 
 
 def test_thin_coverage_does_not_make_detection_impossible(cfg):
-    snaps = list(pd.date_range("2018-01-31", periods=48, freq="ME", tz="UTC"))
-    k = [1] * 20 + [min(4, 1 + i // 6) for i in range(28)]  # up to 4 of 5 issuers
-    sh = [0.01] * 20 + list(np.linspace(0.02, 0.3, 28))
+    snaps = SNAPS
+    k = [1] * FLAT + [min(4, 1 + i // 6) for i in range(60 - FLAT)]  # up to 4 of 5 issuers
+    sh = [0.01] * FLAT + list(np.linspace(0.02, 0.3, 60 - FLAT))
     led = detect(_breadth(snaps, k, sh), snaps, cfg.candidates, {}, {},
                  window_totals=pd.Series(100, index=snaps),
                  active_issuers=pd.Series(5, index=snaps))
