@@ -16,6 +16,7 @@ FILLER = {
     "august", "september", "october", "november", "december", "million", "billion",
     "percent", "net", "income", "gaap", "non", "operations", "results", "company",
     "business", "products", "customers", "adversely", "affect", "sequentially",
+    "inaudible", "unintelligible", "crosstalk",
 }
 
 

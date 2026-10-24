@@ -456,6 +456,16 @@ Pushed back / deferred:
   ASML, KLAC, 2011). The China LTE flag falls before the new earliest flag date,
   so it will not survive rule 1 on this data; that is the cost of the warm-up.
 
+- **Rerun with the three rules.** Earliest flag 2012-09-30 (filings before 2010
+  fill the warm-up, so the lookback limit binds rather than the warm-up). Leading
+  candidates are now subjects: FinFET / node transitions (TSM, UMC, XLNX, KLAC,
+  LRCX, CDNS; split across four tracks), RF filters and LTE band content (AVGO,
+  QRVO, SWKS), etch intensity (AMAT, LRCX, CAMT), Windows on ARM (INTC, MSFT,
+  NVDA). Residual noise: 20-F/6-K cover-page wording (registrant, Securities
+  Exchange Act), now filtered; "inaudible" transcript markers dropped from
+  keywords. The node theme appearing as four tracks is the tracking churn that
+  the stable-topic upgrade is meant to fix.
+
 ## 12. Open questions
 
 1. Include the adjacency ring (§4.2) in v1? Recommended: yes, for text only.
