@@ -25,14 +25,15 @@ from .config import CONFIG_DIR, PipelineConfig, UniverseConfig, file_sha256
 from .data.pit import snapshot_ts
 from .eval.comovement import comovement_test, summarise_percentiles
 from .eval.detection import detection_metrics, match_candidates
-from .eval.diagnostics import topic_diagnostics
+from .eval.diagnostics import coverage_samples, topic_diagnostics
 from .eval.labels import LabelFile
-from .eval.returns import returns_test
+from .eval.returns import execution_context, returns_test
 from .graph.candidates import detect, write_ledger
 from .graph.layers import matrix_edges, text_affinity
 from .market.hac import market_snapshot
 from .market.macro import exposure_similarity, macro_exposures, monthly_returns
 from .market.returns import calendar_returns, price_panel
+from .provenance import run_provenance
 from .text.anchored import anchored_windows
 from .text.cluster import ClusterCache, cluster_subset, cluster_window, window_mask
 from .text.embed import Embedder, EmbeddingCache
@@ -75,6 +76,7 @@ class RunContext:
     anchor_calibration: pd.DataFrame | None = None  # anchored: claimed share by threshold
     timings: dict = field(default_factory=dict)  # seconds per stage
     diagnostics: dict = field(default_factory=dict)  # eval/diagnostics.py
+    coverage_samples: str = ""  # text-only reading sample (coverage_samples.md)
     embedder_id: str = ""
     _aff_cache: dict = field(default_factory=dict)
 
@@ -249,6 +251,9 @@ def build(prices: pd.DataFrame, docs: pd.DataFrame, cfg: PipelineConfig,
         clock = time.perf_counter()
         ctx.diagnostics = topic_diagnostics(ctx.windows, ctx.assignments, p, V, span,
                                             ctx.ledger)
+        ctx.coverage_samples = coverage_samples(ctx.windows, ctx.assignments, p,
+                                                cfg.text.window_days,
+                                                seed=cfg.evaluation.seed)
         ctx.timings["diagnostics_s"] = round(time.perf_counter() - clock, 1)
     return ctx
 
@@ -431,11 +436,12 @@ def evaluate(ctx: RunContext, labels: LabelFile) -> dict:
     como = comovement_test(firsts, ctx.affinity_after, ev.forward_sessions, segs,
                            ev.null_draws, ev.seed) if len(firsts) else pd.DataFrame()
     core = {s for s, r in roles(ctx.universe).items() if r == "core"}
-    delisted = {i.symbol: i.delisted for i in ctx.universe.issuers if i.delisted}
+    xc = execution_context(ctx.closes, ctx.universe, cfg.market.benchmark) if len(firsts) \
+        else {}
     rt = returns_test(firsts, ctx.closes, core, cfg.market.sector_benchmark,
                       ev.forward_sessions, segs, ev.null_draws, ev.seed, ctx.end,
-                      delisted, successors={i.symbol: i.successor for i in ctx.universe.issuers
-                                            if i.successor}) if len(firsts) else pd.DataFrame()
+                      xc["delisted"], successors=xc["successors"], calendar=xc["calendar"],
+                      venues=xc["venues"]) if len(firsts) else pd.DataFrame()
     q2 = {
         "comovement": summarise_percentiles(como, ev.null_draws, ev.seed) if len(como) else {},
         "returns": returns_summary(rt, firsts, ev.null_draws, ev.seed),
@@ -516,6 +522,8 @@ def save(ctx: RunContext, results: dict | None, out_dir: Path, inputs: dict) -> 
         df = getattr(ctx, name)
         if df is not None and len(df):
             df.to_parquet(out_dir / f"{name}.parquet", index=False)
+    if ctx.coverage_samples:
+        (out_dir / "coverage_samples.md").write_text(ctx.coverage_samples)
     if ctx.explanations is not None and len(ctx.explanations):
         ctx.explanations.assign(t=ctx.explanations["t"].astype(str)).to_json(
             out_dir / "explanations.json", orient="records", indent=1)
@@ -538,6 +546,7 @@ def save(ctx: RunContext, results: dict | None, out_dir: Path, inputs: dict) -> 
         "text_tracking": ctx.track_stats,
         "timings": ctx.timings,
         "diagnostics": ctx.diagnostics,
+        "provenance": run_provenance(ctx.cfg),
     }
     if results is not None:
         for name in ("matches", "comovement", "returns"):

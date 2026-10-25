@@ -123,3 +123,38 @@ def duplicate_candidates(ledger: pd.DataFrame | None, cents: pd.DataFrame,
 
 def _r(x) -> float | None:
     return None if x is None or not np.isfinite(x) else round(float(x), 3)
+
+
+def coverage_samples(windows: pd.DataFrame, assign: pd.DataFrame, p: pd.DataFrame,
+                     window_days: int, per_year: int = 8, seed: int = 0,
+                     chars: int = 300) -> str:
+    """Text-only reading sample for judging coverage: for the June window of each year,
+    `per_year` random passages assigned to a topic and `per_year` left unassigned.
+    Shows no candidates, outcomes or market data."""
+    if assign is None or p is None or not len(p) or windows is None or not len(windows):
+        return ""
+    rng = np.random.default_rng(seed)
+    text = p.set_index("passage_id")
+    lines = ["# Coverage samples", "",
+             "Judge whether assigned passages are about business subjects and whether "
+             "unassigned ones are mostly boilerplate. No outcomes are shown.", ""]
+    for _, w in windows.groupby(windows["t"].dt.year):
+        june = w.loc[w["t"].dt.month == 6]
+        t = (june if len(june) else w)["t"].iloc[0]
+        got = assign.loc[assign["t"] == t]
+        lab = dict(zip(got["passage_id"], got["track_id"], strict=True))
+        lo = t - pd.Timedelta(days=window_days)
+        ids = text.index[(text["available_at"] > lo) & (text["available_at"] <= t)]
+        assigned = [i for i in ids if i in lab]
+        unassigned = [i for i in ids if i not in lab]
+        lines += [f"## {t.date()}  ({len(assigned)} assigned, {len(unassigned)} unassigned)", ""]
+        for name, pool in (("Assigned", assigned), ("Unassigned", unassigned)):
+            lines.append(f"### {name}")
+            for i in rng.choice(pool, min(per_year, len(pool)), replace=False) if pool else []:
+                r = text.loc[i]
+                topic = f" · topic {lab[i]}" if i in lab else ""
+                body = " ".join(str(r["text"]).split())[:chars]
+                lines.append(f"- [{r['symbol']} · {r.get('genre', '')}{topic}] {body}")
+            lines.append("")
+    return "\n".join(lines)
+

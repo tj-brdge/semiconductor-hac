@@ -31,23 +31,64 @@ def _load(run: Path) -> dict:
             "matches": pd.read_parquet(mp) if mp.exists() else pd.DataFrame()}
 
 
+REQUIRED = ("source_sha256", "labels_sha256", "lockfile_sha256", "python", "packages",
+            "effective_config")
+
+
+def _without_mode(cfg: dict) -> dict:
+    c = json.loads(json.dumps(cfg))
+    c.get("text", {}).pop("topic_mode", None)
+    return c
+
+
+def _diff(a, b, path="") -> list[str]:
+    if isinstance(a, dict) and isinstance(b, dict):
+        return [d for k in sorted(set(a) | set(b)) for d in _diff(a.get(k), b.get(k),
+                                                                     f"{path}.{k}" if path else k)]
+    return [] if a == b else [path]
+
+
 def comparability(a: dict, b: dict) -> list[str]:
-    """Reasons the runs are not comparable (empty = comparable)."""
+    """Reasons the runs cannot be compared for method selection (empty = comparable).
+    Missing provenance is a reason, not a pass: rerun with the current code."""
     ma, mb = a["manifest"], b["manifest"]
     out = []
+    for name, m in (("A", ma), ("B", mb)):
+        if m.get("period") != "dev":
+            out.append(f"run {name} is period {m.get('period')!r}: method selection uses "
+                       "development runs only")
+        prov = m.get("provenance")
+        if not prov:
+            out.append(f"run {name} has no provenance (made before it was recorded): rerun it "
+                       "with the current code")
+            continue
+        missing = [k for k in REQUIRED if prov.get(k) in (None, {}, "")]
+        if missing:
+            out.append(f"run {name} provenance lacks {missing}: rerun with the current code")
+        if prov.get("git_dirty"):
+            out.append(f"run {name} was made with uncommitted changes to src/config/labels "
+                       "(commit them and rerun so the source is identifiable)")
+    pa, pb = ma.get("provenance") or {}, mb.get("provenance") or {}
+    if pa and pb:
+        for k, label in (("source_sha256", "source code"), ("labels_sha256", "labels"),
+                         ("lockfile_sha256", "dependency lockfile"), ("python", "Python"),
+                         ("packages", "package versions")):
+            if pa.get(k) != pb.get(k):
+                out.append(f"{label} differ ({k}): run both from one checkout and environment")
+        if pa.get("effective_config") and pb.get("effective_config"):
+            d = _diff(_without_mode(pa["effective_config"]),
+                      _without_mode(pb["effective_config"]))
+            if d:
+                out.append(f"effective configuration differs beyond text.topic_mode: {d[:8]}")
     ia, ib = ma.get("inputs", {}), mb.get("inputs", {})
     for k in ("scheme", "prices", "documents", "vintages", "input_vintage_upto"):
-        if ia.get(k) != ib.get(k):
+        if k not in ia or k not in ib:
+            out.append(f"inputs.{k} missing from a manifest: rerun with the current code")
+        elif ia.get(k) != ib.get(k):
             out.append(f"inputs.{k} differ")
-    for k in ("period", "end", "embedder", "snapshots"):
+    for k in ("end", "embedder", "snapshots"):
         if ma.get(k) != mb.get(k):
             out.append(f"{k} differs: {ma.get(k)} vs {mb.get(k)}")
-    if ma.get("config_sha256") != mb.get("config_sha256"):
-        out.append("config files differ (compare with --topic-mode overrides on one config)")
-    oa, ob = ia.get("config_overrides", {}), ib.get("config_overrides", {})
-    extra = {k for k in set(oa) | set(ob) if oa.get(k) != ob.get(k)} - {"text.topic_mode"}
-    if extra:
-        out.append(f"overrides other than text.topic_mode: {sorted(extra)}")
     return out
 
 
@@ -74,8 +115,12 @@ def compare(run_a: Path, run_b: Path) -> dict:
     a, b = _load(run_a), _load(run_b)
     problems = comparability(a, b)
 
+    names = {}
+    for tag, r in (("A", a), ("B", b)):
+        names[id(r)] = f"{tag}: {r['manifest'].get('text_tracking', {}).get('topic_mode', '?')}"
+
     def mode(r):
-        return r["manifest"].get("text_tracking", {}).get("topic_mode", "window")
+        return names[id(r)]
 
     rows = []
 

@@ -26,7 +26,7 @@ and inspected), **deferred** (not built).
 | Market and macro layers | tested; live-validated in the first development run |
 | Text layer as of the first development run (2010–2021, `voyage-finance-2`) | live-validated, and found wanting: 190 candidates (16 a year), topics dominated by call small talk and statement boilerplate, ~14,600 topic IDs over 144 windows |
 | Revised text layer, window topics (filters, genre centring, overlap tracking, new-high, history, lineage and spread rules) | tested; **live-validated on 2010–2021**: 145 flagged months, leading candidates are real subjects (FinFET, RF/LTE, etch, memory) but topics are re-cut monthly (median life 2 windows) |
-| Anchored topics (`--topic-mode anchored`: yearly discovery, monthly assignment, new topics from unclaimed text) | tested; one live run **before** the latest fixes (57 flagged months, median life 6 windows, ~30% of passages assigned). Refit matching, lineage, pre-birth history and diagnostics changed since: rerun needed |
+| Anchored topics (`--topic-mode anchored`: yearly discovery, monthly assignment, new topics from unclaimed text) | tested; live runs on 2010–2021 at assign 0.45 (25 candidates, 69% of passages unassigned). Threshold provisionally 0.35 from estimates; **confirmation run pending** (criteria in DESIGN.md) |
 | Window vs anchored comparison (`themegraph compare`, declared criteria in DESIGN.md) | tested on synthetic data; **real comparison pending** (needs label approval, both runs, adjudication) |
 | Evaluation: detection, co-movement, buy-and-hold returns, dependence-grouped inference, adjudication | tested |
 | Holdout lifecycle (attempt logged before outcomes, one clean attempt, verification) | tested; the real holdout has **not** been run |
@@ -115,8 +115,10 @@ themegraph adjudicate runs/cmp-anchored    # adjudication_packet.md (text only)
 themegraph compare runs/cmp-window runs/cmp-anchored
 ```
 
-Run both from the same commit, config and data (`compare` refuses otherwise), and
-adjudicate before opening either `report.html`. The decision rule is fixed in
+Run both from the same clean commit, environment, config and data (`compare` refuses
+otherwise, including runs without recorded provenance), and adjudicate before opening
+either `report.html`. Each run also writes `coverage_samples.md`, a text-only sample
+of assigned and unassigned passages used to confirm the anchored threshold. The decision rule is fixed in
 DESIGN.md ("Window vs anchored comparison").
 
 ### Conventions worth knowing
@@ -128,6 +130,10 @@ DESIGN.md ("Window vs anchored comparison").
   conversion into the acquirer on the terms in `universe.yaml`); otherwise the basket
   is `unvalued_position` with no return, only a worst-case bound. Delistings without
   recorded terms are valued at the last close and counted as an assumption.
+- **Trading calendar:** horizons count US (benchmark) sessions; each security trades
+  on its own exchange's sessions, so a foreign holiday delays its entry or brings
+  forward its exit rather than voiding it, and a US holiday never becomes an entry
+  date. Missing quotes on open days are not filled.
 - **Vintages:** reads combine every vintage up to the requested one (latest version
   of each record), so partial batches never hide data; `first_seen_at` is the first
   vintage holding a record's exact content, so revisions are never backdated.

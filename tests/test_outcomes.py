@@ -2,6 +2,7 @@
 dependence groups, and snapshot availability."""
 
 import datetime as dt
+import json
 
 import numpy as np
 import pandas as pd
@@ -134,3 +135,108 @@ def test_acquired_member_converts_into_acquirer_shares():
     # Without recorded terms: last close held as cash, flagged as an assumption.
     b = holding_return(panel, ["A", "E"], t, 25, panel.index[-1], {"E": panel.index[10].date()})
     assert b["statuses"]["E"] == "delisted" and b["n_delisted_assumed"] == 1
+
+
+# -- horizon calendar and venues ---------------------------------------------------
+
+def _sessions(start, end, closed=()):
+    d = pd.bdate_range(start, end)
+    d = d[~d.strftime("%Y-%m-%d").isin(closed)]
+    return d.tz_localize("UTC") + pd.Timedelta(hours=22)
+
+
+US = _sessions("2019-08-26", "2019-10-31", closed=("2019-09-02",))          # Labor Day
+KR = _sessions("2019-08-26", "2019-10-31", closed=("2019-09-12", "2019-09-13"))  # Chuseok
+ALL = US.union(KR)
+VENUES = {"A": "USD", "B": "USD", "C": "USD", "SPY": "USD", "K": "KRW", "K2": "KRW"}
+
+
+def _mixed(prices=None):
+    panel = pd.DataFrame(index=ALL)
+    for s in ("A", "B", "C", "SPY"):
+        panel[s] = pd.Series(np.linspace(100, 120, len(US)), index=US)
+    for s in ("K", "K2"):
+        panel[s] = pd.Series(np.linspace(50, 60, len(KR)), index=KR)
+    return panel
+
+
+def test_us_basket_enters_on_the_next_us_session_not_a_foreign_only_day():
+    panel = _mixed()
+    t = pd.Timestamp("2019-08-31 23:59:59", tz="UTC")
+    old = holding_return(panel, ["A", "B", "C"], t, 5, ALL[-1])  # union calendar
+    assert old["status"] == "insufficient_coverage"  # the reported failure
+    b = holding_return(panel, ["A", "B", "C"], t, 5, ALL[-1], calendar=US, venues=VENUES)
+    assert b["entry"].date() == dt.date(2019, 9, 3) and b["status"] == "ok"
+    assert b["exit"] == US[US.get_loc(b["entry"]) + 5]  # h counts US sessions only
+    assert np.isclose(b["value"], panel.at[b["exit"], "A"] / panel.at[b["entry"], "A"] - 1)
+
+
+def test_foreign_member_closed_at_entry_or_exit_uses_its_own_sessions():
+    panel = _mixed()
+    t = pd.Timestamp("2019-09-11 23:59:59", tz="UTC")  # entry 09-12: Korea closed
+    b = holding_return(panel, ["A", "K"], t, 1, ALL[-1], calendar=US, venues=VENUES)
+    assert b["entry"].date() == dt.date(2019, 9, 12) and b["exit"].date() == dt.date(2019, 9, 13)
+    assert b["statuses"]["K"] == "no_entry"  # no Korean session inside a 1-session hold
+    b = holding_return(panel, ["A", "K"], t, 3, ALL[-1], calendar=US, venues=VENUES)
+    k0 = panel.at[KR[KR > b["entry"]][0], "K"]  # bought at the next Korean session (09-16)
+    assert b["statuses"]["K"] == "complete" and b["status"] == "ok"
+    assert np.isclose(b["value"], np.mean([
+        panel.at[b["exit"], "A"] / panel.at[b["entry"], "A"] - 1,
+        panel.at[b["exit"], "K"] / k0 - 1]))
+    # Exit on a Korean holiday: sold at Korea's last session before it.
+    t = pd.Timestamp("2019-09-05 23:59:59", tz="UTC")
+    b = holding_return(panel, ["K"], t, 5, ALL[-1], calendar=US, venues=VENUES)
+    assert b["exit"].date() == dt.date(2019, 9, 13) and b["statuses"]["K"] == "complete"
+    last = KR[KR <= b["exit"]][-1]
+    assert np.isclose(b["value"], panel.at[last, "K"] / panel.at[b["entry"], "K"] - 1)
+
+
+def test_missing_quote_on_an_open_venue_day_is_not_filled():
+    panel = _mixed()
+    t = pd.Timestamp("2019-08-31 23:59:59", tz="UTC")
+    panel.loc[US[US > t][0], "C"] = np.nan  # US open, C has no quote at entry
+    b = holding_return(panel, ["A", "B", "C"], t, 5, ALL[-1], calendar=US, venues=VENUES)
+    assert b["statuses"]["C"] == "no_entry"
+
+
+def test_successor_terms_are_honoured_when_quotes_are_missing():
+    panel = _mixed()
+    t = pd.Timestamp("2019-08-31 23:59:59", tz="UTC")
+    gone = US[US > t][3]
+    panel.loc[gone:, "B"] = np.nan  # B acquired
+    stock = {"B": Successor(symbol="C", shares=1.0, source="t")}
+    exit_ = US[US.get_loc(US[US > t][0]) + 10]
+    b = holding_return(panel, ["A", "B"], t, 10, ALL[-1], {"B": gone.date()}, stock,
+                       calendar=US, venues=VENUES)
+    assert b["statuses"]["B"] == "converted"
+    panel.loc[exit_ - pd.Timedelta(days=2):, "C"] = np.nan  # successor exit quote missing
+    b = holding_return(panel, ["A", "B"], t, 10, ALL[-1], {"B": gone.date()}, stock,
+                       calendar=US, venues=VENUES)
+    assert b["statuses"]["B"] == "converted_stale" and b["status"] == "ok"
+    panel.loc[:, "C"] = np.nan  # no successor price at all: not the old last close
+    b = holding_return(panel, ["A", "B"], t, 10, ALL[-1], {"B": gone.date()}, stock,
+                       calendar=US, venues=VENUES)
+    assert b["statuses"]["B"] == "unvalued" and b["status"] == "unvalued_position"
+    cash = {"B": Successor(symbol="C", cash=130.0, source="t")}  # cash-only: no quote needed
+    b = holding_return(panel, ["A", "B"], t, 10, ALL[-1], {"B": gone.date()}, cash,
+                       calendar=US, venues=VENUES)
+    assert b["statuses"]["B"] == "converted" and b["status"] == "ok"
+    b = holding_return(panel, ["A", "B"], t, 10, ALL[-1], {"B": gone.date()},
+                       calendar=US, venues=VENUES)  # unknown terms stay an assumption
+    assert b["statuses"]["B"] == "delisted" and b["n_delisted_assumed"] == 1
+
+
+def test_forward_outcomes_use_the_horizon_calendar(tmp_path):
+    from themegraph import forward as Fw
+    (tmp_path / Fw.PREDICTIONS).write_text(json.dumps(
+        {"prediction_id": "p1", "snapshot": "2019-08-31 23:59:59+00:00",
+         "issuers": ["A", "B", "C"]}) + "\n")
+    out = Fw.evaluate_outcomes(tmp_path, _mixed(), "SPY", [5], ALL[-1],
+                               calendar=US, venues=VENUES)
+    assert out[0]["status"] == "ok" and out[0]["entry"].startswith("2019-09-03")
+
+
+def test_momentum_ignores_other_venues_closures():
+    from themegraph.eval.returns import trailing_log_return
+    mom = trailing_log_return(_mixed(), ALL[-1], 30, US)
+    assert mom[["A", "K"]].notna().all()
