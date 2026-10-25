@@ -72,6 +72,7 @@ class RunContext:
     explanations: pd.DataFrame | None = None
     topic_history: pd.DataFrame | None = None  # anchored: point-in-time pre-birth shares
     refits: pd.DataFrame | None = None         # anchored: continuity at each refit
+    anchor_calibration: pd.DataFrame | None = None  # anchored: claimed share by threshold
     timings: dict = field(default_factory=dict)  # seconds per stage
     diagnostics: dict = field(default_factory=dict)  # eval/diagnostics.py
     embedder_id: str = ""
@@ -184,6 +185,7 @@ def build(prices: pd.DataFrame, docs: pd.DataFrame, cfg: PipelineConfig,
                 + c.min_consecutive_growth_windows * c.growth_step_snapshots
                 + c.growth_step_snapshots - 1)
             ctx.topic_history, ctx.refits = model.history_frame(), model.refits_frame()
+            ctx.anchor_calibration = model.calibration_frame()
         else:
             windows = cluster_windows(p, V, snaps, cfg, embedder.model_id,
                                       cache_dir / "clusters", log)
@@ -510,7 +512,7 @@ def save(ctx: RunContext, results: dict | None, out_dir: Path, inputs: dict) -> 
     out_dir.mkdir(parents=True, exist_ok=True)
     ctx.ledger_sha256 = write_ledger(ctx.ledger, out_dir)
     for name in ("exposure", "events", "topics", "edges", "windows", "assignments",
-                 "topic_history", "refits"):
+                 "topic_history", "refits", "anchor_calibration"):
         df = getattr(ctx, name)
         if df is not None and len(df):
             df.to_parquet(out_dir / f"{name}.parquet", index=False)

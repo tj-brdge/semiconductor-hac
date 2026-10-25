@@ -201,3 +201,12 @@ def _ids_by_subject_named(windows, p):
             if lab >= 0:
                 out.setdefault(subj[pid], set()).add(int(lab))
     return out
+
+
+def test_calibration_reports_claimed_share_by_threshold():
+    p, V = _corpus()
+    _, model = anchored_windows(p, V, SNAPS, _cfg())
+    c = model.calibration_summary()
+    shares = [c[k] for k in sorted(c) if k.startswith("claimed_at_")]
+    assert len(shares) == 7 and all(a >= b for a, b in zip(shares, shares[1:], strict=False))
+    assert 0 <= c["assigned_median"] <= 1 and "found_in_unclaimed_median" in c

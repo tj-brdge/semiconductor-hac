@@ -101,6 +101,9 @@ def _fit_means(V: np.ndarray, genres: np.ndarray | None) -> tuple[dict, np.ndarr
     return means, pooled
 
 
+CALIBRATION_THRESHOLDS = tuple(round(x, 2) for x in np.arange(0.25, 0.551, 0.05))
+
+
 def match_identities(S: np.ndarray, threshold: float) -> list[tuple[int, int]]:
     """One-to-one matches (row, column) using only pairs with S >= threshold.
 
@@ -136,6 +139,7 @@ class AnchoredTopics:
         self.refits: list[dict] = []
         self.history: list[dict] = []  # point-in-time pre-birth share of new topics
         self.born_at: dict[int, pd.Timestamp] = {}
+        self.calibration: list[dict] = []  # per window: share each threshold would claim
         self.min_exposure = 0.0
         self.history_snapshots = 0
         self._all_snaps: list[pd.Timestamp] = []
@@ -261,6 +265,14 @@ class AnchoredTopics:
             ok = valid & (S[np.arange(len(S)), best] >= self.cfg.anchor_assign_similarity)
             book_ids = np.array(self.book.ids)
             labels[ok] = book_ids[best[ok]]
+            # Calibration: share of the window's usable passages that existing topics
+            # would claim at other thresholds (topics found in unclaimed text add more).
+            top = S[np.arange(len(S)), best][valid]
+            if len(top):
+                self.calibration.append(
+                    {"t": t, "n_valid": int(valid.sum()),
+                     **{f"claimed_at_{x:.2f}": float((top >= x).mean())
+                        for x in CALIBRATION_THRESHOLDS}})
         # Find new: cluster what no topic claims.
         pool = np.flatnonzero(valid & (labels < 0))
         if len(pool) >= self.cfg.min_cluster_passages:
@@ -280,6 +292,10 @@ class AnchoredTopics:
                     len(np.unique(syms[idx])) < self.cfg.min_cluster_issuers:
                 labels[idx] = -1
         wc.labels = labels
+        if self.calibration and self.calibration[-1]["t"] == t and valid.any():
+            row = self.calibration[-1]
+            row["claimed_now"] = row.get(f"claimed_at_{self.cfg.anchor_assign_similarity:.2f}")
+            row["assigned"] = float((labels[valid] >= 0).mean())
         pos = {tid: i for i, tid in enumerate(self.book.ids)}
         members: dict[int, set[str]] = {}
         for tid in np.unique(labels[labels >= 0]):
@@ -358,10 +374,30 @@ class AnchoredTopics:
             if len(r) else None,
             "refit_splits": int(r["splits"].sum()) if len(r) else 0,
             "refit_merges": int(r["merged"].sum()) if len(r) else 0,
+            "calibration": self.calibration_summary(),
         }
 
     def refits_frame(self) -> pd.DataFrame:
         return pd.DataFrame(self.refits)
+
+    def calibration_frame(self) -> pd.DataFrame:
+        return pd.DataFrame(self.calibration)
+
+    def calibration_summary(self) -> dict:
+        """Median over windows: share of usable passages existing topics would claim at
+        each threshold, and the share actually assigned (claimed plus topics found in
+        unclaimed text). An estimate for the claimed part: a different threshold also
+        changes which topics exist, so confirm a chosen value with a rerun."""
+        c = self.calibration_frame()
+        if not len(c):
+            return {}
+        out = {k: round(float(c[k].median()), 3) for k in c if k.startswith("claimed_at_")}
+        if "assigned" in c:
+            out["assigned_median"] = round(float(c["assigned"].median()), 3)
+            if "claimed_now" in c and c["claimed_now"].notna().any():
+                out["found_in_unclaimed_median"] = round(
+                    float((c["assigned"] - c["claimed_now"]).median()), 3)
+        return out
 
     def events_frame(self) -> pd.DataFrame:
         cols = ["track_id", "t", "event", "other"]

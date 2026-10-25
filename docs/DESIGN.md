@@ -608,6 +608,29 @@ Open judgement calls (listed per theme as `review_needed`):
    comparison output here.
 4. Only then `themegraph freeze` and the single holdout run.
 
+### Anchored assignment calibration (rule fixed before rerunning, 2026-10-25)
+
+First like-for-like development runs (same code, data and config, 2026-10-25):
+
+| | window | anchored (assign 0.45) |
+|---|---|---|
+| passages in no topic (median) | 0.42 | 0.69 |
+| topic tightness (median) | 0.63 | 0.65 |
+| month-to-month / first-to-last member cosine | 0.84 / 0.36 | 0.98 / 0.61 |
+| births per window (lasting) | 107 (8.8) | 19 (6.6) |
+| distinct candidates (near-duplicate pairs) | 115 (28) | 25 (0) |
+
+At 0.45 anchored topics leave most text unassigned, so a fair comparison needs the
+assignment threshold calibrated first. Rule, using diagnostics only (never
+candidates, labels or returns): choose `anchor_assign_similarity` from the
+calibration table (`text_tracking.calibration`, `anchor_calibration.parquet`) so that
+the assigned share (existing topics' claim at the threshold plus topics found in
+unclaimed text) is closest to the window mode's clustered share, 0.58, among
+thresholds in steps of 0.05; then confirm with one rerun that the assigned share is
+within 0.05 of 0.58 and tightness is at least the window's 0.63. If tightness falls
+below, take the next higher threshold. The chosen value is recorded here before
+adjudication starts, and both runs are then adjudicated and compared as declared.
+
 ## 12. Open questions
 
 1. Include the adjacency ring (§4.2) in v1? Recommended: yes, for text only.
