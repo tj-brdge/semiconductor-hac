@@ -631,6 +631,17 @@ within 0.05 of 0.58 and tightness is at least the window's 0.63. If tightness fa
 below, take the next higher threshold. The chosen value is recorded here before
 adjudication starts, and both runs are then adjudicated and compared as declared.
 
+Calibration run (assign 0.45, 2026-10-25): existing topics would claim 0.98 / 0.92 /
+0.80 / 0.63 / 0.46 / 0.31 / 0.19 of usable passages at 0.25 ... 0.55; only 0.31 was
+actually assigned at 0.45. The 0.15 gap is the per-window size rule (a topic needs
+min_cluster_passages from min_cluster_issuers in the window): with hundreds of fixed
+topics, many catch only a few passages in a month and are dropped there, which window
+clustering avoids by construction. Estimated assigned share: 0.35 gives 0.54-0.65
+(flat or proportional loss), 0.40 gives 0.42-0.48, 0.30 gives 0.62-0.77. Chosen:
+**0.35** (closest to 0.58; ties go to the higher threshold). To be confirmed by the
+rerun criteria above (assigned within 0.05 of 0.58, tightness >= 0.63; otherwise
+0.40). Recorded before any adjudication.
+
 ## 12. Open questions
 
 1. Include the adjacency ring (§4.2) in v1? Recommended: yes, for text only.
