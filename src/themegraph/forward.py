@@ -25,7 +25,7 @@ import pandas as pd
 from . import pipeline as P
 from .config import PipelineConfig, UniverseConfig
 from .data.pit import snapshot_ts
-from .eval.returns import holding_return
+from .eval.returns import holding_return, venue_sessions
 from .text.embed import Embedder
 
 PREDICTIONS = "predictions.jsonl"
@@ -151,12 +151,16 @@ def predict(prices: pd.DataFrame, docs: pd.DataFrame, cfg: PipelineConfig,
 def evaluate_outcomes(out_dir: Path, closes: pd.DataFrame, benchmark: str,
                       horizons: list[int], data_end: pd.Timestamp,
                       delisted: dict | None = None,
-                      successors: dict | None = None) -> list[dict]:
+                      successors: dict | None = None,
+                      calendar: pd.Index | None = None,
+                      venues: dict | None = None) -> list[dict]:
     """Append outcomes for (prediction, horizon) pairs whose horizon has elapsed and
     that have no outcome yet. Predictions are read, never modified."""
     out_dir = Path(out_dir)
     done = {(o["prediction_id"], o["h"]) for o in _read(out_dir / OUTCOMES)}
     new = []
+    kw = {"calendar": calendar, "venues": venues,
+          "sessions": venue_sessions(closes, venues)}
     for p in _read(out_dir / PREDICTIONS):
         if p.get("no_candidates"):
             continue
@@ -164,10 +168,10 @@ def evaluate_outcomes(out_dir: Path, closes: pd.DataFrame, benchmark: str,
         for h in horizons:
             if (p["prediction_id"], h) in done:
                 continue
-            b = holding_return(closes, p["issuers"], t, h, data_end, delisted, successors)
+            b = holding_return(closes, p["issuers"], t, h, data_end, delisted, successors, **kw)
             if b["status"] == "incomplete_horizon":
                 continue  # not yet knowable; evaluated on a later call
-            bench = holding_return(closes, [benchmark], t, h, data_end)
+            bench = holding_return(closes, [benchmark], t, h, data_end, **kw)
             new.append({"prediction_id": p["prediction_id"], "h": h, "status": b["status"],
                         "entry": str(b["entry"]), "exit": str(b["exit"]),
                         "basket": b["value"], "worst_case": b["worst_case"],

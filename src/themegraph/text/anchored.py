@@ -255,24 +255,33 @@ class AnchoredTopics:
         genres = p["genre"].to_numpy()[m] if self.cfg.center_by_genre else None
         labels = np.full(len(ids), -1)
         wc = WindowClusters(t, list(ids), np.asarray(syms), labels)
+        n_topics = len(self.book.ids) if self.book is not None else 0
+        # Stage accounting for calibration (counts; shares are derived later). Every
+        # window gets a row, including empty-codebook and no-usable-passage windows.
+        row = {"t": t, "n_passages": int(len(ids)), "n_usable": 0, "codebook_size": n_topics,
+               "claimed_existing": 0, "rejected_existing": 0, "retained_existing": 0,
+               "discovered": 0, "assigned": 0,
+               **{f"claimed_at_{x:.2f}": 0 for x in CALIBRATION_THRESHOLDS}}
+        self.calibration.append(row)
         if self.book is None or not m.any():
+            row["unassigned"] = row["n_passages"]
             return wc
         X, valid = self.book.transform(V[m], genres)
         wc.excluded = int((~valid).sum())
-        if self.book.centres is not None and len(self.book.ids):
+        row["n_usable"] = int(valid.sum())
+        claimed = np.zeros(len(ids), dtype=bool)
+        if self.book.centres is not None and n_topics:
             S = X @ self.book.centres.T
             best = S.argmax(axis=1)
-            ok = valid & (S[np.arange(len(S)), best] >= self.cfg.anchor_assign_similarity)
-            book_ids = np.array(self.book.ids)
-            labels[ok] = book_ids[best[ok]]
-            # Calibration: share of the window's usable passages that existing topics
-            # would claim at other thresholds (topics found in unclaimed text add more).
-            top = S[np.arange(len(S)), best][valid]
-            if len(top):
-                self.calibration.append(
-                    {"t": t, "n_valid": int(valid.sum()),
-                     **{f"claimed_at_{x:.2f}": float((top >= x).mean())
-                        for x in CALIBRATION_THRESHOLDS}})
+            top = S[np.arange(len(S)), best]
+            claimed = valid & (top >= self.cfg.anchor_assign_similarity)
+            labels[claimed] = np.array(self.book.ids)[best[claimed]]
+            # Counterfactual claims at other thresholds, with this codebook. A different
+            # threshold would also have produced a different codebook, so these are
+            # estimates; a chosen value must be confirmed by a run.
+            for x in CALIBRATION_THRESHOLDS:
+                row[f"claimed_at_{x:.2f}"] = int((valid & (top >= x)).sum())
+        row["claimed_existing"] = int(claimed.sum())
         # Find new: cluster what no topic claims.
         pool = np.flatnonzero(valid & (labels < 0))
         if len(pool) >= self.cfg.min_cluster_passages:
@@ -292,10 +301,13 @@ class AnchoredTopics:
                     len(np.unique(syms[idx])) < self.cfg.min_cluster_issuers:
                 labels[idx] = -1
         wc.labels = labels
-        if self.calibration and self.calibration[-1]["t"] == t and valid.any():
-            row = self.calibration[-1]
-            row["claimed_now"] = row.get(f"claimed_at_{self.cfg.anchor_assign_similarity:.2f}")
-            row["assigned"] = float((labels[valid] >= 0).mean())
+        kept = labels >= 0
+        row["retained_existing"] = int((claimed & kept).sum())
+        row["rejected_existing"] = row["claimed_existing"] - row["retained_existing"]
+        row["discovered"] = int((~claimed & kept).sum())
+        row["assigned"] = int(kept.sum())
+        row["unassigned"] = row["n_passages"] - row["assigned"]
+        assert row["assigned"] == row["retained_existing"] + row["discovered"]
         pos = {tid: i for i, tid in enumerate(self.book.ids)}
         members: dict[int, set[str]] = {}
         for tid in np.unique(labels[labels >= 0]):
@@ -384,20 +396,41 @@ class AnchoredTopics:
         return pd.DataFrame(self.calibration)
 
     def calibration_summary(self) -> dict:
-        """Median over windows: share of usable passages existing topics would claim at
-        each threshold, and the share actually assigned (claimed plus topics found in
-        unclaimed text). An estimate for the claimed part: a different threshold also
-        changes which topics exist, so confirm a chosen value with a rerun."""
+        """Totals over all windows and their reconciliation, plus median per-window
+        shares on both denominators: all passages in the window (the population the
+        window mode's coverage uses; use this one to compare modes) and usable
+        passages (those with a direction after centring). Counterfactual
+        `claimed_at_*` are existing-topic claims under this run's codebook: estimates,
+        since a different threshold also changes which topics exist."""
         c = self.calibration_frame()
         if not len(c):
             return {}
-        out = {k: round(float(c[k].median()), 3) for k in c if k.startswith("claimed_at_")}
-        if "assigned" in c:
-            out["assigned_median"] = round(float(c["assigned"].median()), 3)
-            if "claimed_now" in c and c["claimed_now"].notna().any():
-                out["found_in_unclaimed_median"] = round(
-                    float((c["assigned"] - c["claimed_now"]).median()), 3)
+        stages = ["n_passages", "n_usable", "claimed_existing", "rejected_existing",
+                  "retained_existing", "discovered", "assigned", "unassigned"]
+        tot = {k: int(c[k].sum()) for k in stages}
+        assert tot["assigned"] == tot["retained_existing"] + tot["discovered"]
+        assert tot["assigned"] + tot["unassigned"] == tot["n_passages"]
+        assert tot["claimed_existing"] == tot["retained_existing"] + tot["rejected_existing"]
+
+        def med(num, den):
+            ok = c[den] > 0
+            return round(float((c.loc[ok, num] / c.loc[ok, den]).median()), 3) if ok.any() \
+                else None
+
+        out = {"windows": int(len(c)),
+               "windows_empty_codebook": int((c["codebook_size"] == 0).sum()),
+               "windows_no_usable_passages": int((c["n_usable"] == 0).sum()),
+               "totals": tot,
+               "of_all_passages": {k: med(k, "n_passages") for k in
+                                   ("assigned", "claimed_existing", "rejected_existing",
+                                    "discovered", "unassigned")},
+               "of_usable_passages": {k: med(k, "n_usable") for k in
+                                      ("assigned", "claimed_existing", "rejected_existing",
+                                       "discovered")},
+               "claimed_at_estimate_of_all": {k[len("claimed_at_"):]: med(k, "n_passages")
+                                              for k in c if k.startswith("claimed_at_")}}
         return out
+
 
     def events_frame(self) -> pd.DataFrame:
         cols = ["track_id", "t", "event", "other"]

@@ -206,10 +206,11 @@ def cmd_forward(a):
     closes = prices.pivot_table(index="date", columns="symbol", values="close")
     closes.index = pd.DatetimeIndex(closes.index).tz_localize(None).normalize() \
         .tz_localize("UTC") + pd.Timedelta(hours=22)
-    delisted = {i.symbol: i.delisted for i in u.issuers if i.delisted}
+    from .eval.returns import execution_context
+    xc = execution_context(closes, u, cfg.market.benchmark)
     new = Fw.evaluate_outcomes(out, closes, cfg.market.sector_benchmark,
-                               cfg.evaluation.forward_sessions, closes.index.max(), delisted,
-                               {i.symbol: i.successor for i in u.issuers if i.successor})
+                               cfg.evaluation.forward_sessions, closes.index.max(),
+                               xc["delisted"], xc["successors"], xc["calendar"], xc["venues"])
     print(f"{len(new)} new outcome records in {out / Fw.OUTCOMES}")
 
 

@@ -207,6 +207,64 @@ def test_calibration_reports_claimed_share_by_threshold():
     p, V = _corpus()
     _, model = anchored_windows(p, V, SNAPS, _cfg())
     c = model.calibration_summary()
-    shares = [c[k] for k in sorted(c) if k.startswith("claimed_at_")]
-    assert len(shares) == 7 and all(a >= b for a, b in zip(shares, shares[1:], strict=False))
-    assert 0 <= c["assigned_median"] <= 1 and "found_in_unclaimed_median" in c
+    est = list(c["claimed_at_estimate_of_all"].values())
+    assert len(est) == 7 and all(a >= b for a, b in zip(est, est[1:], strict=False))
+    assert c["windows"] == len(SNAPS)
+
+
+TWO = list(pd.date_range("2020-01-31", periods=2, freq="ME", tz="UTC"))
+
+
+def _two_month(month2):
+    """Month 1: two topics with two issuers each. Month 2: as given."""
+    rng = np.random.default_rng(0)
+    rows, vecs = [], []
+
+    def add(t, n, syms, d, zero=False):
+        for j in range(n):
+            v = np.zeros(DIM)
+            if not zero:
+                v[d] = 1.0
+                v += rng.normal(0, 0.02, DIM)
+            rows.append({"passage_id": f"{t.month}-{d}-{j}-{zero}",
+                         "symbol": syms[j % len(syms)], "genre": "g",
+                         "available_at": t - pd.Timedelta(days=3)})
+            vecs.append(v)
+    add(TWO[0], 6, ["A", "B"], 0)
+    add(TWO[0], 6, ["C", "D"], 1)
+    month2(add)
+    cfg = _cfg(window_days=31, anchor_refit_snapshots=100, anchor_lookback_days=31)
+    return anchored_windows(pd.DataFrame(rows), np.array(vecs, np.float32), TWO, cfg)
+
+
+def test_calibration_separates_rejections_from_discoveries():
+    # Topic 0 claims four passages of one issuer: the issuer rule rejects them.
+    _, model = _two_month(lambda add: (add(TWO[1], 4, ["A"], 0), add(TWO[1], 6, ["C", "D"], 1)))
+    row = model.calibration_frame().iloc[-1]
+    assert row["claimed_existing"] == 10 and row["rejected_existing"] == 4
+    assert row["discovered"] == 0 and row["assigned"] == 6 and row["unassigned"] == 4
+    tot = model.calibration_summary()["totals"]
+    assert tot["assigned"] + tot["unassigned"] == tot["n_passages"]
+
+
+def test_calibration_reports_both_denominators():
+    # Four usable passages assigned, four with no direction (zero vectors) excluded.
+    _, model = _two_month(lambda add: (add(TWO[1], 4, ["C", "D"], 1),
+                                       add(TWO[1], 4, ["C", "D"], 2, zero=True)))
+    row = model.calibration_frame().iloc[-1]
+    assert row["n_passages"] == 8 and row["n_usable"] == 4 and row["assigned"] == 4
+    c = model.calibration_summary()
+    assert c["of_usable_passages"]["assigned"] == 1.0  # median over both windows
+    assert c["of_all_passages"]["assigned"] < 1.0
+    assert row["assigned"] / row["n_passages"] == 0.5
+
+
+def test_calibration_counts_empty_windows():
+    snaps = list(pd.date_range("2020-01-31", periods=3, freq="ME", tz="UTC"))
+    p = pd.DataFrame({"passage_id": ["x"], "symbol": ["A"], "genre": ["g"],
+                      "available_at": [snaps[2] - pd.Timedelta(days=3)]})
+    _, model = anchored_windows(p, np.ones((1, DIM), np.float32), snaps,
+                                _cfg(window_days=31, anchor_lookback_days=31))
+    c = model.calibration_summary()
+    assert c["windows"] == 3 and c["windows_empty_codebook"] == 3
+    assert c["totals"]["n_passages"] == 1 and c["totals"]["assigned"] == 0

@@ -631,6 +631,17 @@ within 0.05 of 0.58 and tightness is at least the window's 0.63. If tightness fa
 below, take the next higher threshold. The chosen value is recorded here before
 adjudication starts, and both runs are then adjudicated and compared as declared.
 
+*Correction (review of 531575c).* The calibration report mixed two stages: its
+"found in unclaimed" figure was final assigned minus initial claims, so passages
+rejected by the size and issuer rules showed up as negative discoveries, and its shares
+used usable passages as the denominator while the window comparison uses all passages.
+The 0.15 gap below is therefore a net figure, not a measured rejection rate. Runs now
+record each stage per window (passages, usable, claimed by existing topics, rejected by
+the size/issuer rules, retained, discovered in unclaimed text, assigned, unassigned),
+on both denominators, with totals that must reconcile. The threshold estimates below
+also used a codebook built under 0.45; a different threshold changes which topics exist,
+so they are estimates only.
+
 Calibration run (assign 0.45, 2026-10-25): existing topics would claim 0.98 / 0.92 /
 0.80 / 0.63 / 0.46 / 0.31 / 0.19 of usable passages at 0.25 ... 0.55; only 0.31 was
 actually assigned at 0.45. The 0.15 gap is the per-window size rule (a topic needs
@@ -641,6 +652,44 @@ clustering avoids by construction. Estimated assigned share: 0.35 gives 0.54-0.6
 **0.35** (closest to 0.58; ties go to the higher threshold). To be confirmed by the
 rerun criteria above (assigned within 0.05 of 0.58, tightness >= 0.63; otherwise
 0.40). Recorded before any adjudication.
+
+*Revised confirmation (review of 531575c).* Matching window mode's coverage is a
+precondition for a fair comparison, not evidence of quality: extra coverage made of
+boilerplate would help nothing. The confirmation therefore needs all of:
+(1) assigned share of all passages within 0.05 of window mode's in the same data state
+(window mode measured 0.58 on all passages); (2) member tightness at least window
+mode's; (3) a reading of `coverage_samples.md` (text only) in which assigned passages
+are mostly about business subjects and unassigned ones mostly boilerplate or one-offs.
+If 0.35 fails (1) or (2), the stage table says why (too few claims, or claims rejected
+by the size/issuer rules); 0.40 is tried only if it addresses that cause. If no tested
+value passes, that is the result, reported as such, and the comparison proceeds with
+both modes described rather than a forced threshold.
+
+### Review fixes after 531575c (2026-10-25)
+
+- **Calibration accounting** (`text/anchored.py`): explicit per-window stages and
+  totals (see the correction above); empty-codebook and no-usable-passage windows get
+  rows; both denominators reported.
+- **Outcome calendars** (`eval/returns.py`): horizons count the benchmark's (US)
+  sessions; each security trades on its venue's sessions (currency as exchange proxy):
+  bought at the entry session's close if its venue traded, else at the venue's next
+  session; sold at the exit session's close, else at its venue's last session before
+  it. A missing quote on a day the venue traded is never filled. Before, a US basket
+  flagged 2019-08-31 tried to enter on Labor Day (a Korea-only date) and was
+  "insufficient_coverage". The momentum comparison had the same flaw: any foreign-only
+  date in its lookback made US stocks ineligible for the null pool.
+- **Successor valuation**: known stock terms are valued at the successor's exit close,
+  else its close within 5 sessions (`converted_stale`), else unvalued; cash-only terms
+  need no quote; the acquired company's last close is used only when terms are unknown
+  (`delisted`, counted as an assumption). Before, a missing successor quote silently
+  fell back to the acquired company's last close ("ok, +5%").
+- **Comparison provenance** (`provenance.py`, `eval/compare.py`): manifests record a
+  content hash of src/, the git commit and a dirty flag, the labels hash, lockfile,
+  Python and key package versions, and the effective configuration. `compare` refuses
+  missing provenance, uncommitted changes, non-development runs, and any difference
+  except `text.topic_mode`; same-mode comparisons get distinct columns.
+- **Coverage samples**: each run writes `coverage_samples.md` (text only) for the
+  revised confirmation step.
 
 ## 12. Open questions
 

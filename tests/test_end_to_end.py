@@ -133,7 +133,8 @@ def test_window_vs_anchored_comparison_is_checked_for_comparability(cfg, tmp_pat
     base = S.demo_config(cfg)
     u = S.synthetic_universe()
     prices, docs = S.synthetic_prices(u), S.synthetic_documents(u)
-    inputs = {**P.input_bindings(prices, docs, observed=False), "vintages": {}}
+    inputs = {**P.input_bindings(prices, docs, observed=False), "vintages": {},
+              "input_vintage_upto": None}
     runs = {}
     for mode in ("window", "anchored"):
         c = base.model_copy(update={"text": base.text.model_copy(update={"topic_mode": mode})})
@@ -143,15 +144,43 @@ def test_window_vs_anchored_comparison_is_checked_for_comparability(cfg, tmp_pat
         runs[mode] = tmp_path / mode
         P.save(ctx, res, runs[mode], {**inputs, "config_overrides": {"text.topic_mode": mode}})
         A.write_worksheet(runs[mode])
+        samples = (runs[mode] / "coverage_samples.md").read_text()
+        assert "### Assigned" in samples and "### Unassigned" in samples
         packet = (runs[mode] / A.PACKET).read_text()
         assert "Keywords:" in packet and "return" not in packet.lower()
+    for mode in runs:  # the test checkout may have local edits; simulate a clean one
+        m = json.loads((runs[mode] / "manifest.json").read_text())
+        assert m["provenance"]["effective_config"]["text"]["topic_mode"] == mode
+        m["provenance"]["git_dirty"] = False
+        (runs[mode] / "manifest.json").write_text(json.dumps(m))
     out = compare(runs["window"], runs["anchored"])
     assert out["comparable"], out["problems"]
+    same = compare(runs["window"], runs["window"])
+    assert {"A: window", "B: window"} <= set(same["table"].columns)
     assert not out["adjudication_complete"]  # nothing reviewed yet: no conclusion
-    assert {"window", "anchored"} <= set(out["table"].columns)
+    assert {"A: window", "B: anchored"} <= set(out["table"].columns)
     assert "Adjudication incomplete" in render(out)
     # Different inputs are refused.
-    m = json.loads((runs["anchored"] / "manifest.json").read_text())
-    m["inputs"]["documents"] = "other"
-    (runs["anchored"] / "manifest.json").write_text(json.dumps(m))
-    assert compare(runs["window"], runs["anchored"])["problems"] == ["inputs.documents differ"]
+    def broken(edit):
+        m = json.loads((runs["anchored"] / "manifest.json").read_text())
+        edit(m)
+        (tmp_path / "x").mkdir(exist_ok=True)
+        for f in runs["anchored"].iterdir():
+            if f.is_file() and f.name != "manifest.json":
+                (tmp_path / "x" / f.name).write_bytes(f.read_bytes())
+        (tmp_path / "x" / "manifest.json").write_text(json.dumps(m))
+        return compare(runs["window"], tmp_path / "x")["problems"]
+
+    assert broken(lambda m: m["inputs"].update(documents="other")) == \
+        ["inputs.documents differ"]
+    assert any("labels differ" in p for p in
+               broken(lambda m: m["provenance"].update(labels_sha256="x")))
+    assert any("source code differ" in p for p in
+               broken(lambda m: m["provenance"].update(source_sha256="x")))
+    assert any("beyond text.topic_mode" in p for p in broken(
+        lambda m: m["provenance"]["effective_config"]["text"].update(cluster_distance=0.7)))
+    assert any("no provenance" in p for p in broken(lambda m: m.pop("provenance")))
+    assert any("development runs only" in p for p in
+               broken(lambda m: m.update(period="holdout")))
+    assert any("uncommitted" in p for p in
+               broken(lambda m: m["provenance"].update(git_dirty=True)))
