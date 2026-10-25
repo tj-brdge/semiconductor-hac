@@ -115,13 +115,19 @@ themegraph adjudicate runs/cmp-anchored    # adjudication_packet.md (text only)
 themegraph compare runs/cmp-window runs/cmp-anchored
 ```
 
-To review with Claude's help, load each `adjudication_packet.md` into the Theme
-Adjudication Desk (`review/adjudication-desk.html`, published as a private
-claude.ai page). It shows one candidate at a time with Claude's suggestion. You
-decide a blind sample before seeing Claude's answers. Then export the decisions
-and merge them with `themegraph adjudicate RUN --import FILE`. Claude's decisions
-count in `compare` only if blind agreement is at least 80% on 20 entries
-(DESIGN.md, "AI-assisted adjudication").
+To review with Claude's help, run the local review page:
+
+```
+uv sync --extra review           # once: installs the anthropic SDK
+export ANTHROPIC_API_KEY=...     # or `ant auth login`; without it the page works with no suggestions
+themegraph review runs/cmp-window runs/cmp-anchored
+```
+
+It opens a page on 127.0.0.1 that shows one candidate at a time, writes decisions
+straight into each run's `adjudication.yaml`, and can ask Claude (Claude Opus 5.5)
+for a suggested decision. You decide a seeded blind sample of 20 entries per run
+before seeing Claude's answers. Claude's decisions count in `compare` only if blind
+agreement is at least 80% on 20 entries (DESIGN.md, "AI-assisted adjudication").
 
 Run both from the same clean commit, environment, config and data (`compare` refuses
 otherwise, including runs without recorded provenance), and adjudicate before opening

@@ -17,6 +17,10 @@ dependencies = [
     "tqdm>=4.66",
 ]
 
+[project.optional-dependencies]
+# Claude suggestions in the local review page (`themegraph review`).
+review = ["anthropic>=1.0"]
+
 [project.scripts]
 themegraph = "themegraph.cli:main"
 
