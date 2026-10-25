@@ -845,6 +845,39 @@ fresh runs of both modes at the stated value (see docs/EVIDENCE.md).
     stage table uses integer totals, "no threshold" became "no tested threshold",
     and the interpolation is labelled an estimate.
 
+### AI-assisted adjudication (declared 2026-10-26, before any adjudication result)
+
+The user asked for Claude to help adjudicate. The protocol below was fixed before
+any decisions were seen:
+
+- **Where:** a private claude.ai review page, the Theme Adjudication Desk
+  (https://claude.ai/artifact/E8spejZohpuSCLhJH8esUP; source in
+  `review/adjudication-desk.html`, prompt version `adj-prompt-1`). It loads
+  a run's text-only `adjudication_packet.md` and shows one candidate at a time,
+  with Claude's suggested decision and a one-sentence reason.
+- **What Claude sees:** keywords, quotes, issuers and the first-flag date. For
+  duplicate checks it also gets earlier candidates' keywords from the past 365
+  days. It never sees returns, report.html, or labels other than the one theme
+  named in a match entry. It is told not to consider prices or later events.
+- **Blind sample:** a seeded random 20 unmatched candidates per run, the seed taken
+  from the packet hash. On these the person decides before Claude's suggestion is
+  shown, and the page records the person's blind decision.
+- **Who decides what:**
+  - Theme-match and negative-control entries are always decided by the person.
+  - Unmatched candidates may be recorded from Claude's suggestion (`decided_by:
+    ai`), but only once the blind sample is complete.
+- **When Claude's decisions count:** in `themegraph compare`, only if the run's
+  blind agreement is at least 80% on at least 20 entries
+  (`compare.MIN_AGREEMENT`, `MIN_BLIND_PAIRS`). Otherwise the comparison reports
+  adjudication as incomplete. The 80% bar was set before seeing any agreement and
+  is not to be changed after.
+- **Provenance:** decisions return to the run with `themegraph adjudicate RUN
+  --import FILE`. Each entry keeps `decided_by`, Claude's suggestion and reason, the
+  model tier and prompt version, and the blind decision. Results report human and
+  AI decisions separately.
+- **Limitation:** for a match entry the theme name is necessarily visible, so those
+  judgements are not blind to the label. That is why they stay with the person.
+
 ## 12. Open questions
 
 1. Include the adjacency ring (§4.2) in v1? Recommended: yes, for text only.

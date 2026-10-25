@@ -115,6 +115,14 @@ themegraph adjudicate runs/cmp-anchored    # adjudication_packet.md (text only)
 themegraph compare runs/cmp-window runs/cmp-anchored
 ```
 
+To review with Claude's help, load each `adjudication_packet.md` into the Theme
+Adjudication Desk (`review/adjudication-desk.html`, published as a private
+claude.ai page). It shows one candidate at a time with Claude's suggestion. You
+decide a blind sample before seeing Claude's answers. Then export the decisions
+and merge them with `themegraph adjudicate RUN --import FILE`. Claude's decisions
+count in `compare` only if blind agreement is at least 80% on 20 entries
+(DESIGN.md, "AI-assisted adjudication").
+
 Run both from the same clean commit, environment, config and data (`compare` refuses
 otherwise, including runs without recorded provenance), and adjudicate before opening
 either `report.html`. Each run also writes `coverage_samples.md`, a text-only sample

@@ -113,6 +113,19 @@ def comparability(a: dict, b: dict) -> list[str]:
     return out
 
 
+# Claude's decisions count only when its blind-sample agreement with the person is
+# at least this on at least this many entries (DESIGN.md, AI-assisted adjudication).
+MIN_BLIND_PAIRS = 20
+MIN_AGREEMENT = 0.8
+
+
+def ai_decisions_admissible(adj: dict) -> bool:
+    if not adj.get("decided_by_ai"):
+        return True
+    return (adj.get("blind_pairs") or 0) >= MIN_BLIND_PAIRS and \
+        (adj.get("blind_agreement") or 0) >= MIN_AGREEMENT
+
+
 def _adjudicated(run: dict) -> dict:
     themes = run["q1"].get("themes_evaluable", 0)
     return A.summary(run["adjudication"], themes) if run["adjudication"] else {}
@@ -157,7 +170,10 @@ def compare(run_a: Path, run_b: Path) -> dict:
                        ("unmatched_noise", "unmatched candidates judged noise"),
                        ("unmatched_duplicate", "unmatched candidates judged duplicate"),
                        ("unmatched_real_unlabelled", "real but unlabelled themes"),
-                       ("pending", "adjudication entries pending")]:
+                       ("pending", "adjudication entries pending"),
+                       ("decided_by_ai", "decisions made by Claude (not human-reviewed)"),
+                       ("blind_pairs", "blind sample: entries decided by both"),
+                       ("blind_agreement", "blind sample: human-Claude agreement")]:
         add("1 adjudicated", label, lambda r, k=key: adj[id(r)].get(k), None)
     for key, label in [("detection_recall", "auto-matched recall (issuer overlap only)"),
                        ("median_lead_days", "auto-matched median lead days"),
@@ -193,9 +209,10 @@ def compare(run_a: Path, run_b: Path) -> dict:
                               how="outer", suffixes=(f"_{mode(a)}", f"_{mode(b)}"))
     pending = any(adj[id(r)].get("pending", 1) for r in (a, b)) or not all(
         adj[id(r)] for r in (a, b))
+    ai_blocked = [mode(r) for r in (a, b) if adj[id(r)] and not ai_decisions_admissible(adj[id(r)])]
     return {"comparable": not problems, "problems": problems,
-            "adjudication_complete": not pending, "table": pd.DataFrame(rows),
-            "themes": themes}
+            "adjudication_complete": not pending and not ai_blocked, "ai_blocked": ai_blocked,
+            "table": pd.DataFrame(rows), "themes": themes}
 
 
 def render(result: dict) -> str:
@@ -204,6 +221,10 @@ def render(result: dict) -> str:
         lines.append("NOT COMPARABLE:")
         lines += [f"  - {p}" for p in result["problems"]]
         lines.append("")
+    for m in result.get("ai_blocked", []):
+        lines.append(f"Run {m}: Claude's decisions do not meet the declared blind-agreement "
+                     f"bar ({MIN_AGREEMENT:.0%} on at least {MIN_BLIND_PAIRS} entries); "
+                     "decide those entries yourself.")
     if not result["adjudication_complete"]:
         lines.append("Adjudication incomplete in at least one run: section 1 is not yet a "
                      "result; do not choose a method from sections 2-5 alone.")

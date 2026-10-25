@@ -165,6 +165,11 @@ def cmd_adjudicate(a):
     from .eval import adjudication as A
 
     run = Path(a.run_dir)
+    if a.import_file:
+        out = A.import_decisions(run, Path(a.import_file), replace=a.replace)
+        print(f"imported {out['applied']} decisions")
+        for w in out["warnings"]:
+            print("warning:", w)
     path = A.write_worksheet(run)
     res = json.loads((run / "results.json").read_text()) if (run / "results.json").exists() \
         else {}
@@ -274,6 +279,10 @@ def main(argv=None):
     s.set_defaults(fn=cmd_forward)
     s = sub.add_parser("adjudicate", help="write/refresh a run's adjudication worksheet")
     s.add_argument("run_dir")
+    s.add_argument("--import", dest="import_file", metavar="FILE",
+                   help="merge decisions exported by the Theme Adjudication Desk")
+    s.add_argument("--replace", action="store_true",
+                   help="with --import: overwrite decisions already recorded")
     s.set_defaults(fn=cmd_adjudicate)
     s = sub.add_parser("compare", help="compare two development runs (window vs anchored)")
     s.add_argument("run_a")
