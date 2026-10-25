@@ -677,6 +677,21 @@ by the size/issuer rules); 0.40 is tried only if it addresses that cause. If no 
 value passes, that is the result, reported as such, and the comparison proceeds with
 both modes described rather than a forced threshold.
 
+*Confirmation result for 0.35 (measured, 2026-10-25; run on the code before the
+review fixes after 531575c, so without provenance or coverage samples; the coverage
+and tightness diagnostics are unaffected).* Assigned share of all passages 0.663
+(window 0.583; outside the 0.05 band), tightness 0.582 (window 0.632; below). **0.35
+fails criteria (1) and (2).** The failure is over-assignment with looser topics, so the
+next value under the rule is **0.40**, which addresses that cause. Interpolating the two
+measured anchored runs (0.45: 0.308 assigned, tightness 0.649; 0.35: 0.663, 0.582)
+suggests roughly 0.45-0.55 assigned and tightness about 0.61-0.62 at 0.40, i.e. it may
+fail as well. If it does, the result is that no tested threshold gives anchored topics
+window mode's coverage and tightness together; the comparison then proceeds at a value
+chosen and stated in advance, with that trade-off reported, not a forced pass.
+Other measured differences at 0.35 (not criteria): 72 candidates (0.45: 25; window:
+115), one near-duplicate pair, 56% of topics outliving a window, 11.1 lasting births
+per window, first-to-last member cosine 0.59.
+
 ### Review fixes after 531575c (2026-10-25)
 
 - **Calibration accounting** (`text/anchored.py`): explicit per-window stages and
