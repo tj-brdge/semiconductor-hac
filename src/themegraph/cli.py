@@ -178,6 +178,19 @@ def cmd_adjudicate(a):
     print(json.dumps(A.summary(A.load(path), n), indent=1))
 
 
+def cmd_review(a):
+    """Serve the local review page for one or more runs' adjudication worksheets."""
+    from .review.server import serve
+
+    runs = {}
+    for d in a.run_dirs:
+        p = Path(d)
+        if not (p / "candidate_ledger.parquet").exists():
+            raise SystemExit(f"{p} is not a run directory (no candidate_ledger.parquet)")
+        runs[p.name] = p
+    serve(runs, port=a.port, model=a.model, open_browser=not a.no_browser)
+
+
 def cmd_compare(a):
     """Side-by-side development comparison of two runs (declared criteria)."""
     from .eval.compare import compare, render
@@ -284,6 +297,13 @@ def main(argv=None):
     s.add_argument("--replace", action="store_true",
                    help="with --import: overwrite decisions already recorded")
     s.set_defaults(fn=cmd_adjudicate)
+    s = sub.add_parser("review", help="review adjudication worksheets in a local page")
+    s.add_argument("run_dirs", nargs="+")
+    s.add_argument("--port", type=int, default=8765)
+    s.add_argument("--model", default="claude-opus-5-5",
+                   help="Claude model for suggestions (needs the review extra)")
+    s.add_argument("--no-browser", action="store_true")
+    s.set_defaults(fn=cmd_review)
     s = sub.add_parser("compare", help="compare two development runs (window vs anchored)")
     s.add_argument("run_a")
     s.add_argument("run_b")
