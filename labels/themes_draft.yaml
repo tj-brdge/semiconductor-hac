@@ -195,6 +195,14 @@ themes:
   notes: Company/trade sources, not major business press; a press-based consensus date may be later. Reuters
     cited via a third-party reprint.
   approved: false
+  additional_sec_evidence:
+  - url: https://www.sec.gov/Archives/edgar/data/1097864/000119312519067848/d692646dex991.htm
+    event_date: '2019-03-08'
+    publication_date: '2019-03-08'
+    quote: Adoption of Silicon Carbide in EVs likely to be faster than most expectations
+    note: ON analyst day; earliest explicit ON statement found (ON earnings releases Nov 2016-Oct 2019
+      have no SiC text).
+    checked_on: '2026-10-25'
 - id: chip_shortage_auto_2021
   period: dev
   kind: theme
@@ -446,7 +454,16 @@ themes:
     double by end-2024).'
   approved: false
   review_needed: 'Ordering: earliest SEC evidence (2023-08-10) is after the draft emergence by 5 months;
-    consensus unverifiable here.'
+    consensus unverifiable here. Second SEC pass: no SEC filer states a CoWoS constraint in 2023; Amkor
+    names AI first on 2024-02-05.'
+  additional_sec_evidence:
+  - url: https://www.sec.gov/Archives/edgar/data/1047127/000104712724000006/amkr123123erex-991.htm
+    event_date: '2024-02-05'
+    publication_date: '2024-02-05'
+    quote: supported AI deployment with our 2.5D technology
+    note: Amkor's first AI mention in a release. No TSMC 6-K in 2023 mentions CoWoS; TSMC board capex
+      6-K 2023-08-08 mentions advanced packaging capacity without AI.
+    checked_on: '2026-10-25'
 - id: ai_networking_optics_2023
   period: holdout
   kind: theme
@@ -493,7 +510,21 @@ themes:
   approved: false
   review_needed: 'SCOPE UNRESOLVED: AI networking silicon (Arista/Marvell/Broadcom, SEC evidence 2023-05)
     and optical transceivers (Coherent/Lumentum, SEC evidence 2023-08) appear months apart. Proposal:
-    split into two themes; not applied.'
+    split into two themes; not applied. Second SEC pass: Fabrinet 2023-08-21 corroborates optics in August
+    2023.'
+  additional_sec_evidence:
+  - url: https://www.sec.gov/Archives/edgar/data/1408710/000140871023000026/fn-20230815xex991q423.htm
+    event_date: '2023-08-21'
+    publication_date: '2023-08-21'
+    quote: very strong growth in datacom revenue, driven by new AI products
+    note: 'Fabrinet: optics side, consistent with Coherent/Lumentum (Aug 2023).'
+    checked_on: '2026-10-25'
+  - url: https://www.sec.gov/Archives/edgar/data/1596532/000159653223000197/anet-20230630.htm
+    event_date: '2023-06-30'
+    publication_date: '2023-08-01'
+    quote: the need for the rapid deployment of artificial intelligence ("AI") and related technologies
+    note: Arista 10-Q; first demand statement in an Arista release is 2023-10-30.
+    checked_on: '2026-10-25'
 - id: ai_power_2024
   period: holdout
   kind: theme
@@ -540,7 +571,32 @@ themes:
   approved: false
   review_needed: 'SCOPE UNRESOLVED: data-centre electrical/cooling equipment (VRT, ETN, NVT; Vertiv evidence
     2023-04) vs power generation (CEG, VST, GEV; Constellation evidence 2024-05). Proposal: split into
-    two themes; not applied.'
+    two themes; not applied. Second SEC pass (2026-10-25): equipment side nVent 2023-07-28 after Vertiv
+    2023-04-26; generation side Vistra and GE Vernova first tie demand to AI only in FY2024 10-Ks (2025-02);
+    Eaton names no AI. Strengthens the split proposal.'
+  additional_sec_evidence:
+  - url: https://www.sec.gov/Archives/edgar/data/1720635/000172063523000042/q22023nvtpressrelease.htm
+    event_date: '2023-07-28'
+    publication_date: '2023-07-28'
+    quote: the acceleration of artificial intelligence is driving significant demand for our data solutions
+      offerings, particularly liquid cooling
+    note: nVent; later than Vertiv (2023-04-26).
+    checked_on: '2026-10-25'
+  - url: https://www.sec.gov/Archives/edgar/data/1692819/000169281925000013/vistra-20241231.htm
+    event_date: '2024-12-31'
+    publication_date: '2025-02-28'
+    quote: emergence of large load data centers, including in response to transformations in technologies
+      like artificial intelligence (AI)
+    note: Vistra's first AI link; its 2024-05-10 10-Q names data-centre load without AI.
+    checked_on: '2026-10-25'
+  - url: https://www.sec.gov/Archives/edgar/data/1996810/000199681025000011/gev-20241231.htm
+    event_date: '2024-12-31'
+    publication_date: '2025-02-06'
+    quote: Energy intensive technological innovations and efficiencies, such as artificial intelligence,
+      may affect or may be perceived to affect electricity demand
+    note: 'GE Vernova, hedged risk-factor wording. Eaton: no AI mention in releases or 10-K/10-Q Nov 2022-Feb
+      2025 (data centre strength only).'
+    checked_on: '2026-10-25'
 - id: china_export_controls_2022
   period: holdout
   kind: theme
@@ -586,6 +642,23 @@ themes:
   notes: 'Primary alternative for emergence: Nvidia 8-K dated 2022-08-26 (opened: https://www.sec.gov/Archives/edgar/data/1045810/000104581022000146/nvda-20220826.htm),
     new licence requirement for A100/H100 to China.'
   approved: false
+  additional_sec_evidence:
+  - url: https://www.sec.gov/Archives/edgar/data/707549/000070754922000124/lrcx-20220925.htm
+    event_date: null
+    publication_date: '2022-10-24'
+    quote: the U.S. government has enacted new rules aimed at restricting China's ability to manufacture
+      advanced semiconductors
+    note: 'Lam 10-Q: earliest explicit issuer statement on the October 2022 rules found; the rule date
+      is not in the filing.'
+    checked_on: '2026-10-25'
+  - url: https://www.sec.gov/Archives/edgar/data/319201/000162828022027311/klac-20220930.htm
+    event_date: 2022-10
+    publication_date: '2022-10-28'
+    quote: The regulations impose export license requirements effectively on all KLA products and services
+      to customers located in China that fabricate certain advanced logic, NAND and DRAM integrated circuits
+    note: KLA 10-Q. KLA's FY22 10-K (2022-08-05) 'new rules' wording concerns Entity List/Huawei rules,
+      not these.
+    checked_on: '2026-10-25'
 - id: analog_bottoming_2024
   period: holdout
   kind: theme
@@ -665,7 +738,16 @@ themes:
   notes: Agent's first choice for emergence was 2025-03-26 (Micron price-hike letter, TrendForce), but
     that hike was partly NAND and outage-driven; the DRAM-specific June 2025 marker is used instead.
   approved: false
-  review_needed: 'Both markers weak: no explicit DRAM-pricing statement in SEC filings before 2025-10-03.'
+  review_needed: 'Both markers weak: no explicit DRAM-pricing statement in SEC filings before 2025-10-03.
+    Second SEC pass: explicit DRAM pricing first in Micron''s 8-K of 2025-08-11.'
+  additional_sec_evidence:
+  - url: https://www.sec.gov/Archives/edgar/data/723125/000110465925075940/tm2522933d1_ex99-1.htm
+    event_date: '2025-08-11'
+    publication_date: '2025-08-11'
+    quote: This revised guidance reflects improved pricing, particularly in DRAM
+    note: 'Micron mid-quarter guidance raise: first explicit DRAM pricing statement in an SEC filing found
+      (before the 10-K of 2025-10-03).'
+    checked_on: '2026-10-25'
 - id: metaverse_2021
   period: dev
   kind: negative_control
