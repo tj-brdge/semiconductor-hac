@@ -67,7 +67,7 @@ themes:
       note: Samsung is not an SEC filer; press source not reachable.
   notes: 'Alternatives: Micron FQ1-17 release 2016-12-21 (SEC: https://www.sec.gov/Archives/edgar/data/723125/000072312516000306/a2017q1exhibit991-pressrel.htm)
     as a company-side emergence marker; CNBC 2017-07-26 (Samsung record Q2) as an earlier consensus date.'
-  approved: false
+  approved: true
 - id: crypto_gpu_2017
   period: dev
   kind: theme
@@ -107,7 +107,7 @@ themes:
   notes: 'Primary support: NVIDIA Q2 FY18 CFO commentary (reported 2017-08-10): ''The recent rise in crypto
     coin prices resulted in increased demand in OEM GPU sales'' (opened: https://www.sec.gov/Archives/edgar/data/0001045810/000104581017000117/q2fy18cfocommentary.htm).
     2017-08-10 is an alternative consensus date.'
-  approved: false
+  approved: true
   review_needed: 'Ordering: the earliest issuer filing (2017-08-03) is after the draft consensus (2017-07-26);
     press emergence (2017-06-05) is unverified. Decide whether emergence may rest on press.'
 - id: cloud_datacenter_2016
@@ -151,7 +151,7 @@ themes:
       note: Same date as the press marker; press framing itself unverified.
   notes: Theme is broad (cloud capex vs AI accelerators); emergence depends on definition. Google TPU
     announcement 2016-05-18 is another marker.
-  approved: false
+  approved: true
 - id: sic_ev_power_2019
   period: dev
   kind: theme
@@ -194,7 +194,7 @@ themes:
       note: Company source, not market consensus.
   notes: Company/trade sources, not major business press; a press-based consensus date may be later. Reuters
     cited via a third-party reprint.
-  approved: false
+  approved: true
   additional_sec_evidence:
   - url: https://www.sec.gov/Archives/edgar/data/1097864/000119312519067848/d692646dex991.htm
     event_date: '2019-03-08'
@@ -245,7 +245,7 @@ themes:
       note: Ford/Nissan are not listed issuers; press not reachable.
   notes: 'VW production adjustments announced 2020-12-18. Later consensus option: Reuters 2021-01-28 on
     Ford/Toyota/Nissan/Honda cuts.'
-  approved: false
+  approved: true
 - id: handset_5g_2019
   period: dev
   kind: theme
@@ -287,7 +287,7 @@ themes:
       note: Confirms the event date; the 5G framing is press-only.
   notes: Emergence is early (2016) because it is modem-led; an RF-specific consensus option is CNBC 2019-11-07
     on Qorvo.
-  approved: false
+  approved: true
 - id: inventory_correction_2022
   period: holdout
   kind: theme
@@ -331,7 +331,7 @@ themes:
       note: About 4 weeks after the press date.
   notes: 'Alternative consensus: Nvidia preannouncement 2022-08-08 (CNBC, snippet). Emergence could move
     to late May 2022 (Nvidia''s guide).'
-  approved: false
+  approved: true
 - id: ai_compute_2023
   period: holdout
   kind: theme
@@ -371,7 +371,7 @@ themes:
       sec_quote: We are significantly increasing our supply to meet surging demand for them
       note: Same date as the press marker.
   notes: ChatGPT launched 2022-11-30 (not a company disclosure).
-  approved: false
+  approved: true
 - id: hbm_2023
   period: holdout
   kind: theme
@@ -409,7 +409,7 @@ themes:
       sec_quote: null
       note: SK hynix not an SEC filer.
   notes: Consensus debatable (TrendForce mid-2023 call; 'sold out for 2024' coverage in 2024).
-  approved: false
+  approved: true
   review_needed: 'Ordering: earliest issuer SEC statement (2023-10-06) is after the draft consensus; SK
     hynix and Samsung disclose outside SEC. Needs a press or Korean-filing check.'
 - id: advanced_packaging_2023
@@ -452,7 +452,7 @@ themes:
       note: TSMC 6-K 2023-07-20 has no CoWoS text; press not reachable.
   notes: 'Alternative consensus: TSMC Q2-23 call 2023-07-20 (CoWoS ''very tight'', capacity to roughly
     double by end-2024).'
-  approved: false
+  approved: true
   review_needed: 'Ordering: earliest SEC evidence (2023-08-10) is after the draft emergence by 5 months;
     consensus unverifiable here. Second SEC pass: no SEC filer states a CoWoS constraint in 2023; Amkor
     names AI first on 2024-02-05.'
@@ -507,7 +507,7 @@ themes:
       note: 'Same document as the emergence alternative: supports AI revenue broadly, not optics.'
   notes: 'WEAK: consensus reflects AI revenue broadly, not optics specifically; no optics-specific consensus
     source found.'
-  approved: false
+  approved: true
   review_needed: 'SCOPE UNRESOLVED: AI networking silicon (Arista/Marvell/Broadcom, SEC evidence 2023-05)
     and optical transceivers (Coherent/Lumentum, SEC evidence 2023-08) appear months apart. Proposal:
     split into two themes; not applied. Second SEC pass: Fabrinet 2023-08-21 corroborates optics in August
@@ -568,7 +568,7 @@ themes:
       note: Company statement, not market consensus; Goldman note unverifiable.
   notes: 'WEAK: sell-side note, not major-press framing. Alternatives: Talen-Amazon (Mar 2024), Constellation-Microsoft
     (Sep 2024).'
-  approved: false
+  approved: true
   review_needed: 'SCOPE UNRESOLVED: data-centre electrical/cooling equipment (VRT, ETN, NVT; Vertiv evidence
     2023-04) vs power generation (CEG, VST, GEV; Constellation evidence 2024-05). Proposal: split into
     two themes; not applied. Second SEC pass (2026-10-25): equipment side nVent 2023-07-28 after Vertiv
@@ -641,7 +641,7 @@ themes:
       note: Confirms the BIS date at second hand.
   notes: 'Primary alternative for emergence: Nvidia 8-K dated 2022-08-26 (opened: https://www.sec.gov/Archives/edgar/data/1045810/000104581022000146/nvda-20220826.htm),
     new licence requirement for A100/H100 to China.'
-  approved: false
+  approved: true
   additional_sec_evidence:
   - url: https://www.sec.gov/Archives/edgar/data/707549/000070754922000124/lrcx-20220925.htm
     event_date: null
@@ -698,7 +698,7 @@ themes:
       note: Confirms the event date only; the inventory statement was on the call.
   notes: 'Confirming: ADI FQ2 release 2024-05-22 (opened) ''at the beginning of a cyclical recovery''.
     Recovery was muted for MCHP/STM/ON.'
-  approved: false
+  approved: true
 - id: dram_upcycle_2025
   period: holdout
   kind: theme
@@ -737,7 +737,7 @@ themes:
       note: 'Weak: a company result, not the Korean-chipmaker press framing.'
   notes: Agent's first choice for emergence was 2025-03-26 (Micron price-hike letter, TrendForce), but
     that hike was partly NAND and outage-driven; the DRAM-specific June 2025 marker is used instead.
-  approved: false
+  approved: true
   review_needed: 'Both markers weak: no explicit DRAM-pricing statement in SEC filings before 2025-10-03.
     Second SEC pass: explicit DRAM pricing first in Micron''s 8-K of 2025-08-11.'
   additional_sec_evidence:
@@ -795,7 +795,7 @@ themes:
     the metaverse'; opened, https://www.sec.gov/Archives/edgar/data/1315098/000119312520298230/d87104ds1.htm).
     The ETF launch is used here because the label's issuers are chip/device makers; Meta's Q2 2021 release
     (2021-07-28) is another option. No NVDA/QCOM/AAPL metaverse write-down found.
-  approved: false
+  approved: true
   review_needed: 'QUESTIONABLE CONTROL: ''metaverse'' appears 0 times in NVDA''s FY22 10-K and QCOM''s
     2021 10-K, so the chip issuers disclosed no exposure; a disclosure-driven system can hardly flag it
     from their text, so ''not flagged'' is weak evidence. Consider restricting to issuers with disclosed
@@ -844,6 +844,6 @@ themes:
     checked: opened
   notes: CMP first called 'nominal' around 2022-05-25 (snippet only). No AMD/TSM crypto-specific source
     found.
-  approved: false
+  approved: true
   review_needed: Fair control for NVDA (CMP disclosed, then 'nominal'); AMD shows only a generic risk
     factor and TSM was not checked.

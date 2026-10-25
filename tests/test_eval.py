@@ -40,10 +40,18 @@ def test_null_sets_exclude_members_and_match_segments():
         assert sorted(segs[x] for x in s) == ["A", "A", "B"]
 
 
-def test_repo_label_file_loads_and_is_not_freezable_yet():
+def test_repo_label_file_loads_complete_and_unfrozen():
     labels = load_labels()
     assert not labels.frozen
-    assert any("needs a date" in p for p in labels.problems())
+    assert labels.problems() == []
+
+
+def test_blank_marker_is_a_problem(tmp_path):
+    p = tmp_path / "themes.yaml"
+    p.write_text("frozen: false\nthemes:\n  - id: x\n    period: dev\n    kind: theme\n"
+                 "    issuers: [A]\n    emergence_marker: {date: null, source: null}\n"
+                 "    consensus_marker: {date: 2020-01-01, source: s}\n")
+    assert any("needs a date" in q for q in load_labels(p).problems())
 
 
 def _repo_copy(tmp_path):
