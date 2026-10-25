@@ -68,7 +68,7 @@ text:
   topic_mode: window
   anchor_refit_snapshots: 12
   anchor_lookback_days: 730
-  anchor_assign_similarity: 0.40   # under confirmation 2026-10-25, see DESIGN.md
+  anchor_assign_similarity: 0.40   # failed confirmation; stated comparison value 2026-10-25, see DESIGN.md
   anchor_match_similarity: 0.70
   # A refit topic is a split of an old topic when this share of its training passages
   # were assigned to that topic (shared text, not shared companies); a retiring topic

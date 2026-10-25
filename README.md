@@ -26,7 +26,7 @@ and inspected), **deferred** (not built).
 | Market and macro layers | tested; live-validated in the first development run |
 | Text layer as of the first development run (2010–2021, `voyage-finance-2`) | live-validated, and found wanting: 190 candidates (16 a year), topics dominated by call small talk and statement boilerplate, ~14,600 topic IDs over 144 windows |
 | Revised text layer, window topics (filters, genre centring, overlap tracking, new-high, history, lineage and spread rules) | tested; **live-validated on 2010–2021**: 145 flagged months, leading candidates are real subjects (FinFET, RF/LTE, etch, memory) but topics are re-cut monthly (median life 2 windows) |
-| Anchored topics (`--topic-mode anchored`: yearly discovery, monthly assignment, new topics from unclaimed text) | tested; live runs on 2010–2021 at assign 0.45 (25 candidates, 69% of passages unassigned). Threshold provisionally 0.35 from estimates; **confirmation run pending** (criteria in DESIGN.md) |
+| Anchored topics (`--topic-mode anchored`: yearly discovery, monthly assignment, new topics from unclaimed text) | live dev runs at assign 0.45, 0.35 and 0.40. **No tested threshold matches window mode's coverage and tightness together** (0.40: 0.475 vs 0.583 assigned, tightness 0.611 vs 0.632). Comparison runs at the stated value 0.40, with that caveat (DESIGN.md) |
 | Window vs anchored comparison (`themegraph compare`, declared criteria in DESIGN.md) | tested on synthetic data; **real comparison pending** (needs label approval, both runs, adjudication) |
 | Evaluation: detection, co-movement, buy-and-hold returns, dependence-grouped inference, adjudication | tested |
 | Holdout lifecycle (attempt logged before outcomes, one clean attempt, verification) | tested; the real holdout has **not** been run |
@@ -118,7 +118,7 @@ themegraph compare runs/cmp-window runs/cmp-anchored
 Run both from the same clean commit, environment, config and data (`compare` refuses
 otherwise, including runs without recorded provenance), and adjudicate before opening
 either `report.html`. Each run also writes `coverage_samples.md`, a text-only sample
-of assigned and unassigned passages used to confirm the anchored threshold. The decision rule is fixed in
+of assigned and unassigned passages (used in the anchored threshold confirmation). The decision rule is fixed in
 DESIGN.md ("Window vs anchored comparison").
 
 ### Conventions worth knowing

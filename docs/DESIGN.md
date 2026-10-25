@@ -692,6 +692,43 @@ Other measured differences at 0.35 (not criteria): 72 candidates (0.45: 25; wind
 115), one near-duplicate pair, 56% of topics outliving a window, 11.1 lasting births
 per window, first-to-last member cosine 0.59.
 
+*Confirmation result for 0.40 (measured, 2026-10-25; both modes run from one clean
+checkout at 1b3113a with full provenance, so the pair is comparable).* Assigned share
+of all passages 0.475 (window 0.583; outside the band), tightness 0.611 (window 0.632;
+below). **0.40 fails criteria (1) and (2).** Stage totals (of all passages): existing
+topics claimed 0.616, the per-window size/issuer rule rejected 0.149 of those, and
+discovery in unclaimed text added 0.001 (1,845 passages over 144 windows). The
+unclaimed residue does not form clusters under the window-mode rules, so the
+coverage gap cannot be closed by discovery at any threshold; it moves only with
+how much existing topics claim. Measured anchored points (assigned, tightness): 0.45
+(0.308, 0.649), 0.40 (0.475, 0.611), 0.35 (0.663, 0.582). Linear interpolation puts
+assigned 0.533 near 0.385 (tightness about 0.60) and tightness 0.632 near 0.43
+(assigned about 0.37). The two requirements do not overlap at any threshold, so
+**no single threshold gives anchored topics window mode's coverage and tightness
+together**. That is the result, and no threshold is forced to pass.
+Criterion (3), read from both runs' `coverage_samples.md`: both modes mix their
+samples. Each assigns some housekeeping (option and equity tables, merger and
+underwriting agreements, call closings), and each leaves substantive passages
+unassigned. Anchored mode's unassigned sample has more substantive Q&A
+(process transitions, packaging, export controls, product ramps), as its 0.525
+unassigned share implies. The reading does not separate the modes.
+
+*Comparison value (stated before any adjudication, 2026-10-25): 0.40,* chosen by the
+user as the most balanced tested value: 0.108 below window coverage, 0.021 below
+window tightness. The alternatives were 0.35 (0.08 above on coverage, 0.050 below on
+tightness) and 0.45 (0.275 below on coverage, above on tightness). The comparison
+uses the two runs at 1b3113a. Every result from it carries the caveat that anchored
+topics cover about a fifth fewer passages (0.475 vs 0.583) and are slightly looser.
+Other measured differences at 0.40 (not criteria):
+- 44 candidates (window: 115)
+- 0 near-duplicate pairs (window: 28)
+- 44.5% of topics outlive a window (window: 6.9%)
+- 8.8 lasting births per window (window: 8.8)
+- month-to-month member cosine 0.982 (window: 0.843)
+- first-to-last member cosine 0.59 (window: 0.36)
+- refit continuity 0.29, with 425 splits and 533 merges over 12 refits
+- text stage 1,128 s (window: 246 s)
+
 ### Review fixes after 531575c (2026-10-25)
 
 - **Calibration accounting** (`text/anchored.py`): explicit per-window stages and
