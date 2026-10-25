@@ -613,6 +613,14 @@ Second SEC pass (2026-10-25, three quotes re-checked independently), recorded as
 
 1. Approve labels: resolve the calls above, confirm press-only markers, copy approved
    dates into `labels/themes.yaml` (`themegraph labels` must report no problems).
+   *Done 2026-10-25:* the user approved all 17 entries as drafted. That keeps the
+   drafted dates for crypto GPU, HBM and advanced packaging, even where the SEC
+   evidence is later. AI networking/optics and AI power stay single themes, and both
+   negative controls stay. The weak DRAM 2025 markers stand. Press-only markers
+   (`unverifiable_here`) rest on the user's approval, not on SEC verification. They
+   can be edited until the freeze. `themegraph labels`: no problems. The dev runs at
+   1b3113a were evaluated against the blank labels, so both modes must be rerun
+   before adjudication (no theme was evaluable).
 2. Rerun both topic modes on development data from one commit and data state, and
    adjudicate both from the packets; `themegraph compare` must report comparable runs
    and complete adjudication.

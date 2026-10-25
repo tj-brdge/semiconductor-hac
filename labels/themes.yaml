@@ -1,8 +1,11 @@
 # Hand-labelled ground truth (DESIGN.md §7.2). DRAFT — not frozen.
 #
 # Every marker needs a date AND a citation (URL or document reference) before the
-# file can be frozen; `themegraph freeze` refuses null markers. Dates were left
-# blank deliberately: they must come from dated public sources, not memory.
+# file can be frozen; `themegraph freeze` refuses null markers. Dates and sources
+# are copied from labels/themes_draft.yaml, where the evidence and verification for
+# each marker are kept; all 17 entries were approved by the user on 2026-10-25 as
+# drafted (open `review_needed` items resolved by keeping the drafted dates, scopes
+# and controls). Editable until the spec is frozen.
 #
 #   emergence_marker: earliest public evidence the theme existed
 #   consensus_marker: when it became mainstream (major press, dedicated ETF,
@@ -17,105 +20,105 @@ themes:
     period: dev
     kind: theme
     issuers: [MU, 005930.KS, 000660.KS, WDC, LRCX, AMAT]
-    emergence_marker: {date: null, source: null}
-    consensus_marker: {date: null, source: null}
+    emergence_marker: {date: "2016-07-05", source: "https://www.trendforce.com/presscenter/news/20160705-9444.html"}
+    consensus_marker: {date: "2017-10-30", source: "https://www.cnbc.com/2017/10/30/samsung-q3-earnings.html"}
   - id: crypto_gpu_2017
     period: dev
     kind: theme
     issuers: [NVDA, AMD, TSM]
-    emergence_marker: {date: null, source: null}
-    consensus_marker: {date: null, source: null}
+    emergence_marker: {date: "2017-06-05", source: "https://www.cnbc.com/2017/06/05/digital-currency-mining-is-boosting-demand-for-amds-graphics-cards.html"}
+    consensus_marker: {date: "2017-07-26", source: "https://www.cnbc.com/2017/07/26/wall-street-stunned-over-amds-cryptocurrency-mining-demand.html"}
   - id: cloud_datacenter_2016
     period: dev
     kind: theme
     issuers: [NVDA, INTC, AMD, MSFT, AMZN, GOOGL, MU]
-    emergence_marker: {date: null, source: null}
-    consensus_marker: {date: null, source: null}
+    emergence_marker: {date: "2016-02-17", source: "https://www.sec.gov/Archives/edgar/data/1045810/000104581016000189/q416pr.htm"}
+    consensus_marker: {date: "2016-08-11", source: "https://www.cnbc.com/2016/08/11/nvidias-stock-has-topped-google-facebook-and-amazon.html"}
   - id: sic_ev_power_2019
     period: dev
     kind: theme
     issuers: [WOLF, "ON", STM, TSLA, POWI]
-    emergence_marker: {date: null, source: null}
-    consensus_marker: {date: null, source: null}
+    emergence_marker: {date: "2017-08-02", source: "https://interaksyon.philstar.com/infotek/2017/08/02/88397/tesla-model-3-cars-will-be-powered-by-infineon-chips/"}
+    consensus_marker: {date: "2019-05-14", source: "https://www.wolfspeed.com/company/news-events/news/cree-selected-as-silicon-carbide-partner-for-the-volkswagen-group-fast-program"}
   - id: chip_shortage_auto_2021
     period: dev
     kind: theme
     issuers: [NXPI, MCHP, "ON", TXN, ADI, GM, TSM, UMC]
-    emergence_marker: {date: null, source: null}
-    consensus_marker: {date: null, source: null}
+    emergence_marker: {date: "2020-12-04", source: "https://www.trend.az/business/economy/3345222.html"}
+    consensus_marker: {date: "2021-01-08", source: "https://www.cnbc.com/2021/01/08/semiconductor-shortage-causes-ford-and-nissan-to-cut-vehicle-production.html"}
   - id: handset_5g_2019
     period: dev
     kind: theme
     issuers: [QCOM, SWKS, QRVO, AAPL, AVGO]
-    emergence_marker: {date: null, source: null}
-    consensus_marker: {date: null, source: null}
+    emergence_marker: {date: "2016-10-17", source: "https://www.qualcomm.com/news/releases/2016/10/qualcomm-showcases-5g-leadership-announcing-its-first-5g-modem-solution"}
+    consensus_marker: {date: "2019-04-16", source: "https://www.cnbc.com/2019/04/16/apple-qualcomm-settle-royalty-dispute-sources-say.html"}
 
   # ---------------- holdout period (2022–2026)
   - id: inventory_correction_2022
     period: holdout
     kind: theme
     issuers: [MU, WDC, INTC, AMD, NVDA, SWKS, QRVO]
-    emergence_marker: {date: null, source: null}
-    consensus_marker: {date: null, source: null}
+    emergence_marker: {date: "2022-06-30", source: "https://www.sec.gov/Archives/edgar/data/723125/000072312522000034/a2022q3ex991-pressrelease.htm"}
+    consensus_marker: {date: "2022-07-12", source: "https://www.cnbc.com/2022/07/12/computer-chips-face-toilet-paper-hoarding-moment-as-shortage-turns-to-glut.html"}
   - id: ai_compute_2023
     period: holdout
     kind: theme
     issuers: [NVDA, AVGO, AMD, TSM, MSFT, META, SMCI]
-    emergence_marker: {date: null, source: null}
-    consensus_marker: {date: null, source: null}
+    emergence_marker: {date: "2023-02-22", source: "https://www.sec.gov/Archives/edgar/data/1045810/000104581023000014/q4fy23pr.htm"}
+    consensus_marker: {date: "2023-05-24", source: "https://www.cnbc.com/amp/2023/05/24/nvidia-nvda-earnings-report-q1-2024.html"}
   - id: hbm_2023
     period: holdout
     kind: theme
     issuers: [000660.KS, MU, 005930.KS]
-    emergence_marker: {date: null, source: null}
-    consensus_marker: {date: null, source: null}
+    emergence_marker: {date: "2023-02-13", source: "https://www.kedglobal.com/newsView/ked202302130023"}
+    consensus_marker: {date: "2023-07-26", source: "https://www.cnbc.com/2023/07/26/sk-hynix-earnings-q2-loss-narrows-amid-robust-ai-demand-chip-recovery.html"}
   - id: advanced_packaging_2023
     period: holdout
     kind: theme
     issuers: [TSM, AMKR, ASML, CAMT, ONTO, 6857.T]
-    emergence_marker: {date: null, source: null}
-    consensus_marker: {date: null, source: null}
+    emergence_marker: {date: "2023-03-02", source: "https://apps.digitimes.com/news/a20230301PD217/chatgpt-cowos-tsmc.html"}
+    consensus_marker: {date: "2023-09-07", source: "https://www.anandtech.com/show/20045"}
   - id: ai_networking_optics_2023
     period: holdout
     kind: theme
     issuers: [ANET, AVGO, MRVL, COHR, LITE, FN, CRDO, ALAB]
-    emergence_marker: {date: null, source: null}
-    consensus_marker: {date: null, source: null}
+    emergence_marker: {date: "2023-03-02", source: "https://www.fool.com/earnings/call-transcripts/2023/03/02/broadcom-avgo-q1-2023-earnings-call-transcript"}
+    consensus_marker: {date: "2023-05-26", source: "https://www.cnbc.com/2023/05/26/marvell-shares-soar-25percent-after-semiconductor-firm-beats-on-earnings.html"}
   - id: ai_power_2024
     period: holdout
     kind: theme
     issuers: [VRT, ETN, GEV, CEG, VST, NVT]
-    emergence_marker: {date: null, source: null}
-    consensus_marker: {date: null, source: null}
+    emergence_marker: {date: "2023-04-26", source: "https://www.sec.gov/Archives/edgar/data/1674101/000162828023013042/q12023exhibit991vrt42623.htm"}
+    consensus_marker: {date: "2024-05-14", source: "https://www.goldmansachs.com/insights/articles/AI-poised-to-drive-160-increase-in-power-demand"}
   - id: china_export_controls_2022
     period: holdout
     kind: theme
     issuers: [AMAT, LRCX, KLAC, ASML, NVDA, 8035.T]
-    emergence_marker: {date: null, source: null}
-    consensus_marker: {date: null, source: null}
+    emergence_marker: {date: "2022-07-29", source: "https://technode.com/2022/08/01/us-further-tightens-chinas-access-to-chipmaking-equipment/"}
+    consensus_marker: {date: "2022-10-07", source: "https://www.bis.gov/press-release/commerce-implements-new-export-controls-advanced-computing-semiconductor-manufacturing-items-peoples"}
   - id: analog_bottoming_2024
     period: holdout
     kind: theme
     issuers: [TXN, ADI, MCHP, NXPI, "ON", STM]
-    emergence_marker: {date: null, source: null}
-    consensus_marker: {date: null, source: null}
+    emergence_marker: {date: "2024-02-21", source: "https://investing.com/news/stock-market-news/chipmaker-analog-devices-forecasts-weak-q2-as-excess-supply-hurts-3309976"}
+    consensus_marker: {date: "2024-04-23", source: "https://bnn.ca/texas-instruments-gives-solid-forecast-in-sign-of-chip-comeback-1.2062847"}
   - id: dram_upcycle_2025
     period: holdout
     kind: theme
     issuers: [MU, 000660.KS, 005930.KS, 2408.TW, SNDK]
-    emergence_marker: {date: null, source: null}
-    consensus_marker: {date: null, source: null}
+    emergence_marker: {date: "2025-06-05", source: "https://www.trendforce.com/presscenter/news/20250605-12608.html"}
+    consensus_marker: {date: "2025-09-26", source: "https://www.bloomberg.com/news/articles/2025-09-26/-supercycle-may-prolong-100-billion-rally-in-korean-chipmakers"}
 
   # ---------------- negative controls
   - id: metaverse_2021
     period: dev
     kind: negative_control
     issuers: [META, NVDA, QCOM, AAPL]
-    emergence_marker: {date: null, source: null}
-    consensus_marker: {date: null, source: null}
+    emergence_marker: {date: "2021-06-29", source: "https://www.sec.gov/Archives/edgar/data/1683471/000139834422005574/fp0073593_ncsr.htm"}
+    consensus_marker: {date: "2021-10-28", source: "https://www.sec.gov/Archives/edgar/data/1326801/000132680121000071/fb-20211028.htm"}
   - id: crypto_mining_2021
     period: dev
     kind: negative_control
     issuers: [NVDA, AMD, TSM]
-    emergence_marker: {date: null, source: null}
-    consensus_marker: {date: null, source: null}
+    emergence_marker: {date: "2021-02-18", source: "https://blogs.nvidia.com/blog/2021/02/18/geforce-cmp/"}
+    consensus_marker: {date: "2021-04-12", source: "https://www.sec.gov/Archives/edgar/data/1045810/000104581021000047/exhibit991pressrelease.htm"}

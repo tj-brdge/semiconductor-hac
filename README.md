@@ -27,11 +27,11 @@ and inspected), **deferred** (not built).
 | Text layer as of the first development run (2010–2021, `voyage-finance-2`) | live-validated, and found wanting: 190 candidates (16 a year), topics dominated by call small talk and statement boilerplate, ~14,600 topic IDs over 144 windows |
 | Revised text layer, window topics (filters, genre centring, overlap tracking, new-high, history, lineage and spread rules) | tested; **live-validated on 2010–2021**: 145 flagged months, leading candidates are real subjects (FinFET, RF/LTE, etch, memory) but topics are re-cut monthly (median life 2 windows) |
 | Anchored topics (`--topic-mode anchored`: yearly discovery, monthly assignment, new topics from unclaimed text) | live dev runs at assign 0.45, 0.35 and 0.40. **No tested threshold matches window mode's coverage and tightness together** (0.40: 0.475 vs 0.583 assigned, tightness 0.611 vs 0.632). Comparison runs at the stated value 0.40, with that caveat (DESIGN.md) |
-| Window vs anchored comparison (`themegraph compare`, declared criteria in DESIGN.md) | tested on synthetic data; **real comparison pending** (needs label approval, both runs, adjudication) |
+| Window vs anchored comparison (`themegraph compare`, declared criteria in DESIGN.md) | tested on synthetic data; **real comparison pending** (needs both runs rerun with the approved labels, then adjudication) |
 | Evaluation: detection, co-movement, buy-and-hold returns, dependence-grouped inference, adjudication | tested |
 | Holdout lifecycle (attempt logged before outcomes, one clean attempt, verification) | tested; the real holdout has **not** been run |
 | Forward prediction log (`themegraph forward`) | tested; not yet used on live data |
-| Theme labels (`labels/themes.yaml`) | dates and sources still blank; proposed markers with provenance in `labels/themes_draft.yaml` await human approval |
+| Theme labels (`labels/themes.yaml`) | 17 entries approved 2026-10-25 and copied from `labels/themes_draft.yaml` (evidence and verification kept there); not frozen |
 | Layer ablations (text-only vs market-only), beta matching, follow-through/fundamentals layer | deferred |
 
 ## Quick start
