@@ -8,11 +8,13 @@ Conventions (all explicit, all tested):
   session). The move into the entry close is excluded.
 - Execution per security, by venue (exchange, proxied by currency): if the venue is
   open on the entry session the position is bought at that close; if the venue is
-  closed that day (a scheduled closure: no security of that venue has a quote), it is
-  bought at the venue's next session before exit. At exit, a closed venue sells at its
-  last session on or before the exit session. A security without a quote on a day its
-  venue traded is a genuinely missing quote, handled by the statuses below; prices
-  are never forward-filled across missing quotes.
+  closed that day, it is bought at the venue's next session before exit. At exit, a
+  closed venue sells at its last session on or before the exit session. A venue is
+  closed only on a *verified closure* (see `venue_sessions`); every other calendar
+  session counts as open, so a security without a quote there is a missing quote,
+  handled by the statuses below. Missing data never passes as a closure: a
+  venue-wide data outage is valued by the stale-price rules, not as a holiday.
+  Prices are never forward-filled across missing quotes.
 - The statistic is the return of an investable equal-weight buy-and-hold basket:
   the mean of constituents' simple returns P_exit / P_entry - 1, no rebalancing.
   (A mean of log returns is not the return of any holdable portfolio and is biased
@@ -56,6 +58,11 @@ from .comovement import matched_null_sets
 
 MIN_COVERAGE = 0.8
 STALE_SESSIONS = 5
+# A venue closure must be short and witnessed. Longest known closures of the venues
+# in the universe, counted in US sessions: Korea 2017-10-02..09 (Chuseok, 6) and
+# Japan 2019-04-29..05-06 (Golden Week, 6). Longer quote-free runs are data gaps.
+MAX_CLOSURE_SESSIONS = 7
+MIN_CLOSURE_WITNESSES = 2
 
 
 def execution_context(closes: pd.DataFrame, universe: UniverseConfig,
@@ -71,14 +78,48 @@ def execution_context(closes: pd.DataFrame, universe: UniverseConfig,
             "successors": {i.symbol: i.successor for i in universe.issuers if i.successor}}
 
 
-def venue_sessions(panel: pd.DataFrame, venues: dict[str, str] | None) -> dict[str, pd.Index]:
-    """Dates each venue traded: any security of the venue has a close."""
+def venue_sessions(panel: pd.DataFrame, venues: dict[str, str] | None,
+                   calendar: pd.Index | None = None) -> dict[str, pd.Index]:
+    """Dates each venue is treated as open: every date one of its securities has a
+    close, plus every calendar session that is not a verified closure.
+
+    A run of calendar sessions with no quote for any of the venue's securities is a
+    verified closure only if (a) the venue trades again after it, (b) it lasts at
+    most MAX_CLOSURE_SESSIONS, and (c) at least MIN_CLOSURE_WITNESSES securities are
+    quoted on both venue sessions bracketing it (so a single-security venue never
+    verifies a closure, and one security's own gap is not a market holiday). Any
+    other quote-free session is unknown coverage and stays open, so a missing price
+    there falls to the stale/unvalued rules. Residual risk: a venue-wide outage of at
+    most MAX_CLOSURE_SESSIONS, bracketed by data, is indistinguishable from a holiday
+    without an exchange calendar."""
     venues = venues or {}
+    cal = pd.Index(calendar) if calendar is not None else panel.index
     groups: dict[str, list[str]] = {}
     for c in panel.columns:
         groups.setdefault(venues.get(c, "USD"), []).append(c)
-    return {v: panel.index[panel[cols].notna().any(axis=1).to_numpy()]
-            for v, cols in groups.items()}
+    out = {}
+    for v, cols in groups.items():
+        quoted = panel[cols].notna()
+        obs = panel.index[quoted.any(axis=1).to_numpy()]
+        gap = ~cal.isin(obs)
+        closed: list[pd.Timestamp] = []
+        i = 0
+        while i < len(cal):
+            if not gap[i]:
+                i += 1
+                continue
+            j = i
+            while j + 1 < len(cal) and gap[j + 1]:
+                j += 1
+            run = cal[i:j + 1]
+            before, after = obs[obs < run[0]], obs[obs > run[-1]]
+            if len(before) and len(after) and len(run) <= MAX_CLOSURE_SESSIONS:
+                both = quoted.loc[before[-1]] & quoted.loc[after[0]]
+                if int(both.sum()) >= MIN_CLOSURE_WITNESSES:
+                    closed.extend(run)
+            i = j + 1
+        out[v] = obs.union(cal.difference(pd.Index(closed)))
+    return out
 
 
 def holding_return(panel: pd.DataFrame, members: list[str], t: pd.Timestamp, h: int,
@@ -91,7 +132,7 @@ def holding_return(panel: pd.DataFrame, members: list[str], t: pd.Timestamp, h: 
     symbols); `calendar` the horizon sessions (default: the panel's dates)."""
     delisted, successors = delisted or {}, successors or {}
     cal = pd.Index(calendar) if calendar is not None else panel.index
-    sessions = sessions if sessions is not None else venue_sessions(panel, venues)
+    sessions = sessions if sessions is not None else venue_sessions(panel, venues, cal)
     venues = venues or {}
     after = np.flatnonzero(cal > t)
     out = {"entry": None, "exit": None, "value": np.nan, "worst_case": np.nan,
@@ -201,7 +242,7 @@ def returns_test(first_flags: pd.DataFrame, panel: pd.DataFrame, core: set[str],
     as of the flag. Nulls are segment-matched baskets of non-members; the momentum
     comparison is the same number of core names with the highest trailing return."""
     rows = []
-    sessions = venue_sessions(panel, venues)
+    sessions = venue_sessions(panel, venues, calendar)
     kw = {"calendar": calendar, "venues": venues, "sessions": sessions}
     for r in first_flags.itertuples():
         members = sorted(s for s in r.issuers if s in core)

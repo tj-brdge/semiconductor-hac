@@ -701,33 +701,62 @@ Other measured differences at 0.35 (not criteria): 72 candidates (0.45: 25; wind
 per window, first-to-last member cosine 0.59.
 
 *Confirmation result for 0.40 (measured, 2026-10-25; both modes run from one clean
-checkout at 1b3113a with full provenance, so the pair is comparable).* Assigned share
-of all passages 0.475 (window 0.583; outside the band), tightness 0.611 (window 0.632;
-below). **0.40 fails criteria (1) and (2).** Stage totals (of all passages): existing
-topics claimed 0.616, the per-window size/issuer rule rejected 0.149 of those, and
-discovery in unclaimed text added 0.001 (1,845 passages over 144 windows). The
-unclaimed residue does not form clusters under the window-mode rules, so the
-coverage gap cannot be closed by discovery at any threshold; it moves only with
-how much existing topics claim. Measured anchored points (assigned, tightness): 0.45
-(0.308, 0.649), 0.40 (0.475, 0.611), 0.35 (0.663, 0.582). Linear interpolation puts
-assigned 0.533 near 0.385 (tightness about 0.60) and tightness 0.632 near 0.43
-(assigned about 0.37). The two requirements do not overlap at any threshold, so
-**no single threshold gives anchored topics window mode's coverage and tightness
-together**. That is the result, and no threshold is forced to pass.
-Criterion (3), read from both runs' `coverage_samples.md`: both modes mix their
-samples. Each assigns some housekeeping (option and equity tables, merger and
-underwriting agreements, call closings), and each leaves substantive passages
-unassigned. Anchored mode's unassigned sample has more substantive Q&A
-(process transitions, packaging, export controls, product ramps), as its 0.525
-unassigned share implies. The reading does not separate the modes.
+checkout at 1b3113a; wording corrected in the review of db9e8aa, see below).*
+Measured, with the criteria's basis (the median over 144 monthly windows of each
+window's share): assigned share of all passages 0.475 (window 0.583; outside the
+0.05 band); median topic tightness 0.611 (window 0.632; below). **0.40 fails
+criteria (1) and (2).**
+
+Stage accounting at 0.40, measured, as integer totals over all windows (from the
+manifest's `anchor_calibration.totals`), with pooled shares (total / 994,341):
+
+| stage | passages | pooled share | median per-window share |
+|---|---:|---:|---:|
+| all passages | 994,341 | 1 | |
+| claimed by existing topics | 623,526 | 0.6271 | 0.616 |
+| rejected by the size/issuer rule | 143,713 | 0.1445 | 0.149 |
+| retained (claimed - rejected) | 479,813 | 0.4825 | |
+| discovered in unclaimed text | 1,845 | 0.0019 | 0.001 |
+| assigned (retained + discovered) | 481,658 | 0.4844 | 0.475 |
+| unassigned | 512,683 | 0.5156 | 0.525 |
+
+The totals reconcile exactly: 623,526 - 143,713 + 1,845 = 481,658 and
+481,658 + 512,683 = 994,341. The median column does not (0.616 - 0.149 + 0.001 =
+0.468, not 0.475) because each median comes from a different window: a median of
+differences is not the difference of medians. That is a property of the summary,
+not an accounting error. The earlier text called the medians "stage totals"; they
+are not. The pooled assigned share (0.484) is not the criterion's basis. Window
+mode's pooled share was not recorded at 1b3113a. It can be recomputed from
+`windows.parquet` without a rerun, and `compare` now shows both.
+
+At 0.40, discovery in unclaimed text added 0.19% of passages; nearly all coverage
+came from existing topics' claims. This run says nothing about discovery at other
+thresholds.
+
+Measured anchored points (median assigned share, median tightness): 0.45 (0.308,
+0.649), 0.40 (0.475, 0.611), 0.35 (0.663, 0.582). **No tested threshold met both
+criteria.** Estimate only (linear interpolation between the tested points, not
+measured): the coverage band would need a threshold near 0.385 or lower, with
+tightness about 0.60; window tightness would need about 0.43 or higher, with
+coverage about 0.37. On that estimate the two do not overlap between 0.35 and
+0.45. Interpolation is not evidence about untested values. No further threshold
+search is planned to firm this up.
+
+Criterion (3), qualitative (one reader, 8 + 8 random passages per year from each
+run's `coverage_samples.md`): both modes mix their samples. Each assigns some
+housekeeping (option and equity tables, merger and underwriting agreements, call
+closings), and each leaves substantive passages unassigned. The anchored unassigned
+sample read as containing more substantive Q&A (process transitions, packaging,
+export controls, product ramps). The reading does not separate the modes. It is a
+judgement, not a measurement.
 
 *Comparison value (stated before any adjudication, 2026-10-25): 0.40,* chosen by the
-user as the most balanced tested value: 0.108 below window coverage, 0.021 below
-window tightness. The alternatives were 0.35 (0.08 above on coverage, 0.050 below on
-tightness) and 0.45 (0.275 below on coverage, above on tightness). The comparison
-uses the two runs at 1b3113a. Every result from it carries the caveat that anchored
-topics cover about a fifth fewer passages (0.475 vs 0.583) and are slightly looser.
-Other measured differences at 0.40 (not criteria):
+user as the most balanced tested value. On the median basis it is 0.108 below window
+coverage and 0.021 below window tightness. The alternatives were 0.35 (0.080 above on
+coverage, 0.050 below on tightness) and 0.45 (0.275 below on coverage, 0.017 above on
+tightness). Every result carries the caveat that anchored topics cover fewer
+passages: median per-window share 0.475 vs 0.583. Measured differences at 0.40 (not
+criteria):
 - 44 candidates (window: 115)
 - 0 near-duplicate pairs (window: 28)
 - 44.5% of topics outlive a window (window: 6.9%)
@@ -736,6 +765,11 @@ Other measured differences at 0.40 (not criteria):
 - first-to-last member cosine 0.59 (window: 0.36)
 - refit continuity 0.29, with 425 splits and 533 merges over 12 refits
 - text stage 1,128 s (window: 246 s)
+
+The runs at 1b3113a are the record of this confirmation, but not the comparison
+itself. They were scored against the blank labels in force then, and they predate
+the effective-universe provenance, so `compare` refuses them. The comparison uses
+fresh runs of both modes at the stated value (see docs/EVIDENCE.md).
 
 ### Review fixes after 531575c (2026-10-25)
 
@@ -762,6 +796,54 @@ Other measured differences at 0.40 (not criteria):
   except `text.topic_mode`; same-mode comparisons get distinct columns.
 - **Coverage samples**: each run writes `coverage_samples.md` (text only) for the
   revised confirmation step.
+
+### Review fixes after db9e8aa (2026-10-25)
+
+- **Venue closures versus missing data** (`eval/returns.py: venue_sessions`).
+  Before, a venue counted as closed on any date when none of its securities had a
+  quote. A venue-wide data outage therefore passed as a holiday, and stale-price
+  limits were skipped. Reproduced: two KRW securities quoted [100, 100, 110] then
+  missing, SPY quoted, h = 15 gave `ok`, +10%, on an exit price 14 sessions old.
+  Now a quote-free run of calendar sessions counts as a closure only if all of these
+  hold:
+  - the venue trades again afterwards;
+  - the run lasts at most `MAX_CLOSURE_SESSIONS` (7);
+  - at least 2 securities are quoted on both venue sessions bracketing it.
+
+  Every other session is open, and a missing price there falls to the stale and
+  unvalued rules. The same case now gives `unvalued_position`. Genuine witnessed
+  holidays behave as before. Ordinary positions and acquisition successors use the
+  same session sets, and cash-only conversions need no quote.
+
+  Why not an exchange calendar: it would add a dependency whose historical holiday
+  tables we would have to trust in turn. The inferred rule fails safe (unknown
+  coverage counts as open, so the stale and unvalued rules apply).
+
+  Costs:
+  - A single-security venue (TWD: 2408.TW) never verifies a closure. Its holidays
+    count as missing quotes: stale within 5 sessions, else unvalued. At entry the
+    member is not bought (`no_entry`).
+  - A venue-wide outage of at most 7 sessions, bracketed by data in a venue with 2+
+    securities, is still indistinguishable from a holiday.
+
+  The limit of 7 comes from the longest known closures of the tracked venues,
+  counted in US sessions: Korea's Chuseok in October 2017 and Japan's Golden Week
+  in 2019, 6 each. It affects outcome returns only, never topics or candidates.
+- **Universe provenance** (`provenance.py`, `eval/compare.py`). Manifests now record
+  `effective_universe`: the UniverseConfig object the run used, so programmatic
+  overrides are captured. `compare` requires it and refuses any difference, naming
+  the issuer and field. The universe.yaml file hash is still recorded but not
+  compared: the effective object covers everything it would, ignores comment-only
+  edits, and also catches overrides the file hash cannot see.
+- **Reporting.**
+  - Calibration summaries add `pooled_of_all_passages`, computed from the integer
+    totals so the shares reconcile.
+  - Diagnostics add `unassigned_share_pooled`.
+  - `compare` shows pooled and median coverage. For runs made before this change,
+    it computes the pooled figure from `windows.parquet`.
+  - The 0.40 write-up above was corrected: medians are labelled as medians, the
+    stage table uses integer totals, "no threshold" became "no tested threshold",
+    and the interpolation is labelled an estimate.
 
 ## 12. Open questions
 

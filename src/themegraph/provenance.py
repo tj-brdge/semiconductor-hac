@@ -2,8 +2,10 @@
 
 Source identity is a content hash of src/ (so uncommitted edits are covered), plus the
 git commit and whether tracked files differed from it. Labels, dependency lockfile,
-Python and key package versions, and the effective configuration (after any command
-line overrides) are recorded so two runs can be shown to differ only where declared.
+Python and key package versions, the effective configuration (after any command
+line overrides) and the effective universe (the UniverseConfig object the run used:
+benchmarks, issuer roles, segments, currencies, listing and delisting dates,
+successor terms) are recorded so two runs can be shown to differ only where declared.
 """
 
 from __future__ import annotations
@@ -15,7 +17,7 @@ import platform
 import subprocess
 from pathlib import Path
 
-from .config import ROOT, PipelineConfig
+from .config import ROOT, PipelineConfig, UniverseConfig
 
 PACKAGES = ("numpy", "pandas", "scipy", "scikit-learn", "pyarrow", "voyageai")
 
@@ -45,7 +47,7 @@ def _version(pkg: str) -> str | None:
         return None
 
 
-def run_provenance(cfg: PipelineConfig, root: Path = ROOT) -> dict:
+def run_provenance(cfg: PipelineConfig, universe: UniverseConfig, root: Path = ROOT) -> dict:
     lock = root / "uv.lock"
     labels = root / "labels" / "themes.yaml"
     dirty = _git(root, "status", "--porcelain", "--untracked-files=no", "--", "src",
@@ -62,4 +64,5 @@ def run_provenance(cfg: PipelineConfig, root: Path = ROOT) -> dict:
         "platform": platform.platform(terse=True),
         "packages": {p: _version(p) for p in PACKAGES},
         "effective_config": json.loads(cfg.model_dump_json()),
+        "effective_universe": json.loads(universe.model_dump_json()),
     }

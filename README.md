@@ -26,7 +26,7 @@ and inspected), **deferred** (not built).
 | Market and macro layers | tested; live-validated in the first development run |
 | Text layer as of the first development run (2010–2021, `voyage-finance-2`) | live-validated, and found wanting: 190 candidates (16 a year), topics dominated by call small talk and statement boilerplate, ~14,600 topic IDs over 144 windows |
 | Revised text layer, window topics (filters, genre centring, overlap tracking, new-high, history, lineage and spread rules) | tested; **live-validated on 2010–2021**: 145 flagged months, leading candidates are real subjects (FinFET, RF/LTE, etch, memory) but topics are re-cut monthly (median life 2 windows) |
-| Anchored topics (`--topic-mode anchored`: yearly discovery, monthly assignment, new topics from unclaimed text) | live dev runs at assign 0.45, 0.35 and 0.40. **No tested threshold matches window mode's coverage and tightness together** (0.40: 0.475 vs 0.583 assigned, tightness 0.611 vs 0.632). Comparison runs at the stated value 0.40, with that caveat (DESIGN.md) |
+| Anchored topics (`--topic-mode anchored`: yearly discovery, monthly assignment, new topics from unclaimed text) | live dev runs at assign 0.45, 0.35 and 0.40. **No tested threshold met both confirmation criteria** (at 0.40, median per-window assigned share 0.475 vs window 0.583; median tightness 0.611 vs 0.632). The comparison uses the stated value 0.40 with that caveat; both modes need rerunning first (docs/EVIDENCE.md) |
 | Window vs anchored comparison (`themegraph compare`, declared criteria in DESIGN.md) | tested on synthetic data; **real comparison pending** (needs both runs rerun with the approved labels, then adjudication) |
 | Evaluation: detection, co-movement, buy-and-hold returns, dependence-grouped inference, adjudication | tested |
 | Holdout lifecycle (attempt logged before outcomes, one clean attempt, verification) | tested; the real holdout has **not** been run |
@@ -133,7 +133,12 @@ DESIGN.md ("Window vs anchored comparison").
 - **Trading calendar:** horizons count US (benchmark) sessions; each security trades
   on its own exchange's sessions, so a foreign holiday delays its entry or brings
   forward its exit rather than voiding it, and a US holiday never becomes an entry
-  date. Missing quotes on open days are not filled.
+  date. A holiday must be verified: no quotes for a venue across at most 7
+  sessions, at least two of its securities quoted on both sides, and trading
+  resumes after. Any other quote-free day counts as missing data and falls under the
+  stale-price rules, so a data outage cannot pass as a holiday. A single-security
+  venue therefore never verifies a holiday. Missing quotes on open days are not
+  filled.
 - **Vintages:** reads combine every vintage up to the requested one (latest version
   of each record), so partial batches never hide data; `first_seen_at` is the first
   vintage holding a record's exact content, so revisions are never backdated.

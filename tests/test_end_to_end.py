@@ -151,6 +151,8 @@ def test_window_vs_anchored_comparison_is_checked_for_comparability(cfg, tmp_pat
     for mode in runs:  # the test checkout may have local edits; simulate a clean one
         m = json.loads((runs[mode] / "manifest.json").read_text())
         assert m["provenance"]["effective_config"]["text"]["topic_mode"] == mode
+        # The universe object actually used (here built in code, not universe.yaml).
+        assert m["provenance"]["effective_universe"] == json.loads(u.model_dump_json())
         m["provenance"]["git_dirty"] = False
         (runs[mode] / "manifest.json").write_text(json.dumps(m))
     out = compare(runs["window"], runs["anchored"])
@@ -160,6 +162,13 @@ def test_window_vs_anchored_comparison_is_checked_for_comparability(cfg, tmp_pat
     assert not out["adjudication_complete"]  # nothing reviewed yet: no conclusion
     assert {"A: window", "B: anchored"} <= set(out["table"].columns)
     assert "Adjudication incomplete" in render(out)
+    pooled = out["table"].set_index("criterion").loc["unassigned passage share (pooled)"]
+    assert pooled.notna().all()
+    for mode in runs:  # recorded figure equals the one recomputed from saved windows
+        m = json.loads((runs[mode] / "manifest.json").read_text())
+        w = pd.read_parquet(runs[mode] / "windows.parquet")
+        assert m["diagnostics"]["unassigned_share_pooled"] == \
+            round(1 - w["n_clustered"].sum() / w["n_passages"].sum(), 4)
     # Different inputs are refused.
     def broken(edit):
         m = json.loads((runs["anchored"] / "manifest.json").read_text())
@@ -184,3 +193,22 @@ def test_window_vs_anchored_comparison_is_checked_for_comparability(cfg, tmp_pat
                broken(lambda m: m.update(period="holdout")))
     assert any("uncommitted" in p for p in
                broken(lambda m: m["provenance"].update(git_dirty=True)))
+    # The effective universe: required, and any difference refuses the comparison.
+    assert any("effective_universe" in p for p in
+               broken(lambda m: m["provenance"].pop("effective_universe")))
+
+    def issuer_edit(field, value):
+        def edit(m):
+            m["provenance"]["effective_universe"]["issuers"][0][field] = value
+        return edit
+    sym = u.issuers[0].symbol
+    for field, value in (("currency", "KRW"), ("role", "adjacent"), ("segment", "zz"),
+                         ("delisted", "2015-01-01"),
+                         ("successor", {"symbol": "X", "shares": 1.0, "cash": 0.0,
+                                        "source": "s"})):
+        assert any(f"issuers.{sym}.{field}" in p for p in broken(issuer_edit(field, value)))
+    assert any("effective universe differs: ['benchmarks']" in p for p in broken(
+        lambda m: m["provenance"]["effective_universe"].update(benchmarks=["QQQ"])))
+    assert any("issuers.NEW" in p for p in broken(
+        lambda m: m["provenance"]["effective_universe"]["issuers"].append(
+            {"symbol": "NEW", "segment": "s", "role": "core"})))

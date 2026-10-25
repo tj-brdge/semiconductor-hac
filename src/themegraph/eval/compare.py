@@ -18,6 +18,7 @@ from pathlib import Path
 import pandas as pd
 
 from . import adjudication as A
+from .diagnostics import pooled_unassigned
 
 
 def _load(run: Path) -> dict:
@@ -27,12 +28,27 @@ def _load(run: Path) -> dict:
         else {}
     entries = A.load(run / A.WORKSHEET)
     mp = run / "eval_matches.parquet"
+    wp = run / "windows.parquet"
     return {"dir": run, "manifest": m, "q1": res.get("q1", {}), "adjudication": entries,
-            "matches": pd.read_parquet(mp) if mp.exists() else pd.DataFrame()}
+            "matches": pd.read_parquet(mp) if mp.exists() else pd.DataFrame(),
+            "windows": pd.read_parquet(wp) if wp.exists() else None}
+
+
+def _pooled_unassigned(r: dict):
+    """From the manifest, else from the run's saved windows (runs made before the
+    pooled figure was recorded)."""
+    v = r["manifest"].get("diagnostics", {}).get("unassigned_share_pooled")
+    return v if v is not None else pooled_unassigned(r["windows"])
 
 
 REQUIRED = ("source_sha256", "labels_sha256", "lockfile_sha256", "python", "packages",
-            "effective_config")
+            "effective_config", "effective_universe")
+
+
+def _universe_keyed(u: dict) -> dict:
+    """Issuers keyed by symbol so a difference names the issuer and field."""
+    return {"benchmarks": u.get("benchmarks"),
+            "issuers": {i["symbol"]: i for i in u.get("issuers", [])}}
 
 
 def _without_mode(cfg: dict) -> dict:
@@ -80,6 +96,11 @@ def comparability(a: dict, b: dict) -> list[str]:
                       _without_mode(pb["effective_config"]))
             if d:
                 out.append(f"effective configuration differs beyond text.topic_mode: {d[:8]}")
+        if pa.get("effective_universe") and pb.get("effective_universe"):
+            d = _diff(_universe_keyed(pa["effective_universe"]),
+                      _universe_keyed(pb["effective_universe"]))
+            if d:
+                out.append(f"effective universe differs: {d[:8]}")
     ia, ib = ma.get("inputs", {}), mb.get("inputs", {})
     for k in ("scheme", "prices", "documents", "vintages", "input_vintage_upto"):
         if k not in ia or k not in ib:
@@ -148,7 +169,9 @@ def compare(run_a: Path, run_b: Path) -> dict:
                        ("candidates_with_duplicate", "candidates with a near-duplicate")]:
         add("3 candidates", label, lambda r, k=key: r["manifest"].get("diagnostics", {})
             .get(k), None)
-    for key, label in [("unassigned_share_median", "unassigned passage share (median)"),
+    add("4 topics", "unassigned passage share (pooled)", _pooled_unassigned, None)
+    for key, label in [("unassigned_share_median",
+                        "unassigned passage share (median of windows)"),
                        ("births_per_window", "topic births per window"),
                        ("births_lasting_per_window", "births lasting > window span"),
                        ("step_cosine_median", "month-to-month member cosine (median)"),

@@ -268,3 +268,28 @@ def test_calibration_counts_empty_windows():
     c = model.calibration_summary()
     assert c["windows"] == 3 and c["windows_empty_codebook"] == 3
     assert c["totals"]["n_passages"] == 1 and c["totals"]["assigned"] == 0
+
+
+def test_pooled_shares_reconcile_but_median_shares_need_not():
+    p, V = _corpus()
+    _, model = anchored_windows(p, V, SNAPS, _cfg())
+    c = model.calibration_summary()
+    tot, pooled = c["totals"], c["pooled_of_all_passages"]
+    assert tot["claimed_existing"] - tot["rejected_existing"] + tot["discovered"] \
+        == tot["assigned"]
+    assert abs(pooled["claimed_existing"] - pooled["rejected_existing"]
+               + pooled["discovered"] - pooled["assigned"]) < 1e-3
+    assert pooled["assigned"] == round(tot["assigned"] / tot["n_passages"], 4)
+
+
+def test_medians_are_not_additive():
+    # Three windows: stage shares whose medians do not subtract to the median
+    # assigned share (the 0.616 - 0.149 + 0.001 != 0.475 pattern), while the
+    # totals reconcile exactly.
+    f = pd.DataFrame({"claimed": [60, 70, 50], "rejected": [20, 5, 10],
+                      "discovered": [0, 0, 0], "n": [100, 100, 100]})
+    f["assigned"] = f["claimed"] - f["rejected"] + f["discovered"]
+    med = {k: (f[k] / f["n"]).median() for k in ("claimed", "rejected", "assigned")}
+    assert med["claimed"] - med["rejected"] != med["assigned"]
+    t = f.sum()
+    assert t["claimed"] - t["rejected"] + t["discovered"] == t["assigned"]

@@ -546,7 +546,7 @@ def save(ctx: RunContext, results: dict | None, out_dir: Path, inputs: dict) -> 
         "text_tracking": ctx.track_stats,
         "timings": ctx.timings,
         "diagnostics": ctx.diagnostics,
-        "provenance": run_provenance(ctx.cfg),
+        "provenance": run_provenance(ctx.cfg, ctx.universe),
     }
     if results is not None:
         for name in ("matches", "comovement", "returns"):

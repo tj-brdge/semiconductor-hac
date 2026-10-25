@@ -160,7 +160,7 @@ def evaluate_outcomes(out_dir: Path, closes: pd.DataFrame, benchmark: str,
     done = {(o["prediction_id"], o["h"]) for o in _read(out_dir / OUTCOMES)}
     new = []
     kw = {"calendar": calendar, "venues": venues,
-          "sessions": venue_sessions(closes, venues)}
+          "sessions": venue_sessions(closes, venues, calendar)}
     for p in _read(out_dir / PREDICTIONS):
         if p.get("no_candidates"):
             continue
