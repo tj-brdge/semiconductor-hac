@@ -597,6 +597,18 @@ Open judgement calls (listed per theme as `review_needed`):
   (zero mentions in NVDA's FY22 10-K and QCOM's 2021 10-K), so "not flagged" is weak
   evidence; crypto mining 2021 is a fair control for NVDA.
 
+Second SEC pass (2026-10-25, three quotes re-checked independently), recorded as
+`additional_sec_evidence`; no dates changed and nothing approved:
+- China export controls: earliest explicit issuer statements on the October 2022
+  rules are Lam's 10-Q (2022-10-24) and KLA's 10-Q (2022-10-28).
+- AI power: equipment side nVent 2023-07-28 (after Vertiv 2023-04-26); generation side
+  Vistra and GE Vernova first link demand to AI in FY2024 10-Ks (February 2025); Eaton
+  names data-centre strength but no AI. This strengthens the proposed split.
+- AI networking/optics: Fabrinet 2023-08-21 places optics in August 2023.
+- SiC for EVs: ON's analyst day 2019-03-08. DRAM 2025: Micron's 8-K of 2025-08-11 is
+  the first explicit DRAM pricing statement. Advanced packaging: no SEC filer states a
+  CoWoS constraint in 2023.
+
 ### Before freezing and running the holdout
 
 1. Approve labels: resolve the calls above, confirm press-only markers, copy approved
