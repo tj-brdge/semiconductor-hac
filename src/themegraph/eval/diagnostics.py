@@ -7,7 +7,9 @@ passages centred on per-genre means fitted once over the run (diagnostic only; n
 used by discovery) and normalised. Centres of different refits or windows sit in
 different coordinates and are not compared directly.
 
-- unassigned_share: share of a window's passages in no topic.
+- unassigned_share: share of a window's passages in no topic; reported as the median
+  over windows and pooled (all unassigned / all passages). The two differ because
+  windows differ in size and medians are not additive.
 - births_per_window / births_lasting: topics first seen in a window, and those of
   them still present `window_span` windows later (not one-off clusters).
 - step_cosine: cosine between a topic's member centroids in consecutive windows it
@@ -55,6 +57,11 @@ def _centroids(assign: pd.DataFrame, pos: pd.Series, X: np.ndarray) -> pd.DataFr
     return pd.DataFrame(rows)
 
 
+def pooled_unassigned(windows: pd.DataFrame) -> float | None:
+    n = windows["n_passages"].sum() if windows is not None and len(windows) else 0
+    return round(float(1 - windows["n_clustered"].sum() / n), 4) if n else None
+
+
 def topic_diagnostics(windows: pd.DataFrame, assign: pd.DataFrame, p: pd.DataFrame,
                       V: np.ndarray, window_span: int, ledger: pd.DataFrame | None,
                       dup_cosine: float = DUP_COSINE, dup_days: int = DUP_DAYS) -> dict:
@@ -86,6 +93,7 @@ def topic_diagnostics(windows: pd.DataFrame, assign: pd.DataFrame, p: pd.DataFra
     out = {
         "representation": "members centred on run-wide genre means (diagnostic only)",
         "unassigned_share_median": _r(w["unassigned"].median()),
+        "unassigned_share_pooled": pooled_unassigned(windows),
         "unassigned_share_by_year": {int(y): _r(v) for y, v in
                                      w.groupby(w["t"].dt.year)["unassigned"].mean().items()},
         "births_per_window": _r(births.mean()),

@@ -396,7 +396,8 @@ class AnchoredTopics:
         return pd.DataFrame(self.calibration)
 
     def calibration_summary(self) -> dict:
-        """Totals over all windows and their reconciliation, plus median per-window
+        """Totals over all windows and their reconciliation, pooled shares of all
+        passages (totals / total passages; these reconcile), plus median per-window
         shares on both denominators: all passages in the window (the population the
         window mode's coverage uses; use this one to compare modes) and usable
         passages (those with a direction after centring). Counterfactual
@@ -417,10 +418,18 @@ class AnchoredTopics:
             return round(float((c.loc[ok, num] / c.loc[ok, den]).median()), 3) if ok.any() \
                 else None
 
+        pooled = {k: round(tot[k] / tot["n_passages"], 4) if tot["n_passages"] else None
+                  for k in ("assigned", "claimed_existing", "rejected_existing",
+                            "retained_existing", "discovered", "unassigned")}
         out = {"windows": int(len(c)),
                "windows_empty_codebook": int((c["codebook_size"] == 0).sum()),
                "windows_no_usable_passages": int((c["n_usable"] == 0).sum()),
                "totals": tot,
+               # Pooled shares (stage total / all passages) add up; the median
+               # per-window shares below do not (a median of differences is not the
+               # difference of medians).
+               "pooled_of_all_passages": pooled,
+               "share_basis": "of_* = median of per-window shares; pooled_* = totals",
                "of_all_passages": {k: med(k, "n_passages") for k in
                                    ("assigned", "claimed_existing", "rejected_existing",
                                     "discovered", "unassigned")},

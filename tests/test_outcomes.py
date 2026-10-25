@@ -13,7 +13,7 @@ from themegraph.eval.comovement import (
     matched_null_sets,
     summarise_percentiles,
 )
-from themegraph.eval.returns import holding_return
+from themegraph.eval.returns import MAX_CLOSURE_SESSIONS, holding_return, venue_sessions
 from themegraph.market.hac import market_snapshot
 
 IDX = pd.bdate_range("2020-01-28", periods=10).tz_localize("UTC") + pd.Timedelta(hours=22)
@@ -240,3 +240,81 @@ def test_momentum_ignores_other_venues_closures():
     from themegraph.eval.returns import trailing_log_return
     mom = trailing_log_return(_mixed(), ALL[-1], 30, US)
     assert mom[["A", "K"]].notna().all()
+
+
+# -- verified closures versus missing data ----------------------------------------
+
+D20 = pd.bdate_range("2020-01-01", periods=20, tz="UTC") + pd.Timedelta(hours=22)
+V2 = {"SPY": "USD", "K1": "KRW", "K2": "KRW", "T": "TWD", "S": "KRW"}
+
+
+def _venue_panel(k1, k2=None):
+    p = pd.DataFrame(index=D20)
+    p["SPY"] = np.linspace(100, 120, 20)
+    p["K1"] = k1
+    p["K2"] = k1 if k2 is None else k2
+    return p
+
+
+def test_venue_wide_outage_is_not_a_closure():
+    # The reported case: both Korean quotes stop after day 3; SPY trades on.
+    p = _venue_panel([100, 100, 110] + [np.nan] * 17)
+    b = holding_return(p, ["K1", "K2"], D20[0], 15, D20[-1], calendar=D20, venues=V2)
+    assert b["status"] == "unvalued_position"  # was ok, +10% on a 14-session-old price
+    assert set(b["statuses"].values()) == {"unvalued"}
+    # Within the stale tolerance the last close is used, and labelled stale.
+    b = holding_return(p, ["K1", "K2"], D20[0], 5, D20[-1], calendar=D20, venues=V2)
+    assert set(b["statuses"].values()) == {"stale_exit"} and np.isclose(b["value"], 0.1)
+
+
+def test_long_bracketed_gap_is_missing_data_but_a_short_one_is_a_closure():
+    prices = np.linspace(100, 119, 20)
+    long_gap = prices.copy()
+    long_gap[3:3 + MAX_CLOSURE_SESSIONS + 1] = np.nan  # resumes, but too long
+    p = _venue_panel(long_gap)
+    b = holding_return(p, ["K1", "K2"], D20[0], 9, D20[-1], calendar=D20, venues=V2)
+    assert set(b["statuses"].values()) == {"unvalued"}
+    short = prices.copy()
+    short[8:11] = np.nan  # three-session holiday, both securities, venue reopens
+    p = _venue_panel(short)
+    b = holding_return(p, ["K1", "K2"], D20[0], 9, D20[-1], calendar=D20, venues=V2)
+    assert b["exit"] == D20[10] and set(b["statuses"].values()) == {"complete"}
+    assert np.isclose(b["value"], short[7] / short[1] - 1)  # sold at the last session
+
+
+def test_one_securitys_gap_does_not_close_the_venue():
+    k1 = np.linspace(100, 119, 20)
+    k1[8:11] = np.nan
+    p = _venue_panel(k1, np.linspace(50, 60, 20))  # K2 quoted throughout
+    b = holding_return(p, ["K1"], D20[0], 9, D20[-1], calendar=D20, venues=V2)
+    assert b["statuses"]["K1"] == "stale_exit"
+
+
+def test_single_security_venue_never_verifies_a_closure():
+    t = np.linspace(100, 119, 20)
+    t[8:11] = np.nan
+    p = _venue_panel(np.linspace(100, 119, 20))
+    p["T"] = t
+    b = holding_return(p, ["T"], D20[0], 9, D20[-1], calendar=D20, venues=V2)
+    assert b["statuses"]["T"] == "stale_exit"  # treated as missing, within tolerance
+    s = venue_sessions(p, V2, D20)
+    assert s["TWD"].equals(D20) and not s["KRW"].difference(D20).size
+
+
+def test_successor_in_a_venue_outage_is_unvalued_not_its_last_close():
+    p = _venue_panel(np.linspace(100, 119, 20))
+    p["S"] = [80.0] * 4 + [np.nan] * 16  # the successor trades on the KRW venue
+    p.loc[D20[4]:, ["K1", "K2"]] = np.nan  # the whole KRW venue stops: outage
+    p["A"] = np.linspace(10, 12, 20)
+    v = {**V2, "A": "USD"}
+    stock = {"A": Successor(symbol="S", shares=1.0, source="t")}
+    gone = D20[6].date()
+    p.loc[D20[6]:, "A"] = np.nan
+    b = holding_return(p, ["A"], D20[0], 15, D20[-1], {"A": gone}, stock,
+                       calendar=D20, venues=v)
+    assert b["statuses"]["A"] == "unvalued" and b["status"] == "unvalued_position"
+    cash = {"A": Successor(symbol="S", cash=13.0, source="t")}
+    b = holding_return(p, ["A"], D20[0], 15, D20[-1], {"A": gone}, cash,
+                       calendar=D20, venues=v)
+    assert b["statuses"]["A"] == "converted"
+    assert np.isclose(b["value"], 13.0 / p.at[D20[1], "A"] - 1)
