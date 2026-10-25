@@ -122,7 +122,11 @@ themegraph run --period dev --out runs/cmp2-window
 themegraph run --period dev --topic-mode anchored --out runs/cmp2-anchored
 themegraph adjudicate runs/cmp2-window     # writes adjudication_packet.md + worksheet
 themegraph adjudicate runs/cmp2-anchored
-# adjudicate from the packets (text only) BEFORE opening either report.html
+# adjudicate from the packets (text only) BEFORE opening either report.html:
+#   load each packet into the Theme Adjudication Desk, decide the blind sample and
+#   theme matches, export, then import the decisions:
+themegraph adjudicate runs/cmp2-window --import adjudication-decisions-window.json
+themegraph adjudicate runs/cmp2-anchored --import adjudication-decisions-anchored.json
 themegraph compare runs/cmp2-window runs/cmp2-anchored
 ```
 

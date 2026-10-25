@@ -14,10 +14,18 @@ produce a worksheet, `adjudication.yaml`, for a reviewer to record whether:
 Decisions are read only by evaluation reporting; discovery never sees them.
 Regenerating the worksheet keeps existing decisions. Nothing is filled in
 automatically; undecided entries stay `pending`.
+
+Decisions can also be imported from the Theme Adjudication Desk (a review page that
+shows Claude's suggestion beside each entry). Each imported decision records who
+made it (`decided_by`: human or ai), Claude's suggestion and its reason, the model
+tier and prompt version, and, for the blind sample, the person's decision made
+before seeing Claude's. AI decisions are reported separately and are never
+counted as human review; blind agreement is reported beside them.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -30,6 +38,10 @@ DECISIONS = {
     "unmatched_candidate": {"real_unlabelled_theme", "noise", "duplicate"},
 }
 WORKSHEET = "adjudication.yaml"
+IMPORT_FORMAT = "themegraph-adjudication/1"
+PROVENANCE = ("decided_by", "ai_suggestion", "ai_reason", "ai_model", "ai_prompt_version",
+              "blind_human_decision")
+KEEP = ("decision", "reviewer", "reviewed_on", "notes") + PROVENANCE
 
 
 def _explanations(run_dir: Path) -> dict:
@@ -85,6 +97,8 @@ def load(path: Path) -> list[dict]:
                              f"{sorted(allowed)}")
         if e["decision"] != "pending" and not e.get("reviewer"):
             raise ValueError(f"{e['id']}: a decision needs a reviewer")
+        if e.get("decided_by") not in (None, "human", "ai"):
+            raise ValueError(f"{e['id']}: decided_by must be human or ai")
     return entries
 
 
@@ -97,12 +111,59 @@ def write_worksheet(run_dir: Path) -> Path:
     for e in build_entries(run_dir):
         prev = old.pop(e["id"], None)
         if prev:
-            e.update({k: prev[k] for k in ("decision", "reviewer", "reviewed_on", "notes")})
+            e.update({k: prev[k] for k in KEEP if k in prev})
         merged.append(e)
     merged += [{**e, "stale": True} for e in old.values()]  # kept, never silently dropped
     path.write_text(yaml.safe_dump(merged, sort_keys=False, allow_unicode=True))
     write_packet(run_dir, merged)
     return path
+
+
+def import_decisions(run_dir: Path, path: Path, replace: bool = False) -> dict:
+    """Merge decisions exported by the review page into the run's worksheet.
+    Refuses unknown or stale ids, decisions not allowed for the entry's kind, and
+    (unless `replace`) any change to a decision already recorded."""
+    run_dir = Path(run_dir)
+    payload = json.loads(Path(path).read_text())
+    if payload.get("format") != IMPORT_FORMAT:
+        raise ValueError(f"not a {IMPORT_FORMAT} file")
+    ws = run_dir / WORKSHEET
+    entries = load(ws)
+    if not entries:
+        raise ValueError("no worksheet in this run: run `themegraph adjudicate RUN` first")
+    by_id = {e["id"]: e for e in entries if not e.get("stale")}
+    warnings, problems, applied = [], [], 0
+    packet = run_dir / PACKET
+    if payload.get("packet_sha256") and packet.exists() and \
+            hashlib.sha256(packet.read_bytes()).hexdigest() != payload["packet_sha256"]:
+        warnings.append("the packet changed since these decisions were made (it is rewritten "
+                        "on every refresh); entries are matched by id")
+    for d in payload.get("entries", []):
+        e = by_id.get(d.get("id"))
+        if e is None:
+            problems.append(f"{d.get('id')}: not in this run's worksheet (wrong run?)")
+            continue
+        if d.get("decision") not in DECISIONS[e["kind"]]:
+            problems.append(f"{e['id']}: decision {d.get('decision')!r} not allowed")
+            continue
+        if not d.get("reviewer") or d.get("decided_by") not in ("human", "ai"):
+            problems.append(f"{e['id']}: needs a reviewer and decided_by human/ai")
+            continue
+        if e["decision"] != "pending" and not replace and \
+                (e["decision"], e.get("reviewer")) != (d["decision"], d["reviewer"]):
+            problems.append(f"{e['id']}: already decided {e['decision']!r} by "
+                            f"{e.get('reviewer')}; use --replace to overwrite")
+            continue
+        e.update({"decision": d["decision"], "reviewer": d["reviewer"],
+                  "reviewed_on": d.get("reviewed_on"), "notes": d.get("notes") or ""})
+        e.update({k: d.get(k) for k in PROVENANCE})
+        applied += 1
+    if problems:
+        raise ValueError("nothing imported:\n  " + "\n  ".join(problems))
+    ws.write_text(yaml.safe_dump(entries, sort_keys=False, allow_unicode=True))
+    write_packet(run_dir, entries)
+    return {"applied": applied, "warnings": warnings,
+            "blind_sample": payload.get("blind_sample")}
 
 
 PACKET = "adjudication_packet.md"
@@ -161,4 +222,18 @@ def summary(entries: list[dict], themes_evaluable: int) -> dict:
         "unmatched_real_unlabelled": count("unmatched_candidate", "real_unlabelled_theme"),
         "unmatched_noise": count("unmatched_candidate", "noise"),
         "unmatched_duplicate": count("unmatched_candidate", "duplicate"),
+        **review_sources(entries),
     }
+
+
+def review_sources(entries: list[dict]) -> dict:
+    """Who decided, and how often a person and Claude agreed where the person
+    decided first without seeing Claude's suggestion (the blind sample)."""
+    live = [e for e in entries if not e.get("stale") and e.get("decision") != "pending"]
+    pairs = [e for e in entries if not e.get("stale") and e.get("blind_human_decision")
+             and e.get("ai_suggestion")]
+    agree = sum(e["blind_human_decision"] == e["ai_suggestion"] for e in pairs)
+    return {"decided_by_ai": sum(e.get("decided_by") == "ai" for e in live),
+            "decided_by_human": sum(e.get("decided_by") != "ai" for e in live),
+            "blind_pairs": len(pairs),
+            "blind_agreement": round(agree / len(pairs), 3) if pairs else None}
