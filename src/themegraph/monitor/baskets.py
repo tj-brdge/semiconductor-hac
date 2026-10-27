@@ -43,6 +43,7 @@ import pandas as pd
 from ..eval.returns import venue_sessions
 
 TRAILING = {"1m": 21, "3m": 63, "6m": 126, "12m": 252}
+HINDSIGHT_SESSIONS = 126  # six months of context before a basket's first entry
 
 
 class PriceBook:
@@ -259,6 +260,7 @@ def theme_performance(theme: dict, book: PriceBook, benchmarks: list[str],
                              "price_status": price, "sessions_since_close": miss,
                              **seg["info"][s]})
     part = _participation(book, [c["symbol"] for c in v["constituents"]], benchmarks)
+    hind = hindsight(book, [c["symbol"] for c in versions[0]["constituents"]], first, benchmarks)
     latest = coverage.iloc[-1] if len(coverage) else None
     return {"status": "ok", "method": "equal_weight_buy_and_hold_chain_linked",
             "price_basis": "USD, dividend-adjusted (total return)",
@@ -268,7 +270,44 @@ def theme_performance(theme: dict, book: PriceBook, benchmarks: list[str],
             "current_entry": str(e.date()), "series": rows, "returns": returns,
             "constituents": constituents, "participation_3m": part,
             "coverage_latest": round(float(latest), 4) if latest is not None else None,
-            "last_price_date": str(series.index[-1].date())}
+            "last_price_date": str(series.index[-1].date()), "hindsight": hind}
+
+
+def hindsight(book: PriceBook, members: list[str], entry: pd.Timestamp,
+              benchmarks: list[str], sessions: int = HINDSIGHT_SESSIONS) -> dict | None:
+    """How the first basket's companies moved before the basket existed.
+
+    Hindsight, not a holding: the companies are the ones chosen at the entry date.
+    Equal capital at the window's first close, buy and hold, scaled so the path
+    ends at 100 on the entry close (where the basket index starts). Companies
+    without a close at the window's start are left out and listed. Kept apart from
+    the index series and from every return figure."""
+    i0 = book.cal.get_loc(entry)
+    if i0 == 0:
+        return None
+    cal = book.cal[max(0, i0 - sessions):i0 + 1]
+    a = cal[0]
+    used = [s for s in members if s in book.carry and pd.notna(book.carry[s].get(a))]
+    if not used:
+        return None
+    path = sum(book.carry[s].loc[cal] / book.carry[s].loc[a] for s in used) / len(used)
+    path = 100.0 * path / path.iloc[-1]
+    rows = []
+    for d in cal:
+        r = {"date": str(d.date()), "theme": round(float(path.loc[d]), 4)}
+        for b in benchmarks:
+            if b in book.carry and pd.notna(book.carry[b].get(entry)):
+                v = book.carry[b].get(d)
+                r[b] = round(float(100.0 * v / book.carry[b].loc[entry]), 4) \
+                    if pd.notna(v) else None
+        rows.append(r)
+    out = {"start": str(a.date()), "end": str(entry.date()), "sessions": len(cal) - 1,
+           "companies": used, "left_out": [s for s in members if s not in used],
+           "theme_return": float(path.iloc[-1] / path.iloc[0] - 1), "series": rows}
+    for b in benchmarks:
+        if rows[0].get(b) and rows[-1].get(b):
+            out[f"{b}_return"] = rows[-1][b] / rows[0][b] - 1
+    return out
 
 
 def _live_from(theme: dict, version: dict, go_live: str | None) -> pd.Timestamp | None:

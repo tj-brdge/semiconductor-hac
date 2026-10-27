@@ -293,8 +293,10 @@ async function themePage(id, token) {
       <div class="section-head"><h2 id="h-perf">Equal-weight basket vs benchmarks</h2>
         ${p.status === "ok" ? `<div class="seg" role="group" aria-label="Chart range">${RANGES.map(([k, l]) => `<button type="button" data-range="${k}">${l}</button>`).join("")}</div>` : ""}</div>
       ${p.status === "ok" ? `<div class="kpis" id="kpis"></div>
-        <div class="legend"><span><i class="key" style="border-top-color:var(--series-1);border-top-width:3px"></i>Theme basket</span>${B.map((b, i) => `<span><i class="key dash" style="border-top-color:var(--series-${i + 2})"></i>${esc(b)}</span>`).join("")}<span><i class="band-key"></i>Live (observed)</span><span><span class="event-key" aria-hidden="true">▼</span>Event</span><span class="muted">Unshaded: simulated</span></div>
+        <div class="legend"><span><i class="key" style="border-top-color:var(--series-1);border-top-width:3px"></i>Theme basket</span>${B.map((b, i) => `<span><i class="key dash" style="border-top-color:var(--series-${i + 2})"></i>${esc(b)}</span>`).join("")}<span><i class="band-key"></i>Live (observed)</span><span><span class="event-key" aria-hidden="true">▼</span>Event</span>${p.hindsight ? `<span><i class="hind-key"></i>Before entry (hindsight, when shown)</span>` : ""}<span class="muted">Unshaded: simulated</span></div>
+        ${p.hindsight ? `<label class="check"><input type="checkbox" id="hind-toggle"> Show the ${Math.round(p.hindsight.sessions / 21)} months before the basket started (hindsight)</label>` : ""}
         <div id="chart"></div><p class="sr" aria-live="polite" id="readout"></p>
+        <p class="small muted" id="hind-note"></p>
         <p class="small muted" id="events-note"></p>
         <p class="small muted">${seriesNote} Index = 100 at the start of the selected range. ${esc(p.price_basis)}.</p>
         <details><summary>Chart data as a table</summary><div class="body table-wrap" id="chart-table"></div></details>`
@@ -364,43 +366,60 @@ function priceText(c) {
 }
 
 function mountChart(t) {
-  const p = t.performance, B = S.B, all = p.series;
+  const p = t.performance, B = S.B, all = p.series, H = p.hindsight;
   const hasLive = all.some((r) => r.basis === "live");
-  let range = all.length > 252 ? "1y" : "all";
-  // Events on the chart, each at the first session on or after its date.
+  let range = all.length > 252 ? "1y" : "all", before = false;
+  // Events on the chart. A month-end event belongs to the session that acted on
+  // it (the next one); a basket version to its own entry session.
   const firstFlag = t.measures.find((m) => m.flagged_comparable ?? m.flagged);
   const events = [];
   if (firstFlag) events.push({ date: firstFlag.t, label: "First flagged as emerging" });
   if (!firstFlag || t.published_snapshot.slice(0, 10) !== firstFlag.t.slice(0, 10))
     events.push({ date: t.published_snapshot, label: "Entered the monitor" });
-  t.basket_versions.slice(1).forEach((v) => events.push({ date: p.series.find((r) => r.date >= v.entry_after.slice(0, 10))?.date || v.entry_after, label: `Basket v${v.version}`, entry: true }));
-  // A month-end event belongs to the session that acted on it: the next one.
-  // Events before the first basket's month-end happened before there was a basket.
-  const sessionOf = (e) => e.date.slice(0, 10) < t.basket_versions[0].snapshot.slice(0, 10) ? -1
-    : all.findIndex((r) => (e.entry ? r.date >= e.date.slice(0, 10) : r.date > e.date.slice(0, 10)));
-  events.forEach((e) => { e.at = sessionOf(e); });
-  const keys = [{ key: "theme", label: "Basket", color: "var(--series-1)", width: 2.75 },
+  t.basket_versions.slice(1).forEach((v) => events.push({ date: all.find((r) => r.date >= v.entry_after.slice(0, 10))?.date || v.entry_after, label: `Basket v${v.version}`, entry: true }));
+  const sessionIn = (list, e) => list.findIndex((r) => (e.entry ? r.date >= e.date.slice(0, 10) : r.date > e.date.slice(0, 10)));
+  // Events before the first basket's month-end happened before there was a basket:
+  // they can only be drawn on the hindsight stretch.
+  const pre = H ? H.series.slice(0, -1) : [];
+  events.forEach((e) => {
+    const early = e.date.slice(0, 10) < t.basket_versions[0].snapshot.slice(0, 10);
+    e.at = early ? -1 : sessionIn(all, e);
+    e.pre = early && pre.length && e.date.slice(0, 10) >= pre[0].date ? sessionIn(pre, e) : -1;
+  });
+  const keys = [{ key: "theme", label: "Basket", color: "var(--series-1)", width: 2.75, optional: true },
+    { key: "hind", label: "Same companies before (hindsight)", color: "var(--series-1)", dash: "2 4", width: 2, optional: true },
     ...B.map((b, i) => ({ key: b, label: b, color: `var(--series-${i + 2})`, dash: "6 4", width: 1.75 }))];
   const draw = () => {
+    if (before) range = "all";
     const spec = RANGES.find((r) => r[0] === range);
     let start = 0;
     if (range === "live") start = Math.max(0, all.findIndex((r) => r.basis === "live") - 1);
     else if (spec[2]) start = Math.max(0, all.length - 1 - spec[2]);
     const slice = all.slice(start);
     const base = Object.fromEntries(keys.map((k) => [k.key, slice[0][k.key]]));
-    const rows = slice.map((r) => ({ date: r.date, basis: r.basis, v: Object.fromEntries(keys.map((k) => [k.key, r[k.key] == null || !base[k.key] ? null : (100 * r[k.key]) / base[k.key]])) }));
+    const basket = slice.map((r) => ({ date: r.date, basis: r.basis, v: Object.fromEntries(keys.map((k) => [k.key, r[k.key] == null || !base[k.key] ? null : (100 * r[k.key]) / base[k.key]])) }));
+    // Hindsight rows are already scaled to 100 at the entry close, where the basket
+    // starts at 100 in the All range; the dotted line joins the basket there.
+    const head = before && pre.length ? pre.map((r) => ({ date: r.date, basis: "hindsight", v: { theme: null, hind: r.theme, ...Object.fromEntries(B.map((b) => [b, r[b] ?? null])) } })) : [];
+    if (head.length) basket[0].v.hind = 100;
+    const rows = [...head, ...basket];
+    const markers = [
+      ...events.filter((e) => e.at >= start).map((e) => ({ index: head.length + e.at - start, label: e.label })),
+      ...(head.length ? events.filter((e) => e.pre >= 0).map((e) => ({ index: e.pre, label: e.label })) : [])];
     S.chart?.destroy();
-    S.chart = lineChart($("#chart"), { rows, series: keys, format: (v) => v.toFixed(1), title: `Basket and benchmarks, ${spec[1]} range, index 100 at ${fmtDate(rows[0].date)}`,
-      announce: (s) => { $("#readout").textContent = s; },
-      markers: events.filter((e) => e.at >= start).map((e) => ({ index: e.at - start, label: e.label })) });
+    S.chart = lineChart($("#chart"), { rows, series: keys.filter((k) => k.key !== "hind" || head.length), format: (v) => v.toFixed(1),
+      title: `Basket and benchmarks, ${spec[1]} range${head.length ? " with the six months before (hindsight)" : ""}, index 100 at ${fmtDate(basket[0].date)}`,
+      announce: (s) => { $("#readout").textContent = s; }, markers });
     const early = events.filter((e) => e.at >= 0 && e.at < start);
     $("#events-note").textContent = events.length ? [
-      ...events.map((e) => `${e.label}: ${fmtDate(e.date)}${e.at === 0 ? " (the basket starts here)" : e.at === -1 ? " (before the basket existed, so not on the chart)" : ""}`),
+      ...events.map((e) => `${e.label}: ${fmtDate(e.date)}${e.at === 0 ? " (the basket starts here)" : e.at === -1 ? (head.length && e.pre >= 0 ? " (before the basket existed; shown on the hindsight stretch)" : " (before the basket existed, so not on the basket line)") : ""}`),
       early.length ? `${early.length === 1 ? "One event is" : "Some events are"} before this range; choose All to see ${early.length === 1 ? "it" : "them"}` : ""].filter(Boolean).join(". ") + "." : "";
-    const last = rows[rows.length - 1], kinds = new Set(slice.slice(1).map((r) => r.basis));
+    $("#hind-note").textContent = head.length ? `Hindsight: the ${H.companies.length} companies in the first basket, held equally from ${fmtDate(H.start)}, ${plainPct(H.theme_return)} by the day the basket started (${B.map((b) => `${b} ${plainPct(H[`${b}_return`])}`).join(", ")}). They were chosen with information from that day, so nobody could have held them; this stretch is not part of any return on this page.${H.left_out.length ? ` Left out for lack of prices: ${H.left_out.join(", ")}.` : ""}` : "";
+    // Headline numbers: the basket's own days only.
+    const last = basket[basket.length - 1], kinds = new Set(slice.slice(1).map((r) => r.basis));
     const basis = kinds.size === 1 ? [...kinds][0] : "mixed";
     const ret = (k) => last.v[k] == null ? null : last.v[k] / 100 - 1;
-    $("#kpis").innerHTML = `<div class="kpi"><div class="small muted">Basket, ${esc(fmtDate(rows[0].date))} – ${esc(fmtDate(last.date))}</div><div class="v">${pct(ret("theme"))}</div>${basisTag(basis)}</div>
+    $("#kpis").innerHTML = `<div class="kpi"><div class="small muted">Basket, ${esc(fmtDate(basket[0].date))} – ${esc(fmtDate(last.date))}</div><div class="v">${pct(ret("theme"))}</div>${basisTag(basis)}</div>
       ${B.map((b) => `<div class="kpi"><div class="small muted">vs ${esc(b)} (${esc(plainPct(ret(b)))})</div><div class="v">${pts(ret("theme") != null && ret(b) != null ? ret("theme") - ret(b) : null)}</div></div>`).join("")}
       <div class="kpi"><div class="small muted">Priced today</div><div class="v">${share(p.coverage_latest)}</div><div class="small muted">of basket value</div></div>`;
     $("#main").querySelectorAll("[data-range]").forEach((b) => {
@@ -409,11 +428,17 @@ function mountChart(t) {
       b.disabled = (b.dataset.range === "live" && !hasLive) || (sp[2] != null && all.length <= sp[2]);
       if (b.disabled) b.title = b.dataset.range === "live" ? "No live prices yet" : "Not enough history";
     });
-    const monthly = rows.filter((r, i) => i === 0 || i === rows.length - 1 || r.date.slice(0, 7) !== rows[i + 1]?.date.slice(0, 7));
-    $("#chart-table").innerHTML = `<table><caption>Month-end values, index = 100 at ${esc(fmtDate(rows[0].date))}</caption><thead><tr><th>Date</th><th>Basis</th>${keys.map((k) => `<th class="num">${esc(k.label)}</th>`).join("")}</tr></thead><tbody>${
-      monthly.map((r) => `<tr><td>${esc(fmtDate(r.date))}</td><td>${r.basis === "live" ? "Live" : "Simulated"}</td>${keys.map((k) => `<td class="num">${r.v[k.key] == null ? "no price" : r.v[k.key].toFixed(1)}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+    const shown = keys.filter((k) => k.key !== "hind" || head.length);
+    const monthly = rows.filter((r, i) => i === 0 || i === rows.length - 1 || r.date.slice(0, 7) !== rows[i + 1]?.date.slice(0, 7) || r.basis !== rows[i + 1]?.basis);
+    $("#chart-table").innerHTML = `<table><caption>Month-end values, index = 100 at ${esc(fmtDate(basket[0].date))}</caption><thead><tr><th>Date</th><th>Basis</th>${shown.map((k) => `<th class="num">${esc(k.label)}</th>`).join("")}</tr></thead><tbody>${
+      monthly.map((r) => `<tr><td>${esc(fmtDate(r.date))}</td><td>${{ live: "Live", hindsight: "Hindsight" }[r.basis] || "Simulated"}</td>${shown.map((k) => `<td class="num">${r.v[k.key] == null ? "—" : r.v[k.key].toFixed(1)}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
   };
-  $("#main").querySelectorAll("[data-range]").forEach((b) => b.addEventListener("click", () => { range = b.dataset.range; draw(); b.focus(); }));
+  $("#main").querySelectorAll("[data-range]").forEach((b) => b.addEventListener("click", () => {
+    range = b.dataset.range;
+    if (range !== "all" && before) { before = false; const c = $("#hind-toggle"); if (c) c.checked = false; }
+    draw(); b.focus();
+  }));
+  $("#hind-toggle")?.addEventListener("change", (e) => { before = e.target.checked; draw(); });
   draw();
 }
 

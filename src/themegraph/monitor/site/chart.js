@@ -78,18 +78,21 @@ export function lineChart(host, { rows, series, format, title, announce, markers
     const Y = (v) => M.t + (H - M.t - M.b) * (1 - (v - lo) / (hi - lo));
     geom = { X, Y, M, width, H };
 
-    // Shade each run of live days (a day's return is live when the day is).
-    let labelled = false;
-    for (let i = 0; i < rows.length; i++) {
-      if (rows[i].basis !== "live" || (i && rows[i - 1].basis === "live")) continue;
-      let j = i;
-      while (j + 1 < rows.length && rows[j + 1].basis === "live") j++;
-      const x = X(Math.max(i - 1, 0));
-      el("rect", { class: "band", x, y: M.t, width: X(j) - x, height: H - M.t - M.b }, svg);
-      if (!labelled) {
-        const t = el("text", { class: "band-label", x: x + 6, y: M.t + 14 }, svg);
-        t.textContent = "Live";
-        labelled = true;
+    // Shade each run of live days (a day's return is live when the day is) and the
+    // hindsight stretch before a basket existed.
+    for (const [kind, cls, label] of [["live", "band", "Live"], ["hindsight", "band band-hind", "Hindsight"]]) {
+      let labelled = false;
+      for (let i = 0; i < rows.length; i++) {
+        if (rows[i].basis !== kind || (i && rows[i - 1].basis === kind)) continue;
+        let j = i;
+        while (j + 1 < rows.length && rows[j + 1].basis === kind) j++;
+        const x = X(Math.max(kind === "live" ? i - 1 : i, 0)), x2 = X(kind === "live" ? j : j + 1);
+        el("rect", { class: cls, x, y: M.t, width: Math.max(x2 - x, 1), height: H - M.t - M.b }, svg);
+        if (!labelled) {
+          const t = el("text", { class: "band-label", x: x + 6, y: M.t + 14 }, svg);
+          t.textContent = label;
+          labelled = true;
+        }
       }
     }
     const grid = el("g", { class: "grid axis" }, svg);
@@ -155,7 +158,8 @@ export function lineChart(host, { rows, series, format, title, announce, markers
     tip.textContent = "";
     const d = document.createElement("div");
     d.className = "d";
-    d.textContent = `${fmtDate(r.date)} · ${r.basis === "live" ? "live" : "simulated"}`;
+    const kind = { live: "live", hindsight: "hindsight, before the basket existed" }[r.basis] || "simulated";
+    d.textContent = `${fmtDate(r.date)} · ${kind}`;
     tip.appendChild(d);
     const parts = [];
     for (const label of at.get(idx) || []) {
@@ -166,6 +170,7 @@ export function lineChart(host, { rows, series, format, title, announce, markers
       parts.push(label);
     }
     for (const s of series) {
+      if (r.v[s.key] == null && s.optional) continue;
       const row = document.createElement("div");
       row.className = "r";
       const name = document.createElement("span");
@@ -185,7 +190,7 @@ export function lineChart(host, { rows, series, format, title, announce, markers
     tip.style.left = `${Math.min(Math.max(x + 12, 0), host.clientWidth - tip.offsetWidth)}px`;
     if (x + 12 + tip.offsetWidth > host.clientWidth) tip.style.left = `${Math.max(x - tip.offsetWidth - 12, 0)}px`;
     tip.style.top = "8px";
-    announce?.(`${fmtDate(r.date)}, ${r.basis === "live" ? "live" : "simulated"}: ${parts.join(", ")}`);
+    announce?.(`${fmtDate(r.date)}, ${kind}: ${parts.join(", ")}`);
   }
 
   function hide() {
