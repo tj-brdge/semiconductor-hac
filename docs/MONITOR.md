@@ -37,20 +37,36 @@ recorded as `split_from` it. A theme whose text went to another theme's topic is
 marked `merged_into` that theme. IDs (`th-00042`) never change and published themes
 are never deleted.
 
-**Routes in.** Either route is enough:
-- **Emergence:** the research emergence rule flagged the topic.
+**Routes in.** Any one is enough:
+- **Emergence:** the research emergence rule flagged the topic, with growth among
+  comparable companies.
 - **Established:** present in at least 6 of the last 9 month-ends, with 4 or more
-  companies and at least median coherence.
+  comparable companies and at least median coherence.
+- **Newly covered:** a topic carried mostly by companies not yet covered at the
+  3-month comparison base, meeting the established bar on their backfilled history
+  (docs/TECH_PILOT_V2.md, "Handling new coverage"). Never shown as emerging.
+
+Each unpublished topic keeps its latest `route_check` (months present, comparable
+companies, coherence against the median, the newly-covered check), so what the
+monitor did not publish can be reviewed.
 
 A theme stays listed after the emergence rule stops firing.
 
 **Status.**
-- **Inactive:** absent for 3 or more month-ends.
-- Otherwise, compare its mean share of discussion over the last 3 month-ends with
-  the 3 before:
+- **Inactive:** absent for 3 or more month-ends in which it could have been seen. A
+  month in which fewer than half of the companies that last discussed it have any
+  documents is missing evidence: it neither counts as an absence nor ends the run.
+- Otherwise, compare its share of discussion over the last 3 month-ends with the 3
+  before, within a fixed company cohort: the companies covered and with documents at
+  every one of the 6 month-ends. Theme passages from cohort companies divided by all
+  passages from cohort companies, so adding or removing companies, or a company
+  missing a month of documents, cannot move the ratio by itself:
   - **strengthening:** ratio of 1.25 or more;
   - **cooling:** ratio of 0.8 or less;
   - **stable:** in between.
+  Each status change records its basis (cohort size, the theme's companies in it,
+  the ratio). Without comparable evidence (no theme company in the cohort) the
+  status is left as it was.
 - **New:** not yet 6 months of history.
 
 **Names.** A name is the top 3 keywords: point-in-time class-based TF-IDF of the
@@ -114,7 +130,10 @@ the latest ones. Each passage is labelled with its role:
     stale; a stale acquirer quote counts as stale too.
   - With cash-only terms, it becomes that cash (nothing left to price).
   - Without terms, it is held as cash at its last close, and flagged.
-- **Membership changes.** A change must hold for 2 month-ends. It then starts a new
+- **Membership changes.** The same proposed set must be observed at 2 consecutive
+  month-ends (`pending` holds the proposal and its count). A different set starts a
+  new proposal, a return to the current basket clears it, and a month without the
+  theme resets it; each reset is logged. It then starts a new
   version at its own entry close, at the previous index level. The index is
   chain-linked, so a company added later counts only from its own entry, never
   retroactively. Once a theme is public, a change found while catching up on old
@@ -266,6 +285,32 @@ method & data (coverage, freshness, the last refresh's stages, release ID).
 - Chart colours are a validated categorical palette (basket blue, benchmarks orange
   and green, dashed); identity is also given by the legend, end labels and the
   readout, and a table view lists the values.
+
+## Profiles (`config/profiles/`, `monitor/profiles.py`)
+
+A profile names its universe, pipeline and monitor files, its registry (state)
+directory and its site directory, so that pilots with different coverage run side
+by side. `semis` (the default) is the original semiconductor pilot with the
+original files and directories (`monitor_state/`, `site/`); `tech-v2` is the
+technology pilot (docs/TECH_PILOT_V2.md, `monitor_state-tech-v2/`, `site-tech-v2/`).
+
+- `--profile NAME` on `themegraph monitor refresh | serve | compare`.
+- Universe and monitor files can `extends:` a base file, so the technology universe
+  adds companies to the semiconductor universe without copying it.
+- The document and price store is shared; every read is limited to the profile's
+  universe (`load_documents/load_prices(..., universe=)`), including the research
+  commands, which read the default universe. Embedding and cluster caches are
+  content-addressed (text hash and model; passages, vectors and settings) and are
+  shared safely. Raw provider responses are shared too.
+- `fork_from`: the first refresh copies the source profile's registry (IDs, basket
+  versions, history) and records `fork`; afterwards the registries are independent.
+  `id_prefix` names the profile's new themes.
+- Every release and status file records `effective`: the profile, the universe name
+  and version, and each configuration file used with its SHA-256.
+
+**Run metrics.** status.json records seconds per stage, the process's peak memory,
+and counts of provider requests, raw-cache hits, embeddings computed and reused, and
+cluster windows computed and reused (`themegraph/usage.py`; counts only).
 
 ## Universe changes (`config/universe.yaml`, `monitor/coverage.py`)
 

@@ -34,6 +34,7 @@ basket:
 
 market:
   benchmarks: [SPY, SOXX]
+  benchmark_labels: {SPY: "US large companies (S&P 500)", SOXX: "Semiconductors (iShares)"}
   trend_threshold_pp: 5.0      # 3-month excess vs SPY changed by this much in a month
 
 coverage:                      # universe changes (docs/MONITOR.md, "Universe changes")

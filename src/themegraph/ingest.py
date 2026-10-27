@@ -154,11 +154,25 @@ def ingest_edgar(client: E.EdgarClient, cfg: PipelineConfig, universe: UniverseC
 
 # ------------------------------------------------------------------ loaders
 
-def load_prices(store: Store, upto: str | None = None) -> pd.DataFrame:
-    return store.read("prices", upto=upto)
+def universe_symbols(universe: UniverseConfig, benchmarks: bool = True) -> set[str]:
+    out = {i.symbol for i in universe.issuers}
+    out |= {i.successor.symbol for i in universe.issuers if i.successor}
+    return out | set(universe.benchmarks) if benchmarks else out
 
 
-def load_documents(store: Store, upto: str | None = None) -> pd.DataFrame:
+def load_prices(store: Store, upto: str | None = None,
+                universe: UniverseConfig | None = None) -> pd.DataFrame:
+    """Prices from the shared store; with `universe`, only its companies, their
+    recorded acquirers and its benchmarks (profiles share one store, docs/MONITOR.md
+    "Profiles", and must not see each other's companies)."""
+    df = store.read("prices", upto=upto)
+    return df.loc[df["symbol"].isin(universe_symbols(universe))].reset_index(drop=True) \
+        if universe is not None else df
+
+
+def load_documents(store: Store, upto: str | None = None,
+                   universe: UniverseConfig | None = None) -> pd.DataFrame:
+    """Transcripts and filings; with `universe`, only its companies' documents."""
     frames = []
     for table in ("documents_transcripts", "documents_edgar"):
         if store.vintages(table):
@@ -166,7 +180,11 @@ def load_documents(store: Store, upto: str | None = None) -> pd.DataFrame:
     if not frames:
         return pd.DataFrame(columns=["symbol", "doc_id", "doc_type", "published_at",
                                      "available_at", "text"])
-    return pd.concat(frames, ignore_index=True)
+    df = pd.concat(frames, ignore_index=True)
+    if universe is not None:
+        df = df.loc[df["symbol"].isin(universe_symbols(universe, benchmarks=False))]
+        df = df.reset_index(drop=True)
+    return df
 
 
 def load_factors(store: Store, cfg: PipelineConfig,
@@ -188,7 +206,7 @@ def load_factors(store: Store, cfg: PipelineConfig,
 def coverage(store: Store, universe: UniverseConfig) -> pd.DataFrame:
     rows = []
     prices = store.read("prices") if store.vintages("prices") else pd.DataFrame()
-    docs = load_documents(store)
+    docs = load_documents(store, universe=universe)
     for iss in universe.issuers:
         p = prices.loc[prices["symbol"] == iss.symbol] if len(prices) else prices
         d = docs.loc[docs["symbol"] == iss.symbol] if len(docs) else docs

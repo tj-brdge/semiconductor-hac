@@ -1,0 +1,11 @@
+# The original semiconductor pilot: the default profile. Its files and directories
+# are the ones every earlier release used, so nothing about it moves.
+name: semis
+title: Semiconductor pilot
+description: Semiconductor companies and the adjacent companies whose disclosures connect to them.
+universe: config/universe.yaml
+pipeline: config/pipeline.yaml
+monitor: config/monitor.yaml
+state: monitor_state
+site: site
+fixture: semis

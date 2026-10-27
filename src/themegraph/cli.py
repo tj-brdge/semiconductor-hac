@@ -89,7 +89,7 @@ def cmd_run(a):
         completed_attempt()  # refuse before loading anything if there is nothing to verify
     store = _store()
     up = a.input_vintage
-    prices, docs, factors = I.load_prices(store, up), I.load_documents(store, up), \
+    prices, docs, factors = I.load_prices(store, up, u), I.load_documents(store, up, u), \
         I.load_factors(store, cfg, up)
     tag = f"-{a.topic_mode}" if overrides else ""
     out = Path(a.out or RUNS / f"{a.period}{tag}-{dt.datetime.now(dt.UTC):%Y%m%dT%H%M%SZ}")
@@ -142,7 +142,7 @@ def cmd_topics(a):
         from .eval.freeze import _append
         _append(ROOT, {"event": "holdout_topic_inspection", "dates": late,
                        "note": "holdout topics inspected before evaluation: not clean"})
-    docs = I.load_documents(_store())
+    docs = I.load_documents(_store(), universe=load_universe())
     # Embed only what the sample windows need (each window plus the novelty filter's
     # lookback); eligibility is still decided on the full history, as in a run.
     from .text.novelty import LOOKBACK_DAYS
@@ -203,18 +203,34 @@ def cmd_questions(a):
 def cmd_monitor(a):
     """Theme monitor: refresh the inventory and data feed, or serve the dashboard."""
     from .monitor import refresh as M
+    from .monitor.profiles import load_profile
 
+    prof = load_profile(a.profile)
+    a.state = a.state or str(prof.state)
+    a.site = a.site or str(prof.site)
     if a.action == "refresh":
         as_of = dt.date.fromisoformat(a.as_of) if a.as_of else None
         if a.fixtures and as_of is None:
             sys.exit("--fixtures needs --as-of (fixture data ends 2021-12-31)")
         st = M.refresh(Path(a.state), Path(a.site), fixtures=a.fixtures, as_of=as_of,
-                       ingest_prices=not a.no_ingest, ingest_documents=a.documents)
+                       ingest_prices=not a.no_ingest, ingest_documents=a.documents,
+                       profile=prof)
         print(json.dumps({k: st.get(k) for k in ("ok", "errors", "skipped", "warnings",
                                                  "published_release", "data_as_of",
-                                                 "stale")}, indent=1,
+                                                 "stale", "metrics")}, indent=1,
                          default=str))
         sys.exit(0 if st["ok"] else 1)
+    if a.action == "compare":
+        from .monitor.compare import compare_profiles
+        other = load_profile(a.against)
+        out = Path(a.out) if a.out else Path(a.state) / "comparison.md"
+        text = compare_profiles(prof, Path(a.state), Path(a.site),
+                                other, other.state, other.site)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(text)
+        print(text)
+        print(f"\nwritten to {out}")
+        return
     import functools
     import http.server
     handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=a.site)
@@ -251,11 +267,11 @@ def cmd_forward(a):
         # Only vintages downloaded by the end of the cutoff day: replaying an earlier
         # cutoff after a refresh sees what was available then, not today's revisions.
         upto = f"{cutoff:%Y%m%d}T235959Z"
-        recs = Fw.predict(I.load_prices(store, upto), I.load_documents(store, upto), cfg, u,
+        recs = Fw.predict(I.load_prices(store, upto, u), I.load_documents(store, upto, u), cfg, u,
                           make_embedder(cfg.embedding), DATA / "cache", out, cutoff)
         print(f"{len(recs)} prediction records for cutoff {cutoff} in {out / Fw.PREDICTIONS}")
         return
-    prices = I.load_prices(store)
+    prices = I.load_prices(store, universe=u)
     closes = prices.pivot_table(index="date", columns="symbol", values="close")
     closes.index = pd.DatetimeIndex(closes.index).tz_localize(None).normalize() \
         .tz_localize("UTC") + pd.Timedelta(hours=22)
@@ -340,10 +356,15 @@ def main(argv=None):
     s.add_argument("--no-browser", action="store_true")
     s.set_defaults(fn=cmd_review)
     s = sub.add_parser("monitor", help="theme monitor: refresh the data feed or serve it")
-    s.add_argument("action", choices=["refresh", "serve"])
-    s.add_argument("--state", default=str(ROOT / "monitor_state"),
-                   help="registry directory (persistent)")
-    s.add_argument("--site", default=str(ROOT / "site"), help="dashboard directory")
+    s.add_argument("action", choices=["refresh", "serve", "compare"])
+    s.add_argument("--profile", default="semis",
+                   help="configuration profile in config/profiles (default: semis, the "
+                        "semiconductor pilot); sets the files, state and site below")
+    s.add_argument("--state", help="registry directory (default: the profile's)")
+    s.add_argument("--site", help="dashboard directory (default: the profile's)")
+    s.add_argument("--against", default="tech-v2",
+                   help="compare: the other profile (default tech-v2)")
+    s.add_argument("--out", help="compare: write the report here (default: <state>/comparison.md)")
     s.add_argument("--as-of", help="data cutoff date (default: today)")
     s.add_argument("--fixtures", action="store_true",
                    help="synthetic labelled fixture data instead of the store")

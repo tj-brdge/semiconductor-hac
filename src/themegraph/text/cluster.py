@@ -24,6 +24,7 @@ from sklearn.decomposition import PCA
 from sklearn.utils.extmath import randomized_svd
 
 from ..config import Text
+from ..usage import USAGE
 
 MAX_HAC_POINTS = 5000
 MICRO_DIMS = 128
@@ -204,7 +205,9 @@ class ClusterCache:
     def get(self, key: str, t, passage_ids, symbols, dim: int) -> WindowClusters | None:
         path = self.dir / f"{key}.npz"
         if not path.exists():
+            USAGE["cluster_windows_computed"] += 1
             return None
+        USAGE["cluster_windows_reused"] += 1
         z = np.load(path)
         labels, cents = z["labels"], z["cents"]
         ok = (str(z["key"]) == key and len(labels) == len(passage_ids)

@@ -48,8 +48,16 @@ class Basket(_S):
 
 
 class Market(_S):
-    benchmarks: list[str] = ["SPY", "SOXX"]
+    benchmarks: list[str] = ["SPY", "SOXX"]   # compared with every theme
     trend_threshold_pp: float = 5.0
+    # Optional extra comparison per theme, fixed when its first basket is decided:
+    # the benchmark of the sector holding at least `sector_benchmark_min_share` of
+    # the basket's companies (none if no sector does). Chosen from composition
+    # only, never from returns.
+    sector_benchmarks: dict[str, str] = {}
+    sector_benchmark_min_share: float = 0.5
+    # What each benchmark represents, shown next to it on the dashboard.
+    benchmark_labels: dict[str, str] = {}
 
 
 class CoverageRules(_S):
@@ -89,6 +97,27 @@ class MonitorConfig(_S):
     labels: Labels = Labels()
 
 
+def _merge(base: dict, over: dict) -> dict:
+    out = dict(base)
+    for k, v in over.items():
+        out[k] = _merge(out[k], v) if isinstance(v, dict) and isinstance(out.get(k), dict) \
+            else v
+    return out
+
+
+def monitor_raw(path: Path) -> dict:
+    """A monitor file with `extends: <base file>` resolved by a deep merge."""
+    raw = yaml.safe_load(Path(path).read_text()) or {}
+    base = raw.pop("extends", None)
+    return _merge(monitor_raw(Path(path).parent / base), raw) if base else raw
+
+
+def monitor_sources(path: Path) -> list[Path]:
+    raw = yaml.safe_load(Path(path).read_text()) or {}
+    base = raw.get("extends")
+    return (monitor_sources(Path(path).parent / base) if base else []) + [Path(path).resolve()]
+
+
 def load_monitor(path: Path | None = None) -> MonitorConfig:
     path = path or CONFIG_DIR / "monitor.yaml"
-    return MonitorConfig.model_validate(yaml.safe_load(Path(path).read_text()) or {})
+    return MonitorConfig.model_validate(monitor_raw(Path(path)))
