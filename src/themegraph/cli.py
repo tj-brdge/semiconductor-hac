@@ -224,8 +224,9 @@ def cmd_monitor(a):
         from .monitor.compare import compare_profiles
         other = load_profile(a.against)
         out = Path(a.out) if a.out else Path(a.state) / "comparison.md"
-        text = compare_profiles(prof, Path(a.state), Path(a.site),
-                                other, other.state, other.site)
+        text = compare_profiles(prof, Path(a.state), Path(a.site), other,
+                                Path(a.against_state or other.state),
+                                Path(a.against_site or other.site))
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(text)
         print(text)
@@ -364,6 +365,8 @@ def main(argv=None):
     s.add_argument("--site", help="dashboard directory (default: the profile's)")
     s.add_argument("--against", default="tech-v2",
                    help="compare: the other profile (default tech-v2)")
+    s.add_argument("--against-state", help="compare: the other profile's registry directory")
+    s.add_argument("--against-site", help="compare: the other profile's site directory")
     s.add_argument("--out", help="compare: write the report here (default: <state>/comparison.md)")
     s.add_argument("--as-of", help="data cutoff date (default: today)")
     s.add_argument("--fixtures", action="store_true",
