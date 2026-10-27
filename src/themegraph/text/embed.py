@@ -21,6 +21,7 @@ from tqdm.auto import tqdm
 
 from ..config import Embedding
 from ..data.http import env_value
+from ..usage import USAGE
 
 ENDPOINTS = {
     "voyage": "https://api.voyageai.com/v1/embeddings",
@@ -173,6 +174,8 @@ class EmbeddingCache:
         for h, t in zip(hashes, texts, strict=True):
             if h not in self._mem and h not in todo:
                 todo[h] = t
+        USAGE["embeddings_reused"] += len(set(hashes)) - len(todo)
+        USAGE["embeddings_computed"] += len(todo)
         if todo:
             items = list(todo.items())
             with tqdm(total=len(items), desc=f"Embedding ({self.embedder.model_id})",

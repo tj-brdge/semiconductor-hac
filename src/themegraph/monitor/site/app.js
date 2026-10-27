@@ -98,7 +98,7 @@ function card(row) {
     <div class="card-top"><h3><a href="#/theme/${esc(row.id)}">${esc(row.title)}</a></h3>${chip(row.status)}</div>
     <p class="summary">${esc(row.summary)}</p>
     ${row.label_source === "keywords" ? `<p class="small muted">Automatic title from key terms</p>` : ""}
-    <div class="meta"><span>${st.n_issuers ?? "—"} companies</span><span>${esc((row.sectors || []).join(", "))}</span></div>
+    <div class="meta">${row.route === "newly_covered" ? `<span class="tag" title="Visible because coverage expanded; not counted as emerging">Newly covered</span>` : ""}<span>${st.n_issuers ?? "—"} companies</span><span>${esc((row.sectors || []).join(", "))}</span></div>
     <div class="tickers" aria-label="Largest constituents">${keys.map((c) => esc(c.symbol)).join(" · ")}${more > 0 ? ` <span class="muted">+${more}</span>` : ""}</div>
     <div class="split">
       <div class="metric"><div class="k">${long.replace(/^./, (c) => c.toUpperCase())} basket return</div>
@@ -135,13 +135,16 @@ function overview() {
   const established = L.established.filter((id) => !seen.has(id)).map((id) => by[id]);
   const lowList = (ids) => ids.map((id) => by[id]).filter(Boolean);
   const a = S.index.data_as_of || {}, U = S.U;
+  const lastChange = [...(U.changes || [])].reverse().find((c) => (c.added || []).length);
+  const newly = (L.newly_covered || []).map((id) => by[id]).filter(Boolean);
   const nSectors = Object.keys(U.sectors || {}).length;
   const render = () => {
     $("#main").innerHTML = `
       <section class="intro"><h1>Theme Monitor</h1>
         <p class="lede">Investment themes that companies are discussing in their earnings calls and SEC filings, and how an equal-weight basket of those companies' stocks has performed.</p>
-        <p class="facts"><span>Coverage <b>${esc(U.name || "—")}</b>: ${U.n_companies ?? "—"} companies, ${nSectors} sectors</span>
-          <span>Compared with <b>${esc(S.B.join(" and "))}</b></span>
+        <p class="facts"><span>Coverage <b>${esc(U.name || "—")}</b> (version ${esc(U.version)}): ${U.n_companies ?? "—"} companies, ${nSectors} sectors</span>
+          ${lastChange ? `<span>Expanded ${esc(fmtDate(lastChange.date))}: ${lastChange.added.length} companies added</span>` : ""}
+          <span>Compared with <b>${esc(S.B.join(" and "))}</b>${S.index.benchmark_rule && Object.keys(S.index.benchmark_rule.sector_benchmarks || {}).length ? " and a sector reference where one fits" : ""}</span>
           <span>Prices through <b>${esc(fmtDate(a.prices))}</b></span><span>Calls and filings through <b>${esc(fmtDate(a.documents))}</b></span>
           <a href="#/method#coverage">What is covered</a></p></section>
       ${notices()}
@@ -149,6 +152,9 @@ function overview() {
       <section class="section" aria-labelledby="h-em"><div class="section-head"><div><h2 id="h-em">Emerging</h2>
         <p class="muted small">Newly prominent in what companies discuss: flagged by the emergence rule in the last three months, or entered that way and still growing. Ordered by growth in discussion.</p></div></div>
         ${emerging.length ? `<div class="cards">${emerging.map(card).join("")}</div>` : `<p class="empty">Nothing is emerging right now. Themes appear here when discussion of a topic grows quickly across several comparable companies.</p>`}</section>
+      ${newly.length ? `<section class="section" aria-labelledby="h-new"><div class="section-head"><div><h2 id="h-new">Newly covered</h2>
+        <p class="muted small">Visible because coverage expanded${lastChange ? ` on ${esc(fmtDate(lastChange.date))}` : ""}: long-running discussion among newly added companies, found in their earlier documents. Not counted as emerging, and tracked only from when it was published.</p></div></div>
+        <div class="cards">${newly.map(card).join("")}</div></section>` : ""}
       <section class="section" aria-labelledby="h-es"><div class="section-head"><div><h2 id="h-es">Strong established themes</h2>
         <p class="muted small">Discussed in at least 6 of the last 12 months by four or more companies. “Strong” is within the monitored companies only, and describes discussion, not stock performance.</p></div></div>
         ${established.length ? `<div class="cards">${established.map(card).join("")}</div>` : `<p class="empty">No established themes yet.</p>`}</section>
@@ -178,7 +184,7 @@ function allThemes(params) {
       <label class="field">Search<input id="f-q" type="search" placeholder="Theme, company or term" value="${esc(q.q)}"></label>
       <label class="field">Status<select id="f-status">${opts([["", "Any status"], ["active", "Active (not inactive)"], ...Object.entries(STATUS)], q.status)}</select></label>
       <label class="field">Sector<select id="f-sector">${opts([["", "Any sector"], ...sectors.map((s) => [s, s])], q.sector)}</select></label>
-      <label class="field">How it entered<select id="f-route">${opts([["", "Either"], ["emergence", "Emergence rule"], ["established", "Established (persistent)"]], q.route)}</select></label>
+      <label class="field">How it entered<select id="f-route">${opts([["", "Any"], ["emergence", "Emergence rule"], ["established", "Established (persistent)"], ["newly_covered", "Newly covered"]], q.route)}</select></label>
       <label class="field">Sort by<select id="f-sort">${opts([["return", "Basket return"], ["excess", `Return vs ${b}`], ["growth", "Discussion growth"], ["companies", "Companies"], ["persistence", "Months discussed"], ["recent", "Recently published"], ["name", "Name"]], q.sort)}</select></label>
     </form>
     ${periodControl()}
@@ -222,6 +228,16 @@ function allThemes(params) {
 // -- one theme -----------------------------------------------------------------------
 const RANGES = [["3m", "3M", 63], ["6m", "6M", 126], ["1y", "1Y", 252], ["all", "All", null], ["live", "Live", null]];
 
+function benchText(t, B) {
+  const names = S.index.benchmark_labels || {};
+  const sb = t.sector_benchmark || {};
+  const parts = B.map((b) => `${b}${names[b] ? ` (${names[b]})` : ""}`);
+  let why = "";
+  if (sb.symbol) why = ` ${sb.symbol} is included because ${Math.round(sb.share * 100)}% of the first basket's companies are in ${sb.sector}; this was fixed when that basket was decided, from its composition only.`;
+  else if (sb.decided_at) why = " No sector reference: no single sector held at least half of the first basket.";
+  return `Compared with ${parts.join(", ")}.${why} Benchmarks are capitalisation-weighted; theme baskets are equal-weighted.`;
+}
+
 function labelNote(t) {
   const L = t.label || {};
   if (L.source === "claude") return `Title and summary written by Claude (${esc(L.model || "")}) from ${L.evidence?.length || 0} cited passages, marked below. They describe discussion only.`;
@@ -252,7 +268,7 @@ async function themePage(id, token) {
   }
   if (token !== S.nav) return; // the reader has moved on: never draw a stale theme
   $("#main").removeAttribute("aria-busy");
-  const p = t.performance, R = p.returns || {}, B = S.B;
+  const p = t.performance, R = p.returns || {}, B = t.benchmarks || S.B;
   const m = [...t.measures].reverse().find((r) => r.present) || {};
   const cited = new Set(t.label?.evidence || []);
   const rec = R.reconstructed, live = R.live;
@@ -285,8 +301,9 @@ async function themePage(id, token) {
     <header class="hero"><div class="card-top"><h1>${esc(t.title)}</h1>${chip(t.status)}</div>
       <p class="summary">${esc(t.summary)}</p>
       <p class="small muted">${labelNote(t)}</p>
+      ${t.newly_covered ? `<p class="notice"><span><b>Newly covered.</b> This theme became visible when coverage expanded: ${t.newly_covered.new_companies.length} of its companies were added recently. Their earlier documents show the topic in ${t.newly_covered.backfill_present} of the ${t.newly_covered.of_last} months before ${esc(fmtDate(t.newly_covered.at))}; that is historical analysis, not an earlier discovery. Tracking began when it was published on ${esc(fmtDate(t.published_at))}.</span></p>` : ""}
       <p class="facts"><span>${m.n_issuers ?? "—"} companies</span><span>${esc((m.sectors || []).join(", "))}</span>
-        <span>Entered ${esc(fmtDate(t.published_snapshot))} via the ${t.route === "emergence" ? "emergence rule" : "established-theme rule"}</span></p>
+        <span>Entered ${esc(fmtDate(t.published_snapshot))} via the ${{ emergence: "emergence rule", established: "established-theme rule", newly_covered: "newly-covered rule" }[t.route] || esc(t.route)}</span></p>
       ${t.merged_into ? `<p class="notice warn">Merged into <a href="#/theme/${esc(t.merged_into)}">${esc(S.byId[t.merged_into]?.title || t.merged_into)}</a>. Its history and basket are kept here.</p>` : ""}
     </header>
     <section class="panel" aria-labelledby="h-perf">
@@ -296,6 +313,7 @@ async function themePage(id, token) {
         <div class="legend"><span><i class="key" style="border-top-color:var(--series-1);border-top-width:3px"></i>Theme basket</span>${B.map((b, i) => `<span><i class="key dash" style="border-top-color:var(--series-${i + 2})"></i>${esc(b)}</span>`).join("")}<span><i class="band-key"></i>Live (observed)</span><span><span class="event-key" aria-hidden="true">▼</span>Event</span>${p.hindsight ? `<span><i class="hind-key"></i>Before entry (hindsight, when shown)</span>` : ""}<span class="muted">Unshaded: simulated</span></div>
         ${p.hindsight ? `<label class="check"><input type="checkbox" id="hind-toggle"> Show the ${Math.round(p.hindsight.sessions / 21)} months before the basket started (hindsight)</label>` : ""}
         <div id="chart"></div><p class="sr" aria-live="polite" id="readout"></p>
+        <p class="small muted">${benchText(t, B)}</p>
         <p class="small muted" id="hind-note"></p>
         <p class="small muted" id="events-note"></p>
         <p class="small muted">${seriesNote} Index = 100 at the start of the selected range. ${esc(p.price_basis)}.</p>
@@ -366,7 +384,7 @@ function priceText(c) {
 }
 
 function mountChart(t) {
-  const p = t.performance, B = S.B, all = p.series, H = p.hindsight;
+  const p = t.performance, B = t.benchmarks || S.B, all = p.series, H = p.hindsight;
   const hasLive = all.some((r) => r.basis === "live");
   let range = all.length > 252 ? "1y" : "all", before = false;
   // Events on the chart. A month-end event belongs to the session that acted on
@@ -463,6 +481,9 @@ function method() {
         <li>US-dollar, dividend-adjusted prices for companies and benchmarks alike (${esc(S.B.join(", "))}).</li>
         <li>Missing prices are carried from the last close and reported, never dropped. Acquired companies convert on their recorded terms.</li>
         <li><b>Simulated vs live.</b> The monitor went live on ${esc(fmtDate(S.index.go_live))}. Index days before a theme's publication (or before a basket version was decided) are a historical simulation of the rule; only later days are observed. Returns are shown separately for each and labelled.</li></ul></section>
+    <section class="panel prose"><h2>Benchmarks</h2>
+      <p>Every theme is compared with ${esc(S.B.map((b) => `${b}${(S.index.benchmark_labels || {})[b] ? ` (${S.index.benchmark_labels[b]})` : ""}`).join(" and "))}.${Object.keys(S.index.benchmark_rule?.sector_benchmarks || {}).length ? ` A theme also gets one sector reference when at least ${Math.round(S.index.benchmark_rule.min_share * 100)}% of its first basket's companies are in one sector: ${esc(Object.entries(S.index.benchmark_rule.sector_benchmarks).map(([k, v]) => `${k}: ${v}`).join("; "))}. The choice is fixed when the first basket is decided, from its composition only, never from returns.` : ""}</p>
+      <p>Benchmarks are capitalisation-weighted, while theme baskets give each company the same starting amount, so part of any difference reflects company size.</p></section>
     <section class="panel prose" id="coverage"><h2>Coverage</h2>
       <p><b>${esc(U.name)}</b> (version ${esc(U.version)}): ${esc(U.description)}</p>
       <p>${U.n_companies} companies: ${Object.entries(U.sectors || {}).map(([k, v]) => `${esc(k)} (${v})`).join(", ")}. A theme can span several sectors. “Strongest” always means strongest among these companies.</p>
@@ -471,7 +492,9 @@ function method() {
     <section class="panel" id="freshness"><h2>Freshness and the last update</h2>
       <dl class="dl"><dt>Prices through</dt><dd>${esc(fmtDate(a.prices))}</dd><dt>Calls and filings through</dt><dd>${esc(fmtDate(a.documents))}</dd>
         <dt>Themes processed through</dt><dd>${esc(fmtDate(a.themes))}</dd><dt>This release</dt><dd class="mono">${esc(S.index.release)}</dd>
-        <dt>Generated</dt><dd>${esc(S.index.generated_at)}</dd><dt>Last update attempt</dt><dd>${esc(st.checked_at || "—")} · ${st.ok ? "succeeded" : "did not complete"}</dd></dl>
+        <dt>Generated</dt><dd>${esc(S.index.generated_at)}</dd>
+        ${S.index.effective ? `<dt>Configuration</dt><dd>${esc(S.index.effective.title)} (profile ${esc(S.index.effective.profile)}), universe version ${esc(S.index.effective.universe_version)}: ${esc(Object.values(S.index.effective.files).flat().map((x) => `${x.path} ${x.sha256.slice(0, 8)}`).join(", "))}</dd>` : ""}
+        ${S.index.fork ? `<dt>Started from</dt><dd>a copy of the ${esc(S.index.fork.from_profile)} registry at ${esc(fmtDate(S.index.fork.at_snapshot))} (${S.index.fork.inherited_themes.length} published themes kept with their IDs, baskets and history)</dd>` : ""}<dt>Last update attempt</dt><dd>${esc(st.checked_at || "—")} · ${st.ok ? "succeeded" : "did not complete"}</dd></dl>
       ${stages.length ? `<div class="table-wrap"><table><thead><tr><th>Stage</th><th>Result</th><th>Detail</th></tr></thead><tbody>${stages.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${v.ok ? "OK" : "<b>Failed</b>"}</td><td class="small">${esc(v.ok ? (typeof v.detail === "string" ? v.detail : "") : v.error)}</td></tr>`).join("")}${Object.entries(st.skipped || {}).map(([k, v]) => `<tr><td>${esc(k)}</td><td>Skipped</td><td class="small">${esc(v)}</td></tr>`).join("")}${Object.entries(st.warnings || {}).map(([k, v]) => `<tr><td>${esc(k)}</td><td>Warning</td><td class="small">${esc(v)}</td></tr>`).join("")}</tbody></table></div>` : ""}
       <p class="small muted">A release is published only when every stage succeeds; otherwise the previous release stays online and this page says what failed.</p></section>
     <section class="panel prose"><h2>Evaluation status</h2><p>${esc(S.index.evaluation_note || "")}</p>

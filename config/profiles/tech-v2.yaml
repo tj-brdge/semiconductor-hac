@@ -1,0 +1,16 @@
+# Technology pilot v2: the semiconductor pilot plus software, cybersecurity and
+# data/cloud companies. Runs beside the semiconductor pilot with its own registry and
+# site, so the published semiconductor monitor is untouched while this is reviewed.
+name: tech-v2
+title: Technology pilot v2
+description: Semiconductors, software, cybersecurity, data platforms and the adjacent companies that connect them.
+universe: config/tech_v2/universe.yaml
+pipeline: config/pipeline.yaml   # the research specification, shared and unchanged
+monitor: config/tech_v2/monitor.yaml
+state: monitor_state-tech-v2
+site: site-tech-v2
+fixture: tech
+# Start from a copy of the semiconductor registry (theme IDs, basket versions and
+# history kept), then run independently. New themes get tech- IDs.
+fork_from: semis
+id_prefix: tech

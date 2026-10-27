@@ -173,9 +173,39 @@ def load_pipeline(path: Path | None = None) -> PipelineConfig:
     return PipelineConfig.model_validate(yaml.safe_load(Path(path).read_text()))
 
 
+def universe_sources(path: Path) -> list[Path]:
+    """The universe file and every file it extends (base first)."""
+    path = Path(path)
+    raw = yaml.safe_load(path.read_text()) or {}
+    base = raw.get("extends")
+    return (universe_sources(path.parent / base) if base else []) + [path.resolve()]
+
+
+def _universe_raw(path: Path) -> dict:
+    """A universe file, with `extends: <base file>` resolved: the base's issuers,
+    sectors and change log come first and this file adds to them; other fields
+    (name, description, version, benchmarks) are this file's own. A larger universe
+    can so build on a smaller one without copying it."""
+    raw = yaml.safe_load(Path(path).read_text()) or {}
+    base = raw.pop("extends", None)
+    if not base:
+        return raw
+    out = _universe_raw(Path(path).parent / base)
+    for k, v in raw.items():
+        if k == "issuers":
+            out["issuers"] = out.get("issuers", []) + v
+        elif k == "changes":
+            out["changes"] = out.get("changes", []) + v
+        elif k == "sectors":
+            out["sectors"] = {**out.get("sectors", {}), **v}
+        else:
+            out[k] = v
+    return out
+
+
 def load_universe(path: Path | None = None) -> UniverseConfig:
     path = path or CONFIG_DIR / "universe.yaml"
-    cfg = UniverseConfig.model_validate(yaml.safe_load(Path(path).read_text()))
+    cfg = UniverseConfig.model_validate(_universe_raw(Path(path)))
     symbols = [i.symbol for i in cfg.issuers]
     dupes = {s for s in symbols if symbols.count(s) > 1}
     if dupes:

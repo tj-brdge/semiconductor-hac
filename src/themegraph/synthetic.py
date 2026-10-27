@@ -13,7 +13,7 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from .config import Availability, Issuer, PipelineConfig, UniverseConfig
+from .config import Availability, Issuer, PipelineConfig, UniverseChange, UniverseConfig
 from .data.pit import price_available_at, transcript_available_at
 from .eval.labels import LabelFile, Marker, Theme
 
@@ -65,18 +65,61 @@ THEMES = [
 ]
 
 
-def synthetic_universe(per_segment: int = 8) -> UniverseConfig:
+# Technology pilot fixture (profile tech-v2): three more segments, added to coverage
+# on TECH_COVERED_FROM. Their documents and prices come from separate random
+# streams after the original companies', so the original companies' data is
+# identical in both fixtures, as it is in real data.
+TECH_SEGMENTS = {
+    "app_software": ("core", "seats subscription renewals modules workflow expansion bookings "
+                             "suite upsell implementation partners"),
+    "security": ("core", "threat detection endpoint identity zero trust breach firewall "
+                         "attacks protection adversaries"),
+    "data_cloud": ("core", "consumption workloads warehouse queries storage observability "
+                           "developers usage pipelines"),
+}
+TECH_COVERED_FROM = dt.date(2021, 7, 1)
+TECH_THEMES = [
+    # Software companies newly discussing agents: only new companies carry it.
+    PlantedTheme("planted_ai_agents", ("APP1", "APP2", "APP3", "DAT1", "DAT2", "SEC1"),
+                 "agents copilots autonomous orchestration reasoning models tokens assistants "
+                 "workflows automation",
+                 dt.date(2020, 10, 1), dt.date(2021, 3, 1), dt.date(2021, 12, 31), "holdout"),
+    # Two data companies join the existing AI build-out theme (same vocabulary).
+    PlantedTheme("planted_ai_buildout_data", ("DAT3", "DAT4"), THEMES[0].vocab,
+                 dt.date(2018, 7, 1), dt.date(2019, 4, 1), dt.date(2019, 12, 31), "dev"),
+]
+
+
+def _segment(seg: str) -> tuple[str, str]:
+    return SEGMENTS.get(seg) or TECH_SEGMENTS[seg]
+
+
+def synthetic_universe(per_segment: int = 8, tech: bool = False) -> UniverseConfig:
     prefix = {"memory": "MEM", "compute": "CMP", "analog": "ANA", "equipment": "EQP",
               "networking": "NET", "power": "PWR"}
     issuers = [Issuer(symbol=f"{prefix[s]}{i}", segment=s, role=SEGMENTS[s][0])
                for s in SEGMENTS for i in range(1, per_segment + 1)]
+    sectors = {"memory": "Semiconductors", "compute": "Semiconductors",
+               "analog": "Semiconductors", "equipment": "Semiconductor equipment",
+               "networking": "Networking", "power": "Power"}
+    if not tech:
+        return UniverseConfig(
+            name="Synthetic fixture universe", version="fixture-1",
+            description="Synthetic companies for tests and demos; not real companies.",
+            benchmarks=["SPY", "SOXX"], issuers=issuers, sectors=sectors)
+    tp = {"app_software": "APP", "security": "SEC", "data_cloud": "DAT"}
+    added = [Issuer(symbol=f"{tp[s]}{i}", segment=s, role="core",
+                    covered_from=TECH_COVERED_FROM)
+             for s in TECH_SEGMENTS for i in range(1, per_segment + 1)]
     return UniverseConfig(
-        name="Synthetic fixture universe", version="fixture-1",
+        name="Synthetic technology fixture", version="fixture-2",
         description="Synthetic companies for tests and demos; not real companies.",
-        benchmarks=["SPY", "SOXX"], issuers=issuers,
-        sectors={"memory": "Semiconductors", "compute": "Semiconductors",
-                 "analog": "Semiconductors", "equipment": "Semiconductor equipment",
-                 "networking": "Networking", "power": "Power"})
+        benchmarks=["SPY", "XLK", "SOXX", "IGV", "CIBR"], issuers=issuers + added,
+        sectors={**sectors, "app_software": "Application software",
+                 "security": "Cybersecurity", "data_cloud": "Data and cloud software"},
+        changes=[UniverseChange(version="fixture-2", date=TECH_COVERED_FROM,
+                                added=[i.symbol for i in added],
+                                note="synthetic software, security and data companies")])
 
 
 def demo_config(cfg: PipelineConfig) -> PipelineConfig:
@@ -117,6 +160,8 @@ def synthetic_prices(universe: UniverseConfig, start="2015-06-01", end="2021-12-
     rets = {"SPY": mkt}
     core = []
     for iss in universe.issuers:
+        if iss.segment not in SEGMENTS:
+            continue
         r = 1.1 * mkt + seg_f[iss.segment] + rng.normal(0, 0.013, n)
         for th in THEMES:
             if iss.symbol in th.issuers:
@@ -125,6 +170,23 @@ def synthetic_prices(universe: UniverseConfig, start="2015-06-01", end="2021-12-
         if iss.role == "core":
             core.append(r)
     rets["SOXX"] = np.mean(core, axis=0)
+    tech = [i for i in universe.issuers if i.segment in TECH_SEGMENTS]
+    if tech:  # a separate stream: the original companies' prices are unchanged
+        rng2 = np.random.default_rng(seed + 1000)
+        tseg = {s: rng2.normal(0, 0.008, n) for s in TECH_SEGMENTS}
+        tthe = {th.id: rng2.normal(0, 0.014, n) * _ramp(dates, th.market_start)
+                for th in TECH_THEMES}
+        groups: dict[str, list] = {s: [] for s in TECH_SEGMENTS}
+        for iss in tech:
+            r = 1.2 * mkt + tseg[iss.segment] + rng2.normal(0, 0.015, n)
+            for th in THEMES + TECH_THEMES:
+                if iss.symbol in th.issuers:
+                    r = r + (theme_f.get(th.id) if th.id in theme_f else tthe[th.id])
+            rets[iss.symbol] = r
+            groups[iss.segment].append(r)
+        rets["IGV"] = np.mean(groups["app_software"] + groups["data_cloud"], axis=0)
+        rets["CIBR"] = np.mean(groups["security"], axis=0)
+        rets["XLK"] = np.mean(core + sum(groups.values(), []), axis=0)
     rows = []
     for sym, r in rets.items():
         close = 100 * np.exp(np.cumsum(r))
@@ -150,7 +212,7 @@ def synthetic_documents(universe: UniverseConfig, start="2016-01-01", end="2021-
     quarters = pd.period_range(start, end, freq="Q")
     recs = []
     for iss in universe.issuers:
-        seg_vocab = SEGMENTS[iss.segment][1]
+        seg_vocab = _segment(iss.segment)[1]
         lag = int(rng.integers(20, 40))
         for q in quarters:
             date = q.end_time.normalize() + pd.Timedelta(days=lag)
@@ -161,7 +223,7 @@ def synthetic_documents(universe: UniverseConfig, start="2016-01-01", end="2021-
             for k in range(n_turns):
                 spk = ["CEO", "CFO", "Analyst"][k % 3]
                 theme_bits = []
-                for th in THEMES:
+                for th in (THEMES + TECH_THEMES if iss.segment in TECH_SEGMENTS else THEMES):
                     if iss.symbol not in th.issuers:
                         continue
                     share = _ramp(pd.DatetimeIndex([date]), th.text_start, 360)[0]

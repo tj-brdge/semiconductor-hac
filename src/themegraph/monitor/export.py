@@ -82,6 +82,10 @@ def theme_document(th: dict, perf: dict, snapshots: list[str], mcfg) -> dict:
         "measures": [{k: v for k, v in r.items()} for r in th["measures"]],
         "basket_versions": th["versions"],
         "performance": perf, "pending_version": pending, "market_history": hist,
+        "benchmarks": [c for c in (perf.get("series") or [{}])[0] if c not in
+                       ("date", "theme", "coverage", "basis")] or mcfg.market.benchmarks,
+        "sector_benchmark": th.get("sector_benchmark"),
+        "newly_covered": th.get("newly_covered"),
         "market_trend": _market_trend(hist, bench, mcfg.market.trend_threshold_pp),
     }
 
@@ -125,6 +129,7 @@ def summary_row(doc: dict, bench: str) -> dict:
         "label_status": doc["label"].get("status"), "status": doc["status"],
         "route": doc["route"], "basis": doc["basis"],
         "published_snapshot": doc["published_snapshot"], "last_seen": doc["last_seen"],
+        "published_at": doc["published_at"], "benchmarks": doc["benchmarks"],
         "emergence": {"growth_3m": m.get("growth_3m"), "share": m.get("share"),
                       "comparable_issuers": len(m.get("comparable_issuers", [])),
                       "n_issuers": m.get("n_issuers"),
@@ -151,7 +156,8 @@ def summary_row(doc: dict, bench: str) -> dict:
     }
 
 
-def overview_lists(rows: list[dict], mcfg) -> dict:
+def overview_lists(rows: list[dict], mcfg, snapshots: list[str] | None = None) -> dict:
+    recent_snaps = set((snapshots or [])[-6:])
     live = [r for r in rows if r["status"] not in ("inactive", "merged")]
     emerging = sorted([r for r in live if r["emergence"]["flagged_recently"]
                        or (r["route"] == "emergence" and r["status"] in ("new",
@@ -172,10 +178,16 @@ def overview_lists(rows: list[dict], mcfg) -> dict:
                 (r for r in trend if r["market"]["trend"]["trend"] == "losing"),
                 key=lambda r: r["market"]["trend"]["change_pp_1m"])],
             "cooling": [r["id"] for r in rows if r["status"] == "cooling"],
+            # Published through the newly-covered route in the last six months:
+            # visible because coverage expanded, not because discussion grew.
+            "newly_covered": [r["id"] for r in rows if r["route"] == "newly_covered"
+                              and r["status"] not in ("inactive", "merged")
+                              and r["published_snapshot"] in recent_snaps],
             "inactive": [r["id"] for r in rows if r["status"] in ("inactive", "merged")]}
 
 
-def publish(site: Path, docs: list[dict], meta: dict, mcfg) -> str:
+def publish(site: Path, docs: list[dict], meta: dict, mcfg,
+            snapshots: list[str] | None = None) -> str:
     """Write a release and make it current. Returns the release id."""
     site = Path(site)
     rel_id = dt.datetime.now(dt.UTC).strftime("%Y%m%dT%H%M%S%fZ")
@@ -183,7 +195,7 @@ def publish(site: Path, docs: list[dict], meta: dict, mcfg) -> str:
     staging = site / "data" / "releases" / f".staging-{rel_id}"
     rows = [summary_row(d, mcfg.market.benchmarks[0]) for d in docs]
     index = {"schema_version": SCHEMA_VERSION, "release": rel_id, **meta,
-             "themes": rows, "lists": overview_lists(rows, mcfg)}
+             "themes": rows, "lists": overview_lists(rows, mcfg, snapshots)}
     _dump(staging / "index.json", index)
     for d in docs:
         _dump(staging / "themes" / f"{d['id']}.json", d)

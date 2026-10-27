@@ -61,13 +61,16 @@ def _atomic_write(path: Path, text: str) -> None:
 
 
 class Registry:
-    def __init__(self, root: Path):
+    def __init__(self, root: Path, id_prefix: str = "th"):
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
         p = self.root / "registry.json"
         self.data = json.loads(p.read_text()) if p.exists() else {
             "schema": SCHEMA, "created_at": None, "go_live": None, "last_snapshot": None,
             "next_id": 1, "themes": {}}
+        # New themes are named <prefix>-NNNNN; a forked profile has its own prefix so
+        # its new themes never share an ID with the profile it came from.
+        self.data.setdefault("id_prefix", id_prefix)
         v = self.root / "vectors.npz"
         self.vectors = dict(np.load(v)) if v.exists() else {}
         self._events: list[dict] = []
@@ -105,9 +108,10 @@ class Registry:
     # ---- update ----
     def process(self, t: pd.Timestamp, clusters: list[Cluster], m: MonitorConfig,
                 cov: Coverage, roles: dict[str, str], now: str,
-                window: dict[str, int]) -> dict:
+                window: dict[str, int], history=None) -> dict:
         """Apply one month-end. `window` is passages per company in its window (the
-        share denominator). Returns counts of what changed."""
+        share denominator). `history(t)` returns the clusters at an earlier month-end
+        (used only by the newly-covered route). Returns counts of what changed."""
         last = self.data["last_snapshot"]
         if last is not None and pd.Timestamp(last) >= t:
             return {"skipped": True}
@@ -164,14 +168,23 @@ class Registry:
             row = self._measures(th, c, ts, snaps, cov, m)
             th["measures"].append(row)
             if not th["published"] and c is not None:
-                route = self._route(th, c, row, snaps, median_coh, m)
+                route = self._route(th, c, row, snaps, median_coh, m) or \
+                    self._newly_covered(th, c, row, snaps, median_coh, m, cov, history)
+                th["route_check"] = self._route_check(th, c, row, snaps, median_coh, m)
                 if route:
                     self._publish(th, c, ts, route, now, m, roles, cov)
                     counts["published"] += 1
             if th["published"]:
-                self._status(th, ts, snaps, m)
+                self._sector_benchmark(th, ts, m, cov)
+                self._status(th, ts, snaps, m, cov)
                 if c is not None:
                     self._version(th, c, ts, now, m, roles, cov)
+                elif th.get("pending"):
+                    # Absent this month: the proposal was not observed again, so the
+                    # consecutive count restarts when the theme returns.
+                    self.event(ts, th["id"], "basket_proposal_reset", reason="theme absent",
+                               proposed=th["pending"].get("members"))
+                    th["pending"] = None
         self._prune(snaps, m)
         self.data["last_snapshot"] = ts
         return counts
@@ -209,7 +222,7 @@ class Registry:
         return match, splits, merges
 
     def _new(self, c: Cluster, ts: str) -> str:
-        tid = f"th-{self.data['next_id']:05d}"
+        tid = f"{self.data.get('id_prefix', 'th')}-{self.data['next_id']:05d}"
         self.data["next_id"] += 1
         self.themes[tid] = {
             "id": tid, "name": " · ".join(c.keywords[:3]) or tid,
@@ -297,6 +310,90 @@ class Registry:
             return "established"
         return None
 
+    @staticmethod
+    def _route_check(th: dict, c: Cluster, row: dict, snaps: list[str], median_coh: float,
+                     m: MonitorConfig) -> dict:
+        """Why an unpublished topic did or did not qualify this month (for review of
+        what the monitor missed; changes nothing)."""
+        e = m.established
+        window = set(snaps[-e.of_last:])
+        return {"t": row["t"], "flagged": row["flagged"],
+                "flagged_comparable": row["flagged_comparable"],
+                "months_present": sum(s in window for s in th["seen"]), "of_last": e.of_last,
+                "comparable_issuers": len(row["comparable_issuers"]),
+                "issuers": row["n_issuers"], "coherence": round(c.coherence, 4),
+                "median_coherence": round(median_coh, 4),
+                "newly_covered": th.get("newly_covered_check")}
+
+    def _newly_covered(self, th: dict, c: Cluster, row: dict, snaps: list[str],
+                       median_coh: float, m: MonitorConfig, cov: Coverage,
+                       history) -> str | None:
+        """The third route, for coverage expansions. A topic carried mostly by
+        companies that were not yet covered at the 3-month comparison base cannot use
+        the other two routes (they count comparable companies only), so it would stay
+        invisible for months although it may be long-running. It is published as
+        "newly covered", never as emerging, when it meets the established route's own
+        bar on the backfilled history: present in `present` of the last `of_last`
+        month-ends (followed back through earlier month-ends' clusters by the same
+        passage/meaning matching as identity), at least `min_issuers` companies, and
+        at least median coherence. Its basket starts when it is published; the
+        backfilled presence is recorded as evidence, not as an earlier discovery."""
+        if history is None:
+            return None
+        e = m.established
+        base = snaps[-4] if len(snaps) >= 4 else None
+        issuers = row["issuers"]
+        new = [s for s in issuers if base is not None and not cov.covered(s, base)]
+        th["newly_covered_check"] = {"new_companies": len(new), "issuers": len(issuers)}
+        if not issuers or len(new) * 2 < len(issuers):
+            return None  # mostly already-covered companies: the usual routes decide
+        if len(issuers) < e.min_issuers or c.coherence < median_coh:
+            th["newly_covered_check"]["failed"] = "breadth or coherence"
+            return None
+        head, present, months = c, 1, []
+        for s in reversed(snaps[-e.of_last:-1]):
+            best, score = None, 0.0
+            for h in history(pd.Timestamp(s)):
+                jac = len(set(head.members) & set(h.members)) / \
+                    len(set(head.members) | set(h.members))
+                cos = float(head.centroid @ h.centroid)
+                if (jac >= m.match.min_jaccard or cos >= m.match.min_centroid_cosine) and \
+                        jac + cos > score:
+                    best, score = h, jac + cos
+            if best is not None:
+                present += 1
+                months.append(s)
+                head = best
+        th["newly_covered_check"]["backfill_present"] = present
+        if present < e.present:
+            th["newly_covered_check"]["failed"] = "backfill persistence"
+            return None
+        th["newly_covered"] = {"at": row["t"], "new_companies": new,
+                               "backfill_present": present, "of_last": e.of_last,
+                               "backfill_months": sorted(months)}
+        return "newly_covered"
+
+    def _sector_benchmark(self, th: dict, ts: str, m: MonitorConfig, cov: Coverage) -> None:
+        """Fix a theme's optional sector reference once, from its first basket's
+        composition (monitor config `market.sector_benchmarks`). Composition only,
+        never returns; never changed afterwards."""
+        rule = m.market.sector_benchmarks
+        if not rule or "sector_benchmark" in th or not th["versions"]:
+            return
+        members = [x["symbol"] for x in th["versions"][0]["constituents"]]
+        counts: dict[str, int] = {}
+        for sym in members:
+            sec = cov.sector.get(sym)
+            counts[sec] = counts.get(sec, 0) + 1
+        bench, chosen, share = None, None, 0.0
+        if members:
+            sec, n = max(counts.items(), key=lambda kv: kv[1])
+            share = n / len(members)
+            if share >= m.market.sector_benchmark_min_share and rule.get(sec):
+                bench, chosen = rule[sec], sec
+        th["sector_benchmark"] = {"symbol": bench, "sector": chosen,
+                                  "share": round(share, 3), "decided_at": ts}
+
     def _publish(self, th: dict, c: Cluster, ts: str, route: str, now: str,
                  m: MonitorConfig, roles: dict[str, str], cov: Coverage) -> None:
         live = (pd.Timestamp(now) - pd.Timestamp(ts)).days <= m.live_window_days
@@ -325,14 +422,27 @@ class Registry:
 
     def _version(self, th: dict, c: Cluster, ts: str, now: str, m: MonitorConfig,
                  roles: dict[str, str], cov: Coverage) -> None:
-        cur = {x["symbol"] for x in th["versions"][-1]["constituents"]}
-        new = set(self._eligible(c, ts, cov))
+        """A membership change is adopted only when the same proposed set is observed
+        at `version_confirm_snapshots` consecutive month-ends. `pending` holds the
+        proposal: {"members", "since", "count"}. It resets when the observed set
+        changes again (a new proposal, count 1), returns to the current basket (no
+        proposal), or the theme is absent for a month (see process)."""
+        cur = sorted(x["symbol"] for x in th["versions"][-1]["constituents"])
+        new = sorted(self._eligible(c, ts, cov))
+        p = th.get("pending")
         if new == cur:
+            if p:
+                self.event(ts, th["id"], "basket_proposal_reset", reason="back to current",
+                           proposed=p.get("members"))
             th["pending"] = None
             return
-        p = th["pending"] or {"since": ts, "count": 0}
-        p["count"] += 1
-        th["pending"] = p
+        if p and p.get("members") == new:
+            p["count"] += 1
+        else:
+            if p:
+                self.event(ts, th["id"], "basket_proposal_reset", reason="different set",
+                           proposed=p.get("members"), observed=new)
+            p = th["pending"] = {"members": new, "since": ts, "count": 1}
         if p["count"] >= m.basket.version_confirm_snapshots:
             live = (pd.Timestamp(now) - pd.Timestamp(ts)).days <= m.live_window_days
             if pd.Timestamp(th["published_at"]) < pd.Timestamp(now):
@@ -345,33 +455,85 @@ class Registry:
                     th["versions"].pop()  # superseded within this refresh, never held
             self._add_version(th, c, ts, now, live, roles, cov, reason="membership changed")
             self.event(ts, th["id"], "basket_version", version=len(th["versions"]),
-                       added=sorted(new - cur), removed=sorted(cur - new))
+                       added=sorted(set(new) - set(cur)), removed=sorted(set(cur) - set(new)),
+                       confirmed_by=p["count"])
 
-    @staticmethod
-    def _status(th: dict, ts: str, snaps: list[str], m: MonitorConfig) -> None:
+    def _observed(self, th: dict, row: dict, cov: Coverage) -> bool:
+        """Whether a month-end could have seen the theme: at least half of the
+        companies that last discussed it had text in that month's window. A month
+        without their documents is missing evidence, not a decline."""
+        last = next((r for r in reversed(th["measures"]) if r.get("present")), None)
+        window = self.data.get("snapshot_meta", {}).get(row["t"], {}).get("window_by_issuer")
+        if last is None or window is None:
+            return True  # no information to say otherwise (older registries)
+        ref = [s for s in last.get("issuers", []) if cov.covered(s, row["t"])] \
+            or last.get("issuers", [])
+        return not ref or sum(window.get(s, 0) > 0 for s in ref) / len(ref) >= 0.5
+
+    def _cohort_shares(self, rows: list[dict], cov: Coverage) -> tuple[list, list] | None:
+        """Theme share of a fixed company cohort across all `rows`: the companies
+        covered and with window text at every one of these month-ends. Adding or
+        removing companies, or a company missing documents in one month, changes
+        neither the numerator nor the denominator. Returns (shares, cohort), or
+        None when the stored windows are not available (older registries)."""
+        meta = self.data.get("snapshot_meta", {})
+        wins = [meta.get(r["t"], {}).get("window_by_issuer") for r in rows]
+        if any(w is None for w in wins) or \
+                any(r.get("present") and "passages_by_issuer" not in r for r in rows):
+            return None
+        cohort = set.intersection(*[{s for s, n in w.items() if n > 0} for w in wins])
+        cohort = sorted(s for s in cohort if all(cov.covered(s, r["t"]) for r in rows))
+        shares = []
+        for r, w in zip(rows, wins, strict=True):
+            den = sum(w[s] for s in cohort)
+            num = sum(r.get("passages_by_issuer", {}).get(s, 0) for s in cohort) \
+                if r.get("present") else 0
+            shares.append(num / den if den else None)
+        return shares, cohort
+
+    def _status(self, th: dict, ts: str, snaps: list[str], m: MonitorConfig,
+                cov: Coverage) -> None:
         s = m.status
         rows = th["measures"]
         absent = 0
         for r in reversed(rows):
             if r["present"]:
                 break
-            absent += 1
+            if self._observed(th, r, cov):
+                absent += 1  # unobserved months neither count nor break the run
+        basis = None
         if th.get("merged_into"):
             status = "merged"
         elif absent >= s.inactive_after_snapshots:
             status = "inactive"
         else:
             k = s.compare_snapshots
-            recent = [r["share"] for r in rows[-k:]]
-            before = [r["share"] for r in rows[-2 * k:-k]]
-            if len(before) < k or not np.mean(before):
-                status = "new" if th["status"] == "new" else "stable"
+            span = rows[-2 * k:]
+            res = self._cohort_shares(span, cov) if len(span) == 2 * k else None
+            if res is not None:
+                shares, cohort = res
+                before, recent = shares[:k], shares[k:]
+                own = set(cohort) & set(next((r for r in reversed(rows) if r["present"]),
+                                             {}).get("issuers", []))
+                basis = {"cohort": len(cohort), "theme_companies_in_cohort": len(own)}
+            else:  # older registry rows: the share of all text, as before
+                recent = [r["share"] for r in rows[-k:]]
+                before = [r["share"] for r in rows[-2 * k:-k]]
+                basis = {"cohort": None}
+            if len(before) < k or any(x is None for x in before + recent) \
+                    or not np.mean(before) or (res is not None and not basis[
+                        "theme_companies_in_cohort"]):
+                # No comparable evidence: keep the current reading.
+                status = th["status"] if th["status"] in ("new", "stable", "strengthening",
+                                                          "cooling") else "stable"
             else:
                 ratio = np.mean(recent) / np.mean(before)
+                basis["ratio"] = round(float(ratio), 3)
                 status = ("strengthening" if ratio >= s.strengthening_ratio else
                           "cooling" if ratio <= s.cooling_ratio else "stable")
         if status != th["status"]:
-            th["status_history"].append({"t": ts, "from": th["status"], "to": status})
+            th["status_history"].append({"t": ts, "from": th["status"], "to": status,
+                                         **({"basis": basis} if basis else {})})
             th["status"] = status
 
     def _prune(self, snaps: list[str], m: MonitorConfig) -> None:

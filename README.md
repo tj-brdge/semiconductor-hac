@@ -70,6 +70,11 @@ credentials are available on the refresh machine, otherwise they are automatic
 keyword titles that say so. Basket returns are split into a simulated history and
 a live (observed) period, and labelled everywhere.
 
+A second profile, the technology pilot v2 (`--profile tech-v2`), adds 51 software,
+cybersecurity and data/cloud companies and runs beside the semiconductor monitor
+with its own registry and site (docs/TECH_PILOT_V2.md); it has been tested on
+synthetic data only.
+
 The dashboard (`site/`: static HTML, CSS and JavaScript, no build step) reads
 `site/data/`, which any static host can serve. Method, feed schema, labels,
 dashboard and scheduling are in docs/MONITOR.md.

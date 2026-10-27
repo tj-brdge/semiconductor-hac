@@ -7,6 +7,7 @@ import time
 
 import httpx
 
+from ..usage import USAGE
 from .cache import SECRET_PARAMS, CachedResponse, RawCache, cache_key
 
 
@@ -46,6 +47,7 @@ class CachedFetcher:
         key = cache_key(self.source, endpoint, key_params)
         hit = self.cache.get(key)
         if hit is not None:
+            USAGE[f"{self.source}_cache_hits"] += 1
             return hit
         if self.offline:
             raise FetchError(f"{self.source} {endpoint} {_redact(params)} not cached (offline)")
@@ -56,6 +58,7 @@ class CachedFetcher:
                 time.sleep(wait)
             self._last = time.monotonic()
             try:
+                USAGE[f"{self.source}_requests"] += 1
                 resp = self._client.get(url, params=params)
             except httpx.HTTPError as e:  # network; keep only the type so URLs/keys never leak
                 last_err = FetchError(type(e).__name__)

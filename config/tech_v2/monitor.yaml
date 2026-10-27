@@ -1,0 +1,25 @@
+# Technology pilot v2 monitor settings: config/monitor.yaml with only the market
+# comparisons changed. Detection, publication, status and basket rules are the
+# semiconductor pilot's, unchanged (no threshold was tuned for this pilot).
+extends: ../monitor.yaml
+
+market:
+  # Every theme: the broad market and the technology sector. Both are
+  # capitalisation-weighted while theme baskets are equal-weighted, so part of any
+  # difference is a size effect (docs/TECH_PILOT_V2.md, "Benchmarks").
+  benchmarks: [SPY, XLK]
+  # Plus one sector reference when at least half of the theme's first basket is in
+  # that sector, fixed at that decision. Chosen before any pilot returns were seen.
+  sector_benchmarks:
+    Semiconductors: SOXX
+    Semiconductor equipment: SOXX
+    Application software: IGV
+    Data and cloud software: IGV
+    Cybersecurity: CIBR
+  sector_benchmark_min_share: 0.5
+  benchmark_labels:
+    SPY: "US large companies (S&P 500)"
+    XLK: "US technology sector (S&P 500 technology)"
+    SOXX: "Semiconductors (iShares)"
+    IGV: "Software (iShares expanded tech-software)"
+    CIBR: "Cybersecurity (First Trust NASDAQ cybersecurity)"
