@@ -60,6 +60,15 @@ def _title(docs: dict, th: dict) -> str:
     return d["title"] if d else th["name"]
 
 
+def _universe(x: dict, e: dict) -> str:
+    """What the run used: the released universe (a fixture run's synthetic one),
+    falling back to the configured universe before any release exists."""
+    u = (x["index"] or {}).get("universe")
+    if u:
+        return f"{u['name']} (version {u['version']}, {u['n_companies']} companies)"
+    return f"{e['universe_name']} (version {e['universe_version']}, {e['n_issuers']} companies)"
+
+
 def _pct(x) -> str:
     return "—" if x is None else f"{x * 100:+.1f}%"
 
@@ -85,8 +94,7 @@ def compare_profiles(pa: Profile, state_a: Path, site_a: Path,
     same = ra.get("last_snapshot") == rb.get("last_snapshot")
     L += ["## Runs compared", "",
           "| | " + pa.name + " | " + pb.name + " |", "|---|---|---|",
-          "| Universe | " + " | ".join(f"{e['universe_name']} (version {e['universe_version']}) "
-                                       f"({e['n_issuers']} companies)" for e in (ea, eb)) + " |",
+          "| Universe run | " + " | ".join(_universe(x, e) for x, e in ((A, ea), (B, eb))) + " |",
           f"| Themes processed through | {ra.get('last_snapshot')} | {rb.get('last_snapshot')} |",
           f"| Published themes | {len(ta)} | {len(tb)} |",
           f"| Forked from | — | {fork.get('from_profile', '—')} at {since or '—'} |", ""]
