@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict
@@ -65,6 +66,14 @@ class Freshness(_S):
     documents_stale_days: int = 21
 
 
+class Labels(_S):
+    # auto: Claude when the `anthropic` package and credentials are available on the
+    # machine running the refresh, otherwise automatic keyword labels.
+    writer: Literal["auto", "claude", "keywords"] = "auto"
+    model: str = "claude-opus-5-5"
+    max_per_refresh: int = 40
+
+
 class MonitorConfig(_S):
     bootstrap_snapshots: int = 24
     live_window_days: int = 35
@@ -77,6 +86,7 @@ class MonitorConfig(_S):
     coverage: CoverageRules = CoverageRules()
     evidence: Evidence = Evidence()
     freshness: Freshness = Freshness()
+    labels: Labels = Labels()
 
 
 def load_monitor(path: Path | None = None) -> MonitorConfig:

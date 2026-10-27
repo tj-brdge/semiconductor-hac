@@ -36,6 +36,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import os
+import shutil
 from pathlib import Path
 
 import numpy as np
@@ -84,13 +85,17 @@ class Registry:
                              "recorded_at": _now()})
 
     def save(self) -> None:
+        """Write everything to temporary files first; registry.json, the record of
+        what has been processed, is replaced last, so an interrupted save leaves the
+        previous registry in place."""
         reg = self.root / "registry.json"
-        if reg.exists():
-            os.replace(reg, self.root / "registry.prev.json")
-        _atomic_write(reg, json.dumps(self.data, indent=1, sort_keys=True, default=str))
         tmp = self.root / "vectors.tmp.npz"
         np.savez(tmp, **self.vectors)
+        text = json.dumps(self.data, indent=1, sort_keys=True, default=str)
+        if reg.exists():
+            shutil.copyfile(reg, self.root / "registry.prev.json")
         os.replace(tmp, self.root / "vectors.npz")
+        _atomic_write(reg, text)
         if self._events:
             with open(self.root / "events.jsonl", "a") as f:
                 for e in self._events:
@@ -330,6 +335,14 @@ class Registry:
         th["pending"] = p
         if p["count"] >= m.basket.version_confirm_snapshots:
             live = (pd.Timestamp(now) - pd.Timestamp(ts)).days <= m.live_window_days
+            if pd.Timestamp(th["published_at"]) < pd.Timestamp(now):
+                # The theme was already public before this refresh: a change found
+                # while catching up on old month-ends takes effect when it is decided
+                # (bought after `now`), never backdated over days after publication.
+                live = True
+                last = th["versions"][-1]
+                if last["created_at"] == now and last["entry_after"] == now:
+                    th["versions"].pop()  # superseded within this refresh, never held
             self._add_version(th, c, ts, now, live, roles, cov, reason="membership changed")
             self.event(ts, th["id"], "basket_version", version=len(th["versions"]),
                        added=sorted(new - cur), removed=sorted(cur - new))

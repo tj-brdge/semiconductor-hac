@@ -46,3 +46,8 @@ evidence:
 freshness:
   price_stale_sessions: 3      # status turns stale when the newest close is older
   documents_stale_days: 21
+
+labels:                        # readable titles and summaries (docs/MONITOR.md, "Theme labels")
+  writer: auto                 # auto | claude | keywords; auto uses Claude only when credentials exist
+  model: claude-opus-5-5
+  max_per_refresh: 40          # labels are written once per theme and keyword name

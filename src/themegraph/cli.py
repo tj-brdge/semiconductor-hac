@@ -210,8 +210,9 @@ def cmd_monitor(a):
             sys.exit("--fixtures needs --as-of (fixture data ends 2021-12-31)")
         st = M.refresh(Path(a.state), Path(a.site), fixtures=a.fixtures, as_of=as_of,
                        ingest_prices=not a.no_ingest, ingest_documents=a.documents)
-        print(json.dumps({k: st[k] for k in ("ok", "errors", "published_release",
-                                             "data_as_of", "stale")}, indent=1,
+        print(json.dumps({k: st.get(k) for k in ("ok", "errors", "skipped", "warnings",
+                                                 "published_release", "data_as_of",
+                                                 "stale")}, indent=1,
                          default=str))
         sys.exit(0 if st["ok"] else 1)
     import functools

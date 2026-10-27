@@ -47,7 +47,8 @@ def test_refresh_produces_inventory_with_both_routes(two_refreshes):
         assert [c["symbol"] for c in perf["constituents"]] == [c["symbol"] for c in used]
         assert doc["evidence"]["latest"] and all("role" in q for q in doc["evidence"]["latest"])
         assert {"SPY", "SOXX"} <= set(perf["series"][-1])
-    assert (r["site"] / "index.html").exists()
+    for asset in ("index.html", "app.js", "chart.js", "styles.css"):
+        assert (r["site"] / asset).exists()
 
 
 def test_second_refresh_extends_history_without_duplicates(two_refreshes):
@@ -63,6 +64,25 @@ def test_second_refresh_extends_history_without_duplicates(two_refreshes):
         assert len(b["measures"]) == n + 6  # six new month-ends, one row each
     snaps = two_refreshes["reg2"]["snapshots"]
     assert len(snaps) == len(set(snaps))
+
+
+def test_public_themes_are_never_backdated_and_keep_a_live_period(two_refreshes):
+    """The second refresh catches up six month-ends. Membership changes it finds for
+    themes published by the first refresh take effect when decided, so the days
+    after publication stay observed (live) and are not rewritten by hindsight."""
+    themes = two_refreshes["reg2"]["themes"]
+    first_go_live = two_refreshes["reg1"]["go_live"]
+    old = [t for t in themes.values() if t["published"] and t["published_at"] == first_go_live]
+    assert old
+    for t in old:
+        for v in t["versions"]:
+            if v["created_at"] > t["published_at"]:
+                assert v["entry_after"] == v["created_at"] and v["basis"] == "live"
+    idx = json.loads((_release(two_refreshes["site"]) / "index.json").read_text())
+    for r in idx["themes"]:
+        if r["id"] in {t["id"] for t in old} and r["market"]["status"] == "ok":
+            live = r["market"]["returns"]["live"]
+            assert live and live["basis"] == "live" and live["start"] == first_go_live[:10]
 
 
 def test_rerun_with_same_data_changes_nothing(two_refreshes, tmp_path):
@@ -106,6 +126,43 @@ def test_failed_refresh_keeps_last_release_and_reports_it(two_refreshes, monkeyp
     assert status["errors"]["valuation"] and status["published_release"]
 
 
+def test_theme_failure_after_partial_processing_keeps_release_and_registry(
+        two_refreshes, tmp_path, monkeypatch):
+    import shutil
+
+    from themegraph.monitor.registry import Registry
+    state, site = tmp_path / "state", tmp_path / "site"
+    shutil.copytree(two_refreshes["state"], state)
+    shutil.copytree(two_refreshes["site"], site)
+    pointer = (site / "data" / "latest.json").read_text()
+    registry = (state / "registry.json").read_text()
+    real, calls = Registry.process, []
+
+    def flaky(self, t, *a, **k):  # the first new month-end succeeds, the second fails
+        calls.append(t)
+        if len(calls) == 2:
+            raise RuntimeError("topic layer crashed")
+        return real(self, t, *a, **k)
+    monkeypatch.setattr(Registry, "process", flaky)
+    st = M.refresh(state, site, fixtures=True, as_of=pd.Timestamp("2022-03-31").date(),
+                   log=lambda *a: None)
+    assert len(calls) == 2  # one month-end was applied in memory before the failure
+    assert not st["ok"] and "topic layer crashed" in st["errors"]["themes"]
+    assert set(st.get("skipped", {})) == {"valuation", "export"}
+    assert (site / "data" / "latest.json").read_text() == pointer
+    assert (state / "registry.json").read_text() == registry  # nothing half-saved
+    status = json.loads((site / "data" / "status.json").read_text())
+    assert status["published_release"] == json.loads(pointer)["release"]
+
+    monkeypatch.setattr(Registry, "process", real)  # the next run catches up normally
+    st = M.refresh(state, site, fixtures=True, as_of=pd.Timestamp("2022-03-31").date(),
+                   log=lambda *a: None)
+    assert st["ok"] and (site / "data" / "latest.json").read_text() != pointer
+    reg = json.loads((state / "registry.json").read_text())
+    assert reg["last_snapshot"].startswith("2022-03-31")
+    assert len(reg["snapshots"]) == len(set(reg["snapshots"]))
+
+
 # -- basket method -------------------------------------------------------------------
 
 CAL = pd.bdate_range("2021-01-04", periods=60, tz="UTC") + pd.Timedelta(hours=22)
@@ -134,7 +191,7 @@ def test_equal_capital_buy_and_hold_not_averaged_prices():
     # A: 10 -> 20 (+100%), B flat: equal capital gives +50%, not (20+50)/(10+50)-1.
     a0 = 10 + (20 - 10) / (len(CAL) - 1)  # entry is the first session after CAL[0]
     expect = 0.5 * (20 / a0 - 1)
-    assert perf["returns"]["since_publication"]["theme"] == pytest.approx(expect)
+    assert perf["returns"]["full_period"]["theme"] == pytest.approx(expect)
     assert perf["series"][0]["theme"] == 100.0
     c = {x["symbol"]: x for x in perf["constituents"]}
     assert c["B"]["contribution"] == pytest.approx(0.0)
@@ -169,5 +226,80 @@ def test_acquired_member_converts_on_recorded_terms():
                              _book({"G": gone}, {"G": CAL[30].date()}, succ), ["SPY"], None)
     c = perf["constituents"][0]
     assert c["holding"] == "converted" and c["price_status"] == "fresh"
-    assert perf["returns"]["since_publication"]["theme"] == pytest.approx(
+    assert perf["returns"]["full_period"]["theme"] == pytest.approx(
         50.0 / gone[1] - 1)
+
+
+def test_cash_only_acquisition_is_valued_at_its_terms_not_reset_to_cost():
+    gone = np.linspace(40, 44, len(CAL))
+    gone[30:] = np.nan
+    succ = {"G": Successor(symbol="ACQ", shares=0.0, cash=60.0, source="t")}
+    perf = theme_performance(_theme((str(CAL[0]), ["G"])),
+                             _book({"G": gone}, {"G": CAL[30].date()}, succ), ["SPY"], None)
+    c = perf["constituents"][0]
+    assert c["holding"] == "converted_cash" and c["price_status"] == "fresh"
+    assert perf["returns"]["full_period"]["theme"] == pytest.approx(60.0 / gone[1] - 1)
+    assert perf["coverage_latest"] == 1.0
+
+
+def test_missing_successor_quotes_keep_the_last_value_and_count_as_stale():
+    gone = np.linspace(40, 44, len(CAL))
+    gone[30:] = np.nan
+    succ_px = np.full(len(CAL), np.nan)
+    succ_px[40:] = 100.0   # the successor is only quoted from session 40
+    succ = {"G": Successor(symbol="S", shares=0.5, cash=0.0, source="t")}
+    perf = theme_performance(_theme((str(CAL[0]), ["G"])),
+                             _book({"G": gone, "S": succ_px}, {"G": CAL[30].date()}, succ),
+                             ["SPY"], None)
+    s = pd.DataFrame(perf["series"]).set_index("date")
+    last_before = 100.0 * gone[29] / gone[1]
+    # Entry is CAL[1], so series row i is CAL[i + 1]: rows 29..38 are CAL[30..39],
+    # the sessions after the delisting and before the successor's first quote.
+    gap = s.iloc[29:39]
+    assert np.allclose(gap["theme"], last_before, atol=1e-3)       # not reset to 100
+    assert (gap["coverage"] == 0).all()                            # and not fresh
+    assert s["theme"].iloc[-1] == pytest.approx(100.0 * 50.0 / gone[1])
+
+
+def test_stale_successor_quote_is_not_fresh_coverage():
+    gone = np.linspace(40, 44, len(CAL))
+    gone[30:] = np.nan
+    succ_px = np.linspace(80, 90, len(CAL))
+    succ_px[-10:] = np.nan  # successor stopped quoting 10 sessions ago
+    succ = {"G": Successor(symbol="S", shares=0.5, cash=0.0, source="t")}
+    perf = theme_performance(_theme((str(CAL[0]), ["G"])),
+                             _book({"G": gone, "S": succ_px}, {"G": CAL[30].date()}, succ),
+                             ["SPY"], None)
+    c = perf["constituents"][0]
+    assert c["price_status"] == "stale" and c["sessions_since_close"] == 10
+    assert perf["coverage_latest"] == 0.0
+
+
+def test_reconstructed_and_live_returns_are_separated_by_recorded_times():
+    t = _theme((str(CAL[0]), ["A", "B"]))
+    t["published_at"] = str(CAL[39])            # published (wall clock) at session 39
+    t["versions"][0]["created_at"] = str(CAL[39])
+    perf = theme_performance(t, _book(), ["SPY"], None)
+    s = pd.DataFrame(perf["series"]).set_index("date")
+    assert set(s["basis"].iloc[:39]) == {"reconstructed"}  # rows 0..38 = CAL[1..39]
+    assert set(s["basis"].iloc[39:]) == {"live"}
+    R = perf["returns"]
+    assert R["reconstructed"]["end"] == R["live"]["start"] == str(CAL[39].date())
+    assert R["full_period"]["basis"] == "mixed" and R["live"]["basis"] == "live"
+    chained = (1 + R["reconstructed"]["theme"]) * (1 + R["live"]["theme"]) - 1
+    assert chained == pytest.approx(R["full_period"]["theme"])
+    # 20 live sessions: a 21-session month spans both kinds; 59 sessions: no 3m window
+    assert R["1m"]["basis"] == "mixed" and R["3m"] is None
+
+
+def test_a_backdated_version_is_not_counted_as_observed():
+    # v2 decided at session 50 for a month-end at session 29 (a catch-up refresh):
+    # its days before session 50 were not observed live, even after publication.
+    t = _theme((str(CAL[0]), ["B"]), (str(CAL[29]), ["A", "B"]))
+    t["published_at"] = str(CAL[10])
+    t["versions"][0]["created_at"] = str(CAL[10])
+    t["versions"][1]["created_at"] = str(CAL[50])
+    perf = theme_performance(t, _book(), ["SPY"], None)
+    s = pd.DataFrame(perf["series"]).set_index("date")["basis"]
+    assert s.loc[str(CAL[40].date())] == "reconstructed"
+    assert perf["returns"]["live"]["start"] == str(CAL[50].date())

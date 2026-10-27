@@ -73,8 +73,8 @@ is deliberately no combined score.
   - documents;
   - evidence mix.
 - **Market strength:** from the basket index (below):
-  - returns and excess over SPY and SOXX, since publication and over 1, 3, 6 and 12
-    months;
+  - returns and excess over the benchmarks for the simulated period, the live
+    period, the whole history and 1, 3, 6 and 12 months, each labelled by basis;
   - participation: constituents up over 3 months, and constituents beating SPY;
   - trend: the 3-month excess over SPY changed by 5 points or more since the last
     month-end.
@@ -109,26 +109,48 @@ the latest ones. Each passage is labelled with its role:
 
   Each index day reports the share of basket value with a fresh price.
 - **Acquisitions.**
-  - With recorded terms, a holding becomes the acquirer's shares plus cash.
+  - With recorded terms, a holding becomes the acquirer's shares plus cash. Until
+    the acquirer has a quote, the holding keeps its last value and counts as
+    stale; a stale acquirer quote counts as stale too.
+  - With cash-only terms, it becomes that cash (nothing left to price).
   - Without terms, it is held as cash at its last close, and flagged.
 - **Membership changes.** A change must hold for 2 month-ends. It then starts a new
   version at its own entry close, at the previous index level. The index is
   chain-linked, so a company added later counts only from its own entry, never
-  retroactively.
+  retroactively. Once a theme is public, a change found while catching up on old
+  month-ends (after a gap in refreshes) takes effect when it is decided, never
+  backdated over days after publication.
 - **Basis.** Prices are USD and dividend-adjusted, so all returns are total returns,
-  benchmarks included. Each index day is marked `reconstructed` (before the
-  registry's first refresh) or `live` (observed afterwards).
+  benchmarks included. An index day is `live` when it falls after both the theme's
+  recorded publication time (`published_at`) and the decision time of the basket
+  version in force (`created_at`); otherwise it is `reconstructed`, a historical
+  simulation of what the rule would have held. The dashboard calls these "Live"
+  and "Simulated".
+- **Returns** (`performance.returns`), each with `start`, `end`, `basis`
+  (`live`, `reconstructed` or `mixed`) and, per benchmark, the benchmark return and
+  `excess_vs_<B>` (basket minus benchmark, shown as percentage points):
+  - `reconstructed`: the simulated stretch only, to the last simulated close;
+  - `live`: the observed stretch only, from that close (or the entry close, if the
+    theme was bought after publication) to the latest close;
+  - `full_period`: since the first entry;
+  - `1m`, `3m`, `6m`, `12m`: trailing windows, null without enough history.
+
+  There is no "since publication" return that mixes the two without saying so.
 
 ## Data feed (schema version 1)
 
 ```
-site/index.html                        dashboard (static; reads the feed)
+site/index.html, app.js, chart.js, styles.css   dashboard (static; reads the feed)
 site/data/latest.json                  {"schema_version", "release", "path"}
 site/data/status.json                  last attempt per step, errors, data dates, stale flags
 site/data/releases/<id>/index.json     overview: one summary row per theme, plus lists
                                        (emerging, established, market_gaining,
-                                        market_losing, inactive)
-site/data/releases/<id>/themes/<th>.json  name, description, keywords, status, route,
+                                        market_losing, cooling, inactive); each row
+                                       has title, summary, key_constituents, returns
+                                       per period and a weekly sparkline
+site/data/releases/<id>/themes/<th>.json  title, summary, label (source, evidence),
+                                       label_history, name (keyword name),
+                                       description, keywords, status, route,
                                        dates, name/status history, lineage, evidence,
                                        measures, basket_versions, performance
                                        (series of {date, theme, SPY, SOXX, coverage,
@@ -156,14 +178,18 @@ themegraph monitor serve                   # http://127.0.0.1:8780/
 themegraph monitor refresh --fixtures --as-of 2021-06-30   # labelled synthetic data
 ```
 
-**Steps, each recorded in `status.json`.** If a step fails, later steps that need it
-are skipped and the current release stays published. The dashboard shows the
-failure and any stale data.
+**Steps, each recorded in `status.json`.** Every step is required: when one fails,
+the later ones are skipped (listed under `skipped`), nothing is published, and the
+previous release stays current. A theme-processing failure part-way through leaves
+the saved registry as it was (it is written only at the end, previous file first
+copied to `registry.prev.json`). The dashboard shows the failure and any stale
+data. Labels (below) are the one optional step: a failure there is a `warning`
+and the release goes out with earlier or automatic labels.
 1. **Prices:** daily after the US close.
 2. **Documents:** weekly. These are paid API calls (FMP, and embeddings for new
    passages); caches are reused.
 3. **Themes:** only when a month-end has passed that the registry has not
-   processed. Topics come from 180-day windows at month-ends, so recomputing them
+   processed. Then **labels** for themes that need one (see "Theme labels"). Topics come from 180-day windows at month-ends, so recomputing them
    daily would add churn, not information. On the first run the last 24 month-ends
    are replayed; these are reconstructed, and are marked so.
 4. **Valuation and export:** every run.
@@ -173,11 +199,60 @@ A rerun with the same data changes nothing in the registry.
 **Suggested schedule.** Credentials stay in the job's environment (`FMP_API_KEY`,
 `VOYAGE_API_KEY`, the SEC user agent) and are never written to the site.
 ```
-30 22 * * 1-5  cd /path/to/semiconductor-hac && themegraph monitor refresh && <sync site/>
-0  6  * * 6    cd /path/to/semiconductor-hac && themegraph monitor refresh --documents && <sync site/>
+30 22 * * 1-5  cd /path/to/semiconductor-hac && themegraph monitor refresh ; <sync site/>
+0  6  * * 6    cd /path/to/semiconductor-hac && themegraph monitor refresh --documents ; <sync site/>
 ```
+Sync with `;`, not `&&`: a failed refresh exits 1, and the site still has to be
+uploaded so that visitors see the new `status.json` (the failure notice) next to
+the unchanged last good release.
 Here `<sync site/>` is any static upload, for example
 `aws s3 sync site/ s3://bucket/ --delete` or `npx wrangler pages deploy site`.
+
+## Theme labels (`monitor/naming.py`)
+
+Topics are named by keywords ("ethernet · transceivers · enterprise"); readers get a
+title and a one- or two-sentence summary. Each published theme takes its label from
+the first source that applies:
+
+1. **Curated:** `config/theme_labels.yaml`, by theme ID
+   (`th-00004: {title: ..., summary: ..., by: ...}`). For human corrections.
+2. **Claude:** written from the theme's quoted passages, on the machine that runs
+   the refresh (`pip install -e '.[review]'` and `ANTHROPIC_API_KEY` in the job's
+   environment; never in the browser). Claude must cite at least two passages from
+   two companies among those it was shown, keep the title to 8 words, describe
+   discussion rather than stocks, and may answer that the evidence is ambiguous.
+   An answer that fails any check is not used.
+3. **Automatic:** a title from the top three keywords and a factual summary (how
+   many companies, which sectors, which kind of text). It claims no thesis, and the
+   page says it is automatic.
+
+A label is written once per theme and keyword name, so reruns make no calls; a
+theme whose keywords drift (the registry renames it) gets a new one. Every label is
+kept in `label_history` with its source and time. IDs never change. Settings:
+`labels` in `config/monitor.yaml` (`writer: auto | claude | keywords`, model, a
+per-refresh cap). Fixture runs never call Claude.
+
+## Dashboard (`monitor/site/`)
+
+Plain HTML, CSS and two small ES modules; no framework, no build step and no
+third-party scripts, so the `site/` directory can be copied to any static host.
+Views: overview (emerging and established themes as cards, relative-performance
+lists, cooling and inactive themes), all themes (search, filters, sorting), a theme
+page (chart with ranges and keyboard/pointer readout, returns by period and basis,
+companies, evidence, disclosures for method, membership, names and diagnostics), and
+method & data (coverage, freshness, the last refresh's stages, release ID).
+
+- One return period (3, 6 or 12 months) is used across the overview and the list.
+  A theme without that much price history shows how much it has instead.
+- Simulated and live returns are labelled everywhere ("Simulated", "Live",
+  "Simulated + live"); live days are shaded on charts.
+- Discussion measures and stock measures are shown side by side, never combined.
+  "Relative performance improving/weakening" (feed: `market_gaining`/`losing`):
+  the basket's 3-month return minus the first benchmark's changed by at least
+  `market.trend_threshold_pp` points since the previous month-end.
+- Chart colours are a validated categorical palette (basket blue, benchmarks orange
+  and green, dashed); identity is also given by the legend, end labels and the
+  readout, and a table view lists the values.
 
 ## Universe changes (`config/universe.yaml`, `monitor/coverage.py`)
 
