@@ -105,7 +105,7 @@ def price_book(prices: pd.DataFrame, universe, mcfg: MonitorConfig) -> PriceBook
 def refresh(state_dir: Path, site_dir: Path, *, fixtures: bool = False,
             as_of: dt.date | None = None, ingest_prices: bool = True,
             ingest_documents: bool = False, now: str | None = None, log=print,
-            inputs_hook=None) -> dict:
+            inputs_hook=None, namer=None) -> dict:
     as_of = as_of or dt.date.today()
     now = now or (f"{as_of}T23:59:59+00:00" if fixtures else
                   dt.datetime.now(dt.UTC).isoformat(timespec="seconds"))
@@ -140,13 +140,28 @@ def refresh(state_dir: Path, site_dir: Path, *, fixtures: bool = False,
             raise RuntimeError(f"no prices for benchmarks {missing}: add them to the "
                                "universe's benchmarks so they are ingested")
         return f"{len(ctxd['prices'])} prices, {len(ctxd['docs'])} documents"
-    run("load", _load)
+    # Every stage is required: a release is published only when ingestion (when
+    # asked for), loading, theme processing and valuation all succeeded. Otherwise
+    # the previous release stays current and status.json says what failed. A stage
+    # after a failure is skipped, not run on partial results: a theme-processing
+    # failure discards the in-memory registry (it is saved only at the end).
+    skipped: dict[str, str] = {}
+    warnings: dict[str, str] = {}
+
+    def gate(name, fn):
+        bad = [k for k, v in steps.items() if not v["ok"]]
+        if bad:
+            skipped[name] = f"not run: {', '.join(bad)} failed"
+            return False
+        return run(name, fn)
+
+    gate("load", _load)
     reg = Registry(state_dir)
-    themes_ok = "load" in steps and steps["load"]["ok"] and run(
-        "themes", lambda: _themes(reg, ctxd, as_of, now, mcfg, state_dir, log))
+    themes_ok = gate("themes", lambda: _themes(reg, ctxd, as_of, now, mcfg, state_dir, log))
+    if themes_ok:  # optional: a failure keeps earlier or automatic labels
+        warnings.update(_labels(reg, ctxd, mcfg, now, namer, log))
     book_box: dict = {}
-    valued = steps.get("load", {}).get("ok") and run(
-        "valuation", lambda: _value(reg, ctxd, mcfg, book_box))
+    valued = gate("valuation", lambda: _value(reg, ctxd, mcfg, book_box))
     release = None
     if valued:
         def _export():
@@ -161,7 +176,12 @@ def refresh(state_dir: Path, site_dir: Path, *, fixtures: bool = False,
             release = publish(site_dir, book_box["docs"], meta, mcfg)
             return release
         run("export", _export)
+    else:
+        skipped.setdefault("export", "not run: an earlier stage failed")
     status = _status(site_dir, steps, now, ctxd, reg, book_box, mcfg, themes_ok)
+    status["skipped"] = skipped
+    status["warnings"] = warnings
+    status["ok"] = status["ok"] and not skipped
     write_status(site_dir, status)
     return status
 
@@ -192,6 +212,31 @@ def _themes(reg: Registry, d: dict, as_of: dt.date, now: str, mcfg: MonitorConfi
             t, reader.clusters(t), mcfg, cov, roles, now, reader.window_by_issuer(t))})
     reg.save()
     return counts
+
+
+def _labels(reg: Registry, d: dict, mcfg: MonitorConfig, now: str, namer, log) -> dict:
+    """Write readable labels (monitor/naming.py). Never blocks a release: problems
+    are returned as warnings and shown in status.json."""
+    from . import naming
+    out = {}
+    if namer is None and not d.get("fixture") and mcfg.labels.writer != "keywords":
+        try:
+            namer = naming.ClaudeNamer(mcfg.labels.model)
+        except Exception as e:  # noqa: BLE001 - no SDK or no credentials
+            if mcfg.labels.writer == "claude":
+                out["labels"] = f"Claude labels unavailable ({type(e).__name__}: {e})"
+    try:
+        sectors = coverage(d, mcfg).sector
+        c = naming.apply_labels(reg.published(), sectors, namer, now=now,
+                                limit=mcfg.labels.max_per_refresh)
+        reg.save()
+    except Exception as e:  # noqa: BLE001
+        return {"labels": f"{type(e).__name__}: {e}"}
+    if c["errors"]:
+        out["labels"] = f"{len(c['errors'])} labels failed: " + "; ".join(
+            f"{k}: {v}" for k, v in list(c["errors"].items())[:3])
+    log(f"labels: {({k: v for k, v in c.items() if k != 'errors'})}")
+    return out
 
 
 def coverage(d: dict, mcfg: MonitorConfig) -> Coverage:

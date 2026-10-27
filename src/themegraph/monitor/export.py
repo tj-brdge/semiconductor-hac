@@ -22,11 +22,12 @@ from pathlib import Path
 
 import pandas as pd
 
+from . import naming
 from .baskets import market_history
 
 SCHEMA_VERSION = 1
 KEEP_RELEASES = 5
-PAGE = Path(__file__).with_name("site") / "index.html"
+SITE = Path(__file__).with_name("site")
 
 
 def _dump(path: Path, obj) -> None:
@@ -65,8 +66,12 @@ def theme_document(th: dict, perf: dict, snapshots: list[str], mcfg) -> dict:
             pending = {"version": nxt["version"], "entry_after": nxt["entry_after"],
                        "constituents": [c["symbol"] for c in nxt["constituents"]],
                        "note": "decided; bought at the first close after entry_after"}
+    label = th.get("label") or naming.keyword_label(th)
     return {
         "schema_version": SCHEMA_VERSION, "id": th["id"], "name": th["name"],
+        "title": label["title"], "summary": label["summary"],
+        "label": {k: v for k, v in label.items() if k not in ("title", "summary")},
+        "label_history": th.get("label_history", []),
         "description": describe(th), "keywords": th["keywords"],
         "status": th["status"], "route": th["route"], "basis": th["basis"],
         "first_seen": th["first_seen"], "published_snapshot": th["published_snapshot"],
@@ -95,12 +100,29 @@ def describe(th: dict) -> str:
             f"{roles.get('analyst_question', 0):.0%} analyst questions.")
 
 
-def summary_row(doc: dict) -> dict:
+PERIODS = ("1m", "3m", "6m", "12m", "full_period", "live", "reconstructed")
+
+
+def spark(perf: dict, bench: str, sessions: int = 252, step: int = 5) -> dict | None:
+    """Weekly points over the last year for the overview's small chart."""
+    if perf.get("status") != "ok":
+        return None
+    rows = perf["series"][-sessions - 1:]
+    pts = rows[::-1][::step][::-1]  # keep the latest point
+    return {"bench": bench, "dates": [r["date"] for r in pts],
+            "theme": [r["theme"] for r in pts], "benchmark": [r.get(bench) for r in pts],
+            "live_from": next((r["date"] for r in rows if r["basis"] == "live"), None)}
+
+
+def summary_row(doc: dict, bench: str) -> dict:
     m = next((r for r in reversed(doc["measures"]) if r.get("present")), {})
     perf = doc["performance"]
     r = perf.get("returns", {})
+    cons = sorted(perf.get("constituents", []), key=lambda c: -(c.get("exposure") or 0))
     return {
-        "id": doc["id"], "name": doc["name"], "status": doc["status"],
+        "id": doc["id"], "name": doc["name"], "title": doc["title"],
+        "summary": doc["summary"], "label_source": doc["label"].get("source"),
+        "label_status": doc["label"].get("status"), "status": doc["status"],
         "route": doc["route"], "basis": doc["basis"],
         "published_snapshot": doc["published_snapshot"], "last_seen": doc["last_seen"],
         "emergence": {"growth_3m": m.get("growth_3m"), "share": m.get("share"),
@@ -111,16 +133,21 @@ def summary_row(doc: dict) -> dict:
                                               for x in doc["measures"][-3:])},
         "sectors": m.get("sectors", []),
         "recently_added": m.get("recently_added", []),
+        "key_constituents": [{"symbol": c["symbol"], "sector": c.get("sector")}
+                             for c in cons[:5]],
         "strength": {"coherence": m.get("coherence"), "n_issuers": m.get("n_issuers"),
                      "n_segments": m.get("n_segments"),
                      "persistence_12": doc["measures"][-1].get("persistence_12")
                      if doc["measures"] else None,
                      "evidence_roles": m.get("evidence_roles")},
-        "market": {"status": perf.get("status"),
-                   "since_publication": r.get("since_publication"),
-                   "3m": r.get("3m"), "trend": doc["market_trend"],
+        "market": {"status": perf.get("status"), "note": perf.get("note"),
+                   "returns": {k: r.get(k) for k in PERIODS},
+                   "sessions": len(perf.get("series", [])),
+                   "first_entry": perf.get("first_entry"),
+                   "live_from": perf.get("live_from"), "trend": doc["market_trend"],
                    "coverage_latest": perf.get("coverage_latest"),
-                   "n_constituents": len(perf.get("constituents", []))},
+                   "n_constituents": len(perf.get("constituents", [])),
+                   "spark": spark(perf, bench)},
     }
 
 
@@ -144,6 +171,7 @@ def overview_lists(rows: list[dict], mcfg) -> dict:
             "market_losing": [r["id"] for r in sorted(
                 (r for r in trend if r["market"]["trend"]["trend"] == "losing"),
                 key=lambda r: r["market"]["trend"]["change_pp_1m"])],
+            "cooling": [r["id"] for r in rows if r["status"] == "cooling"],
             "inactive": [r["id"] for r in rows if r["status"] in ("inactive", "merged")]}
 
 
@@ -153,7 +181,7 @@ def publish(site: Path, docs: list[dict], meta: dict, mcfg) -> str:
     rel_id = dt.datetime.now(dt.UTC).strftime("%Y%m%dT%H%M%S%fZ")
     rel = site / "data" / "releases" / rel_id
     staging = site / "data" / "releases" / f".staging-{rel_id}"
-    rows = [summary_row(d) for d in docs]
+    rows = [summary_row(d, mcfg.market.benchmarks[0]) for d in docs]
     index = {"schema_version": SCHEMA_VERSION, "release": rel_id, **meta,
              "themes": rows, "lists": overview_lists(rows, mcfg)}
     _dump(staging / "index.json", index)
@@ -169,7 +197,9 @@ def publish(site: Path, docs: list[dict], meta: dict, mcfg) -> str:
                                "path": f"releases/{rel_id}/"}))
     os.replace(tmp, pointer)
     site.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(PAGE, site / "index.html")
+    for p in SITE.iterdir():  # the static page and its assets
+        if p.is_file():
+            shutil.copyfile(p, site / p.name)
     old = sorted(p for p in (site / "data" / "releases").iterdir()
                  if p.is_dir() and not p.name.startswith("."))[:-KEEP_RELEASES]
     for p in old:

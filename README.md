@@ -65,8 +65,14 @@ benchmarks (SPY and SOXX for now). v1 covers the semiconductor pilot universe in
 `config/universe.yaml`: "strongest" means strongest among those companies, and
 adding companies is versioned so it never reads as theme growth or rewrites
 basket history (docs/MONITOR.md, "Universe changes").
-The dashboard reads `site/data/`, which any static host can serve. Method, feed
-schema and scheduling are in docs/MONITOR.md.
+Theme titles and summaries are written by Claude from cited evidence when
+credentials are available on the refresh machine, otherwise they are automatic
+keyword titles that say so. Basket returns are split into a simulated history and
+a live (observed) period, and labelled everywhere.
+
+The dashboard (`site/`: static HTML, CSS and JavaScript, no build step) reads
+`site/data/`, which any static host can serve. Method, feed schema, labels,
+dashboard and scheduling are in docs/MONITOR.md.
 
 ## Real data
 

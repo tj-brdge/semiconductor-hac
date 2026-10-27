@@ -19,14 +19,20 @@ Method, per basket version:
   as stale sessions; the index keeps the last close and the day's coverage says
   how much of the basket's value had a fresh price.
 - An acquired constituent with recorded terms becomes the successor's shares plus
-  cash; without terms it is held at its last close as cash (flagged).
+  cash; with cash-only terms it becomes that cash; without terms it is held at its
+  last close as cash (flagged). While the successor has no quote, the holding keeps
+  its last value and is counted as stale, never reset to its cost.
 - A new version starts at its own entry close with the previous index level, so
   the theme index is chain-linked: later-discovered companies only count from
   the day they were added. Nothing is backfilled.
 
 Benchmarks are bought and held from the first version's entry on the same basis.
-Each index day carries `basis`: reconstructed (before the registry went live) or
-live (observed after publication).
+Each index day carries `basis`: live when it is after both the theme's recorded
+publication time and the creation time of the basket version in force (prices
+observed after the theme was public), otherwise reconstructed (a historical
+simulation of what the rule would have held). Returns are reported separately for
+the reconstructed and the live parts; trailing windows say which kind of days they
+cover.
 """
 
 from __future__ import annotations
@@ -102,16 +108,29 @@ def _segment(book: PriceBook, members: list[str], entry: pd.Timestamp,
         if d is not None and d <= cal[-1]:
             succ = book.successors.get(s)
             after = cal >= d
-            if succ is not None:
+            if succ is not None and succ.shares:
+                # Successor shares plus any cash. Until the successor has a quote the
+                # holding keeps its last value (flagged stale), never its cost.
                 sp = book.carry[succ.symbol].reindex(cal) if succ.symbol in book.carry \
                     else pd.Series(np.nan, index=cal)
-                v[after] = units * (succ.shares * sp[after] + succ.cash)
-                fr[after] = sp[after].notna()
+                conv = units * (succ.shares * sp + succ.cash)
+                v[after] = conv[after]
+                v = v.where(v.notna() | (cal < d0), v.ffill())
+                sm = book.missing_sessions(succ.symbol).reindex(cal) \
+                    if succ.symbol in book.closes else pd.Series(10**6, index=cal)
+                fr[after] = (sm[after] <= 0) & sp[after].notna()
                 st = "converted"
+            elif succ is not None:
+                v[after] = units * succ.cash  # cash-only terms: nothing left to price
+                fr[after] = True
+                st = "converted_cash"
             else:
                 fr[after] = True  # held as cash at the last close
                 st = "delisted_cash"
-        value[s] = v.fillna(1.0 / n)
+        # Before entry the stake is cash at cost; after entry a gap carries the last
+        # value (v is built from carried closes, so only pre-entry rows are empty).
+        v[cal < d0] = 1.0 / n
+        value[s] = v
         fresh[s] = fr & v.notna()
         status[s] = st
         info[s] = {"entry_date": str(d0.date()), "entry_price": p0}
@@ -120,8 +139,9 @@ def _segment(book: PriceBook, members: list[str], entry: pd.Timestamp,
     def missing_now(s):
         if status.get(s) == "converted":
             succ = book.successors[s].symbol
-            return int(book.missing_sessions(succ).iloc[-1]) if succ in book.closes else None
-        if status.get(s) == "delisted_cash":
+            return int(book.missing_sessions(succ).iloc[-1]) if succ in book.closes \
+                else 10**6
+        if status.get(s) in ("delisted_cash", "converted_cash"):
             return 0  # held as cash: nothing left to price
         return int(book.missing_sessions(s).iloc[-1]) if s in book.closes else None
     return {"cal": cal, "value": value, "total": total, "coverage": cov,
@@ -143,7 +163,7 @@ def theme_performance(theme: dict, book: PriceBook, benchmarks: list[str],
     if not versions or entries[0] is None:
         return {"status": "awaiting_entry",
                 "note": "no benchmark session after publication yet"}
-    levels, cov, segs = [], [], []
+    levels, cov, segs, live_from = [], [], [], []
     level = 100.0
     for i, v in enumerate(versions):
         e = entries[i]
@@ -160,6 +180,7 @@ def theme_performance(theme: dict, book: PriceBook, benchmarks: list[str],
             c = seg["coverage"]
         levels.append(idx)
         cov.append(c)
+        live_from.append(pd.Series(_live_from(theme, v, go_live), index=idx.index))
         segs.append((v, e, seg))
     series = pd.concat(levels)
     coverage = pd.concat(cov)
@@ -169,33 +190,55 @@ def theme_performance(theme: dict, book: PriceBook, benchmarks: list[str],
         if b in book.carry:
             px = book.carry[b].loc[series.index]
             bench[b] = 100.0 * px / book.carry[b].loc[first]
-    live_from = pd.Timestamp(go_live) if go_live else None
-    if live_from is not None and live_from.tzinfo is None:
-        live_from = live_from.tz_localize("UTC")
+    lf = pd.concat(live_from)
+    basis = pd.Series(["live" if pd.notna(x) and d > x else "reconstructed"
+                       for d, x in lf.items()], index=series.index)
     rows = []
     for d, val in series.items():
         r = {"date": str(d.date()), "theme": round(float(val), 4),
              "coverage": round(float(coverage.get(d, np.nan)), 4)
              if pd.notna(coverage.get(d, np.nan)) else None,
-             "basis": "live" if live_from is not None and d > live_from else "reconstructed"}
+             "basis": basis[d]}
         for b, s in bench.items():
             r[b] = round(float(s.loc[d]), 4) if pd.notna(s.loc[d]) else None
         rows.append(r)
 
-    def ret(s: pd.Series, k: int | None = None):
-        s = s.dropna()
-        if k is None:
-            return float(s.iloc[-1] / s.iloc[0] - 1) if len(s) > 1 else None
-        return float(s.iloc[-1] / s.iloc[-1 - k] - 1) if len(s) > k else None
+    def window(start: int) -> dict | None:
+        """Return from the close at position `start` to the latest close, for the
+        theme and each benchmark, labelled with what kind of days it covers."""
+        if start < 0 or start >= len(series) - 1:
+            return None
+        out = {"theme": float(series.iloc[-1] / series.iloc[start] - 1),
+               "start": str(series.index[start].date()),
+               "end": str(series.index[-1].date())}
+        kinds = set(basis.iloc[start + 1:])
+        out["basis"] = kinds.pop() if len(kinds) == 1 else "mixed"
+        for b, s in bench.items():
+            a, z = s.iloc[start], s.iloc[-1]
+            out[b] = float(z / a - 1) if pd.notna(a) and pd.notna(z) else None
+            out[f"excess_vs_{b}"] = out["theme"] - out[b] if out[b] is not None else None
+        return out
 
-    returns = {"since_publication": {"theme": ret(series),
-                                     **{b: ret(s) for b, s in bench.items()}}}
+    rec = np.flatnonzero((basis == "reconstructed").to_numpy())
+    last_rec = int(rec[-1]) if len(rec) else -1
+    # full_period: since the first basket entry (reconstructed and/or live days).
+    # live: the observed stretch only, from the last reconstructed close (or the
+    #   entry close, if the theme was bought after publication) to the latest close.
+    # reconstructed: the simulated stretch only, to the last reconstructed close.
+    returns = {"full_period": window(0),
+               "live": window(max(last_rec, 0)) if last_rec < len(series) - 1 else None,
+               "reconstructed": None}
+    if last_rec > 0:
+        r = {"theme": float(series.iloc[last_rec] / series.iloc[0] - 1),
+             "start": str(series.index[0].date()),
+             "end": str(series.index[last_rec].date()), "basis": "reconstructed"}
+        for b, s in bench.items():
+            a, z = s.iloc[0], s.iloc[last_rec]
+            r[b] = float(z / a - 1) if pd.notna(a) and pd.notna(z) else None
+            r[f"excess_vs_{b}"] = r["theme"] - r[b] if r[b] is not None else None
+        returns["reconstructed"] = r
     for name, k in TRAILING.items():
-        returns[name] = {"theme": ret(series, k), **{b: ret(s, k) for b, s in bench.items()}}
-    for v in returns.values():
-        for b in bench:
-            v[f"excess_vs_{b}"] = (v["theme"] - v[b]) if v["theme"] is not None \
-                and v.get(b) is not None else None
+        returns[name] = window(len(series) - 1 - k) if len(series) > k else None
     v, e, seg = segs[-1]
     val = seg["value"].iloc[-1]
     tot = float(seg["total"].iloc[-1])
@@ -220,10 +263,24 @@ def theme_performance(theme: dict, book: PriceBook, benchmarks: list[str],
     return {"status": "ok", "method": "equal_weight_buy_and_hold_chain_linked",
             "price_basis": "USD, dividend-adjusted (total return)",
             "first_entry": str(first.date()), "current_version": v["version"],
+            "live_from": str(lf.dropna().min()) if lf.notna().any() else None,
+            "live_days": len(series) - 1 - max(last_rec, 0),
             "current_entry": str(e.date()), "series": rows, "returns": returns,
             "constituents": constituents, "participation_3m": part,
             "coverage_latest": round(float(latest), 4) if latest is not None else None,
             "last_price_date": str(series.index[-1].date())}
+
+
+def _live_from(theme: dict, version: dict, go_live: str | None) -> pd.Timestamp | None:
+    """When this version's days start counting as observed: after the theme was
+    published (its recorded wall-clock time) and after the version was decided.
+    Before that, days are a reconstruction from history."""
+    ts = [pd.Timestamp(x) for x in (theme.get("published_at") or go_live,
+                                    version.get("created_at")) if x]
+    if not ts:
+        return pd.NaT
+    t = max(x.tz_localize("UTC") if x.tzinfo is None else x for x in ts)
+    return t
 
 
 def _participation(book: PriceBook, members: list[str], benchmarks: list[str]) -> dict:

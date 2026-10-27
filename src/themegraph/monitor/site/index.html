@@ -3,223 +3,25 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark">
 <title>Theme Monitor</title>
-<style>
-/* Layout: one column of dense tables; a theme opens to a single report page. */
-:root {
-  --bg: #f5f6f3; --panel: #ffffff; --sunk: #eceee8; --ink: #17202a; --muted: #5b6672;
-  --line: #d8dcd3; --accent: #1f5c8f; --theme: #1f5c8f; --spy: #8a6d1d; --soxx: #6b4f9a;
-  --ok: #2b7a4b; --bad: #b0402e; --warn: #9a640f; --live: #e3eef8;
-  --ok-bg: #e2f1e7; --bad-bg: #f6e2de; --warn-bg: #f5ead5; --q-bg: #efe9f7; --q: #5c3f8f;
-  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-}
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
-  --bg: #11161b; --panel: #182129; --sunk: #0e1317; --ink: #e4e9ed; --muted: #97a3ae;
-  --line: #2a3541; --accent: #84b4e2; --theme: #84b4e2; --spy: #d8b55c; --soxx: #b79ae6;
-  --ok: #74c597; --bad: #ef917f; --warn: #e3b55e; --live: #18293a;
-  --ok-bg: #163126; --bad-bg: #3b1f1a; --warn-bg: #362a14; --q-bg: #2a2140; --q: #c7b0ef;
-  color-scheme: dark; } }
-* { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 var(--sans); }
-.wrap { max-width: 1200px; margin: 0 auto; padding: 20px max(16px, env(safe-area-inset-left)) 48px; display: grid; gap: 18px; }
-a { color: var(--accent); }
-h1 { font-size: 1.5rem; margin: 0; }
-h2 { font-size: 1.1rem; margin: 0 0 6px; }
-h3 { font-size: .95rem; margin: 0 0 6px; }
-.muted { color: var(--muted); }
-.mono { font-family: var(--mono); font-size: .88em; }
-.label { font-size: .72rem; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
-.top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: end; gap: 12px; }
-.banner { padding: 10px 14px; border-radius: 6px; background: var(--sunk); }
-.banner.warn { background: var(--warn-bg); } .banner.bad { background: var(--bad-bg); }
-.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; min-width: 0; }
-.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px; }
-.scroll { overflow-x: auto; }
-table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
-th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
-th { font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 600; white-space: nowrap; }
-td.num, th.num { text-align: right; white-space: nowrap; }
-tr.row:hover { background: var(--sunk); cursor: pointer; }
-.chip { display: inline-block; font-size: .72rem; font-weight: 600; padding: 1px 8px; border-radius: 999px; background: var(--sunk); color: var(--muted); white-space: nowrap; }
-.s-strengthening, .p-fresh, .t-gaining { background: var(--ok-bg); color: var(--ok); }
-.s-cooling, .p-lagging, .t-losing { background: var(--warn-bg); color: var(--warn); }
-.s-inactive, .s-merged, .p-stale, .p-not_bought { background: var(--bad-bg); color: var(--bad); }
-.pos { color: var(--ok); } .neg { color: var(--bad); }
-.quote { border-left: 3px solid var(--line); padding: 6px 10px; background: var(--bg); margin: 0 0 8px; border-radius: 0 6px 6px 0; }
-.quote.analyst_question { border-left-color: var(--q); }
-.role { font-size: .7rem; font-weight: 600; padding: 1px 6px; border-radius: 4px; background: var(--sunk); }
-.role.analyst_question { background: var(--q-bg); color: var(--q); }
-.legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: .85rem; }
-.legend i { display: inline-block; width: 14px; height: 3px; vertical-align: middle; margin-right: 5px; }
-svg text { fill: var(--muted); font-size: 11px; font-family: var(--sans); }
-.kpis { display: flex; flex-wrap: wrap; gap: 22px; }
-.kpis b { display: block; font-size: 1.1rem; }
-@media (max-width: 600px) { .hide-sm { display: none; } }
-</style>
+<meta name="description" content="Investment themes in company earnings calls and filings, with equal-weight basket performance.">
+<link rel="stylesheet" href="styles.css">
+<script type="module" src="app.js"></script>
 </head>
 <body>
-<div class="wrap" id="app"><p class="muted">Loading…</p></div>
-<script>
-(() => {
-  const $ = (s) => document.querySelector(s);
-  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-  const pct = (x, d = 1) => x == null ? "—" : `${(x * 100).toFixed(d)}%`;
-  const sgn = (x, d = 1) => x == null ? "—" : `<span class="${x >= 0 ? "pos" : "neg"}">${x >= 0 ? "+" : ""}${(x * 100).toFixed(d)}%</span>`;
-  const day = (s) => s ? String(s).slice(0, 10) : "—";
-  const ROLE = { management_remarks: "Management remarks", management_answer: "Management answer",
-    analyst_question: "Analyst question", filing: "Filing" };
-  let base = "", index = null, status = null, U = {}, B = ["SPY", "SOXX"];
-
-  async function getJSON(u) { const r = await fetch(u, { cache: "no-store" }); if (!r.ok) throw new Error(u + ": " + r.status); return r.json(); }
-
-  function banners() {
-    const out = [];
-    if (index?.fixture) out.push(`<div class="banner warn"><strong>Fixture data.</strong> Synthetic companies and prices for demonstrating the pipeline. Nothing here is a real theme or a real return.</div>`);
-    if (status) {
-      const err = Object.entries(status.errors || {}).filter(([, v]) => v);
-      if (err.length) out.push(`<div class="banner bad"><strong>The last refresh failed</strong> (${esc(day(status.checked_at))}): ${err.map(([k, v]) => `${esc(k)}: ${esc(v)}`).join("; ")}. Showing the last good release.</div>`);
-      const st = Object.entries(status.stale || {}).filter(([, v]) => v).map(([k]) => k);
-      if (st.length) out.push(`<div class="banner warn"><strong>Stale data:</strong> ${st.join(" and ")} older than the freshness limit. Data as of: prices ${esc(day(status.data_as_of?.prices))}, documents ${esc(day(status.data_as_of?.documents))}.</div>`);
-    }
-    return out.join("");
-  }
-
-  function universe() {
-    const s = Object.entries(U.sectors || {}).map(([k, v]) => `${esc(k)} (${v})`).join(", ");
-    return `<section class="panel"><span class="label">Covered universe · version ${esc(U.version)}</span>
-      <p style="margin:4px 0">${esc(U.description)}</p><p class="muted" style="margin:0">${U.n_companies} companies: ${s}.
-      Rankings such as “strongest” are within these companies only. Themes can span several sectors.
-      ${(U.recently_added || []).length ? `Recently added, not yet counted in growth comparisons: ${esc(U.recently_added.join(", "))}.` : ""}</p></section>`;
-  }
-
-  function header() {
-    const a = index.data_as_of || {};
-    return `<header class="top"><div><h1><a href="#/" style="color:inherit;text-decoration:none">Theme Monitor</a></h1>
-      <div class="muted">${esc(U.name || "Monitored universe")}: themes from the earnings calls and SEC filings of ${U.n_companies ?? "?"} monitored companies, with equal-weight stock baskets.</div></div>
-      <div class="muted" style="text-align:right">Prices ${esc(day(a.prices))} · documents ${esc(day(a.documents))} · themes ${esc(day(a.themes))}<br>
-      Release <span class="mono">${esc(index.release)}</span> · updated ${esc(day(index.generated_at))}</div></header>${banners()}`;
-  }
-
-  function overview() {
-    const rows = Object.fromEntries(index.themes.map((r) => [r.id, r]));
-    const L = index.lists;
-    const table = (ids, empty) => ids.length ? `<div class="scroll"><table>
-      <thead><tr><th>Theme</th><th>Status</th><th class="num">Companies</th><th class="num hide-sm">Discussion 3m</th>
-      <th class="num hide-sm">Coherence</th><th class="num hide-sm">Months of 12</th><th class="num">Since publication</th><th class="num">vs ${esc(B[0])}</th><th class="num">3m vs ${esc(B[0])}</th><th>Market</th></tr></thead>
-      <tbody>${ids.map((id) => { const r = rows[id]; const m = r.market, sp = m.since_publication || {}, t3 = m["3m"] || {};
-        return `<tr class="row" data-id="${esc(id)}"><td><a href="#/theme/${esc(id)}">${esc(r.name)}</a><div class="muted mono">${esc(id)} · ${esc(r.route)} · ${esc(r.basis)}</div><div class="muted">${esc((r.sectors || []).join(" · "))}</div></td>
-        <td><span class="chip s-${esc(r.status)}">${esc(r.status)}</span></td>
-        <td class="num">${r.strength.n_issuers ?? "—"}</td>
-        <td class="num hide-sm">${r.emergence.growth_3m == null ? "—" : "×" + r.emergence.growth_3m.toFixed(2)}</td>
-        <td class="num hide-sm">${r.strength.coherence?.toFixed(2) ?? "—"}</td>
-        <td class="num hide-sm">${r.strength.persistence_12 ?? "—"}</td>
-        <td class="num">${m.status === "ok" ? sgn(sp.theme) : `<span class="muted">${esc(m.status)}</span>`}</td>
-        <td class="num">${sgn(sp["excess_vs_" + B[0]])}</td><td class="num">${sgn(t3["excess_vs_" + B[0]])}</td>
-        <td>${m.trend?.trend ? `<span class="chip t-${m.trend.trend}">${m.trend.trend}</span>` : "—"}${m.coverage_latest != null && m.coverage_latest < 1 ? ` <span class="chip p-stale">${pct(m.coverage_latest, 0)} priced</span>` : ""}</td></tr>`; }).join("")}</tbody></table></div>`
-      : `<p class="muted">${empty}</p>`;
-    $("#app").innerHTML = header() + universe() + `
-      <section class="panel"><h2>Emerging</h2><p class="muted">Flagged by the emergence rule in the last three month-ends, or published through it and still growing. Sorted by 3-month growth in discussion.</p>${table(L.emerging, "Nothing is emerging at the moment.")}</section>
-      <section class="panel"><h2>Strong established themes</h2><p class="muted">Present in at least ${6} of the last 12 month-ends with four or more companies. Sorted by persistence, then breadth.</p>${table(L.established, "No established themes yet.")}</section>
-      <div class="grid2"><section class="panel"><h2>Gaining market strength</h2><p class="muted">3-month return vs ${esc(B[0])} up by 5 points or more over the last month.</p>${table(L.market_gaining, "None this month.")}</section>
-      <section class="panel"><h2>Losing market strength</h2><p class="muted">3-month return vs ${esc(B[0])} down by 5 points or more over the last month.</p>${table(L.market_losing, "None this month.")}</section></div>
-      <section class="panel"><h2>Inactive or merged</h2><p class="muted">Kept with their history; not deleted.</p>${table(L.inactive, "None.")}</section>
-      <p class="muted">${esc(index.evaluation_note)}</p>`;
-    document.querySelectorAll("tr.row").forEach((tr) => tr.addEventListener("click", (e) => { if (e.target.tagName !== "A") location.hash = "#/theme/" + tr.dataset.id; }));
-  }
-
-  function chart(series, keys, colors, live) {
-    const W = 900, H = 260, L = 44, R = 12, T = 10, B = 26;
-    const pts = series.filter((r) => keys.every((k) => r[k] != null));
-    if (pts.length < 2) return `<p class="muted">Not enough prices for a chart yet.</p>`;
-    const xs = pts.map((r) => Date.parse(r.date)), x0 = xs[0], x1 = xs[xs.length - 1];
-    const vals = pts.flatMap((r) => keys.map((k) => r[k]));
-    let lo = Math.min(...vals), hi = Math.max(...vals); const pad = (hi - lo) * 0.06 || 1; lo -= pad; hi += pad;
-    const X = (t) => L + (W - L - R) * (t - x0) / (x1 - x0 || 1), Y = (v) => T + (H - T - B) * (1 - (v - lo) / (hi - lo));
-    const ticks = 5, yt = Array.from({ length: ticks }, (_, i) => lo + (hi - lo) * i / (ticks - 1));
-    const years = []; for (let y = new Date(x0).getUTCFullYear(); y <= new Date(x1).getUTCFullYear(); y++) { const t = Date.UTC(y, 0, 1); if (t >= x0 && t <= x1) years.push(t); }
-    const liveFrom = pts.find((r) => r.basis === "live");
-    const shade = liveFrom ? `<rect x="${X(Date.parse(liveFrom.date))}" y="${T}" width="${W - R - X(Date.parse(liveFrom.date))}" height="${H - T - B}" fill="var(--live)"></rect><text x="${X(Date.parse(liveFrom.date)) + 4}" y="${T + 12}">live</text>` : "";
-    const lines = keys.map((k, i) => `<polyline fill="none" stroke="${colors[i]}" stroke-width="${i ? 1.4 : 2.2}" points="${pts.map((r) => `${X(Date.parse(r.date)).toFixed(1)},${Y(r[k]).toFixed(1)}`).join(" ")}"></polyline>`).join("");
-    return `<div class="scroll"><svg viewBox="0 0 ${W} ${H}" width="100%" style="min-width:520px" role="img" aria-label="Basket index versus benchmarks">
-      ${shade}${yt.map((v) => `<line x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)"></line><text x="${L - 6}" y="${Y(v) + 4}" text-anchor="end">${v.toFixed(0)}</text>`).join("")}
-      ${years.map((t) => `<text x="${X(t)}" y="${H - 8}" text-anchor="middle">${new Date(t).getUTCFullYear()}</text>`).join("")}
-      <line x1="${L}" x2="${W - R}" y1="${Y(100)}" y2="${Y(100)}" stroke="var(--muted)" stroke-dasharray="3 3"></line>${lines}</svg></div>
-      <div class="legend">${keys.map((k, i) => `<span><i style="background:${colors[i]}"></i>${k === "theme" ? "Theme basket" : k}</span>`).join("")}${liveFrom ? `<span class="muted">Shaded: observed after the monitor went live; before it, reconstructed.</span>` : `<span class="muted">All reconstructed (before the monitor went live).</span>`}</div>`;
-  }
-
-  async function themePage(id) {
-    let t;
-    try { t = await getJSON(base + "themes/" + encodeURIComponent(id) + ".json"); }
-    catch (e) { $("#app").innerHTML = header() + `<p class="banner bad">Theme ${esc(id)} is not in the current release.</p>`; return; }
-    const p = t.performance, R = p.returns || {};
-    const m = [...t.measures].reverse().find((r) => r.present) || {};
-    const rr = (k, label) => R[k] ? `<tr><td>${label}</td><td class="num">${sgn(R[k].theme)}</td>${B.map((b) => `<td class="num">${sgn(R[k][b])}</td>`).join("")}${B.map((b) => `<td class="num">${sgn(R[k]["excess_vs_" + b])}</td>`).join("")}</tr>` : "";
-    const versions = t.basket_versions.map((v, i) => { const prev = i ? new Set(t.basket_versions[i - 1].constituents.map((c) => c.symbol)) : new Set();
-      const cur = new Set(v.constituents.map((c) => c.symbol)); const add = [...cur].filter((s) => !prev.has(s)), rem = [...prev].filter((s) => !cur.has(s));
-      return `<tr><td>v${v.version}</td><td>${esc(day(v.snapshot))}</td><td>${esc(v.basis)}</td><td>${esc(v.reason)}</td><td class="mono">${i ? `+${add.join(", ") || "—"} / −${rem.join(", ") || "—"}` : [...cur].join(", ")}</td></tr>`; }).join("");
-    const hist = t.measures.slice(-24);
-    $("#app").innerHTML = header() + `
-      <p><a href="#/">← All themes</a></p>
-      <section class="panel"><div class="top"><div><h2 style="font-size:1.35rem">${esc(t.name)}</h2>
-        <div class="muted mono">${esc(t.id)} · entered by ${esc(t.route)} rule on ${esc(day(t.published_snapshot))} · first seen ${esc(day(t.first_seen))} · ${esc(t.basis)}</div></div>
-        <span class="chip s-${esc(t.status)}">${esc(t.status)}</span></div>
-        <p>${esc(t.description)}</p>
-        <p class="muted">Sectors spanned: ${esc((m.sectors || []).join(", ") || "—")}.${m.recently_added?.length ? ` Recently added to coverage (shown, not counted in growth): ${esc(m.recently_added.join(", "))}.` : ""}</p>
-        ${t.merged_into ? `<p class="banner warn">Merged into <a href="#/theme/${esc(t.merged_into)}">${esc(t.merged_into)}</a>.</p>` : ""}
-        <div class="kpis">
-          <div><span class="label">Emergence</span><b>${m.growth_3m == null ? "—" : "×" + m.growth_3m.toFixed(2)}</b><span class="muted">discussion vs 3 months ago · ${m.n_issuers ?? "—"} companies${m.new_issuers_3m?.length ? `, ${m.new_issuers_3m.length} new` : ""}</span></div>
-          <div><span class="label">Theme strength</span><b>${m.coherence?.toFixed(2) ?? "—"} coherence</b><span class="muted">${m.persistence_12 ?? "—"} of 12 months · ${m.n_segments ?? "—"} segments · ${m.n_documents ?? "—"} documents</span></div>
-          <div><span class="label">Market strength</span><b>${p.status === "ok" ? sgn(R.since_publication?.["excess_vs_" + B[0]]) + " vs " + esc(B[0]) : esc(p.status)}</b><span class="muted">since publication · ${p.participation_3m?.eligible ? `${p.participation_3m.positive}/${p.participation_3m.eligible} up over 3m` : ""}</span></div>
-        </div></section>
-      <section class="panel"><h3>Equal-weight basket vs benchmarks (index = 100 at entry)</h3>
-        ${p.status === "ok" ? chart(p.series, ["theme", ...B], ["var(--theme)", "var(--spy)", "var(--soxx)", "var(--muted)"]) : `<p class="muted">${esc(p.note || p.status)}</p>`}
-        <p class="muted">${esc(p.price_basis || "")}. Equal starting capital per company, bought at the first close after publication (${esc(p.first_entry || "—")}), held without rebalancing; a new basket version starts at its own entry and is chain-linked. Last price ${esc(p.last_price_date || "—")}; ${pct(p.coverage_latest, 0)} of basket value had a fresh price.</p></section>
-      <div class="grid2">
-        <section class="panel"><h3>Returns</h3><div class="scroll"><table><thead><tr><th>Period</th><th class="num">Theme</th>${B.map((b) => `<th class="num">${esc(b)}</th>`).join("")}${B.map((b) => `<th class="num">vs ${esc(b)}</th>`).join("")}</tr></thead>
-          <tbody>${rr("since_publication", "Since publication")}${rr("1m", "1 month")}${rr("3m", "3 months")}${rr("6m", "6 months")}${rr("12m", "12 months")}</tbody></table></div></section>
-        <section class="panel"><h3>Discussion history</h3><div class="scroll"><table><thead><tr><th>Month</th><th class="num">Share</th><th class="num">Companies</th><th class="num">Coherence</th><th>Flag</th></tr></thead>
-          <tbody>${hist.map((r) => `<tr><td>${esc(day(r.t))}</td><td class="num">${r.present ? pct(r.share, 2) : '<span class="muted">absent</span>'}</td><td class="num">${r.n_issuers ?? "—"}</td><td class="num">${r.coherence?.toFixed(2) ?? "—"}</td><td>${r.flagged ? '<span class="chip t-gaining">emergence</span>' : ""}</td></tr>`).reverse().join("")}</tbody></table></div></section>
-      </div>
-      <section class="panel"><h3>Basket (version ${p.current_version ?? "—"}, entered ${esc(p.current_entry || "—")})</h3><p class="muted">These are exactly the holdings used in the index above, including adjacent companies.</p>
-        ${t.pending_version ? `<p class="banner warn">Version ${t.pending_version.version} has been decided (${esc(t.pending_version.constituents.join(", "))}) and will be bought at the first close after ${esc(day(t.pending_version.entry_after))}. Until then the index holds the basket below.</p>` : ""}
-        <div class="scroll"><table><thead><tr><th>Company</th><th>Sector</th><th>Role</th><th class="num">Exposure</th><th class="num">Start weight</th><th class="num">Weight now</th><th class="num">Return</th><th class="num">Contribution</th><th>Price</th></tr></thead>
-        <tbody>${(p.constituents || []).map((c) => `<tr><td class="mono">${esc(c.symbol)}</td><td>${esc(c.sector || "—")}</td><td>${esc(c.role)}</td><td class="num">${pct(c.exposure, 0)}</td><td class="num">${pct(c.start_weight)}</td><td class="num">${pct(c.weight_now)}</td><td class="num">${sgn(c.return_since_entry)}</td><td class="num">${sgn(c.contribution, 2)}</td><td><span class="chip p-${esc(c.price_status)}">${esc(c.price_status.replace("_", " "))}</span>${c.holding !== "held" && c.holding !== "not_bought" ? ` <span class="chip">${esc(c.holding)}</span>` : ""}</td></tr>`).join("")}</tbody></table></div></section>
-      <section class="panel"><h3>Evidence (latest, ${esc(day(t.evidence.latest_t))})</h3>
-        ${t.evidence.latest.map((q) => `<div class="quote ${esc(q.role)}"><div><span class="role ${esc(q.role)}">${esc(ROLE[q.role] || q.role)}</span> <span class="mono">${esc(q.symbol)} · ${esc(q.date)} · ${esc(q.doc_type)}</span> ${q.url ? `<a href="${esc(q.url)}" rel="noopener" target="_blank">source</a>` : ""}</div>${esc(q.text)}…</div>`).join("")}
-        <p class="muted">Analyst questions show what investors were asking about; they are not company statements.</p>
-        ${t.evidence.first_t !== t.evidence.latest_t ? `<details><summary>Evidence when first seen (${esc(day(t.evidence.first_t))})</summary>${t.evidence.first.map((q) => `<div class="quote ${esc(q.role)}"><span class="role ${esc(q.role)}">${esc(ROLE[q.role] || q.role)}</span> <span class="mono">${esc(q.symbol)} · ${esc(q.date)}</span><div>${esc(q.text)}…</div></div>`).join("")}</details>` : ""}</section>
-      <div class="grid2">
-        <section class="panel"><h3>Membership history</h3><div class="scroll"><table><thead><tr><th>Version</th><th>From</th><th>Basis</th><th>Why</th><th>Companies</th></tr></thead><tbody>${versions}</tbody></table></div></section>
-        <section class="panel"><h3>Names, status and lineage</h3>
-          <ul>${t.name_history.map((n) => `<li>${esc(day(n.t))}: named “${esc(n.name)}”</li>`).join("")}
-          ${t.status_history.map((s) => `<li>${esc(day(s.t))}: ${esc(s.from)} → ${esc(s.to)}</li>`).join("")}
-          ${t.lineage.map((l) => `<li>${esc(day(l.t))}: ${esc(l.event.replace("_", " "))} <a href="#/theme/${esc(l.other)}">${esc(l.other)}</a></li>`).join("")}</ul></section>
-      </div>`;
-    window.scrollTo(0, 0);
-  }
-
-  async function route() {
-    const m = location.hash.match(/^#\/theme\/(.+)$/);
-    if (m) await themePage(decodeURIComponent(m[1])); else overview();
-  }
-
-  (async () => {
-    try {
-      status = await getJSON("data/status.json").catch(() => null);
-      const latest = await getJSON("data/latest.json");
-      base = "data/" + latest.path;
-      index = await getJSON(base + "index.json");
-      U = index.universe || {};
-      B = index.benchmarks || U.benchmarks || B;
-    } catch (e) {
-      $("#app").innerHTML = `<h1>Theme Monitor</h1>${status ? "" : ""}<p class="banner bad">No published data yet (${esc(e.message)}). Run <span class="mono">themegraph monitor refresh</span>.</p>`;
-      return;
-    }
-    window.addEventListener("hashchange", route);
-    route();
-  })();
-})();
-</script>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header"><div class="bar">
+  <a class="brand" href="#/"><span class="brand-mark" aria-hidden="true"></span>Theme Monitor</a>
+  <nav class="nav" aria-label="Main">
+    <a href="#/" data-nav="overview">Overview</a>
+    <a href="#/themes" data-nav="themes">All themes</a>
+    <a href="#/method" data-nav="method">Method &amp; data</a>
+  </nav>
+  <button type="button" class="theme-toggle" id="theme-toggle">Auto</button>
+</div></header>
+<main id="main" tabindex="-1" aria-busy="true"><p class="muted">Loading the latest release…</p></main>
+<footer class="site-footer"><p>Research tool, not investment advice. Simulated history shows what a rule would have done; it is not a track record. <span id="release" class="mono"></span></p></footer>
+<noscript><p style="padding:16px">This dashboard needs JavaScript to read its data files.</p></noscript>
 </body>
 </html>
