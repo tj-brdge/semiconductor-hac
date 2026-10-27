@@ -166,3 +166,54 @@ def coverage_samples(windows: pd.DataFrame, assign: pd.DataFrame, p: pd.DataFram
             lines.append("")
     return "\n".join(lines)
 
+
+
+def question_share(run_dir) -> dict:
+    """How much of a run's Q&A text is analysts' questions rather than management's
+    answers, from saved run files only. A Q&A passage counts as a question when its
+    speaker gives no prepared remarks in the same call (analysts never do; an
+    executive who only speaks in Q&A is miscounted as a questioner, so this is an
+    upper-bound estimate). Reported for all passages, passages in topics, candidates'
+    members at their first flag, and the quotes shown for adjudication."""
+    import json
+    from pathlib import Path
+
+    run_dir = Path(run_dir)
+    p = pd.read_parquet(run_dir / "passages.parquet", columns=["passage_id", "doc_id",
+                                                                "genre", "unit"])
+    tr = p["genre"].astype(str).str.startswith("transcript:")
+    spk = p["unit"].astype(str).str.rsplit("|", n=1).str[0]
+    prepared = set(zip(p.loc[p["genre"] == "transcript:prepared", "doc_id"],
+                       spk[p["genre"] == "transcript:prepared"], strict=True))
+    qa = p["genre"] == "transcript:qa"
+    in_prepared = pd.Series([(d, s) in prepared for d, s in zip(p["doc_id"], spk, strict=True)],
+                            index=p.index)
+    is_q = qa & ~in_prepared
+    q_ids = set(p.loc[is_q, "passage_id"])
+
+    def share(ids) -> dict:
+        ids = list(ids)
+        n = len(ids)
+        k = sum(i in q_ids for i in ids)
+        return {"passages": n, "questions": k, "share": round(k / n, 3) if n else None}
+
+    out = {"method": "Q&A speaker with no prepared remarks in the same call (upper bound)",
+           "all_passages": share(p["passage_id"]),
+           "transcript_passages": share(p.loc[tr, "passage_id"]),
+           "qa_passages": share(p.loc[qa, "passage_id"])}
+    a = pd.read_parquet(run_dir / "assignments.parquet", columns=["t", "track_id",
+                                                                    "passage_id"])
+    out["topic_members"] = share(a["passage_id"])
+    led = pd.read_parquet(run_dir / "candidate_ledger.parquet")
+    firsts = led.loc[led["t"] == led["t_first_flag"], ["candidate_id", "track_id", "t"]] \
+        .drop_duplicates("candidate_id")
+    m = firsts.merge(a, on=["track_id", "t"])
+    out["candidate_members"] = share(m["passage_id"])
+    per = m.assign(q=m["passage_id"].isin(q_ids)).groupby("candidate_id")["q"].mean()
+    out["candidates_mostly_questions"] = {"candidates": int(len(per)),
+                                          "over_half_questions": int((per > 0.5).sum())}
+    ex = run_dir / "explanations.json"
+    quotes = [q["passage_id"] for e in json.loads(ex.read_text()) for q in e.get("quotes", [])] \
+        if ex.exists() else []
+    out["adjudication_quotes"] = share(quotes)
+    return out

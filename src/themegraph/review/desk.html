@@ -139,6 +139,7 @@ blockquote .src { display: block; font-family: var(--f-mono); font-size: 0.76rem
         <button data-f="sample" aria-pressed="false">Blind sample</button>
         <button data-f="matched" aria-pressed="false">Theme matches</button>
         <button data-f="done" aria-pressed="false">Decided</button>
+        <button data-f="byai" aria-pressed="false">Decided by Claude</button>
         <button data-f="all" aria-pressed="false">All</button>
       </div>
       <ol id="list"></ol>
@@ -231,7 +232,8 @@ blockquote .src { display: block; font-family: var(--f-mono); font-size: 0.76rem
 
   function renderList() {
     const es = entries().filter((e) => ({ todo: e.decision === "pending", sample: e.in_sample,
-      matched: e.kind !== "unmatched_candidate", done: e.decision !== "pending", all: true }[S.filter]));
+      matched: e.kind !== "unmatched_candidate", done: e.decision !== "pending",
+      byai: e.decided_by === "ai", all: true }[S.filter]));
     if (!es.some((e) => e.id === S.sel)) S.sel = es[0]?.id ?? null;
     $("list").innerHTML = es.length ? es.map((e) => `<li><button data-id="${esc(e.id)}" aria-current="${e.id === S.sel}">
         <span class="qrow"><span class="mono">${esc(e.candidate_id)}</span>${chipFor(e)}</span>
@@ -276,7 +278,9 @@ blockquote .src { display: block; font-family: var(--f-mono); font-size: 0.76rem
       S.data[S.run] = await api("/api/decide", { run: S.run, id: e.id, decision, reviewer: reviewer(), notes: $("notes")?.value.trim() || "" });
       toast(decision === "pending" ? "Cleared." : `Recorded: ${WORDS[decision]}.`);
       const next = entries().find((x) => x.decision === "pending" && x.id !== e.id && (S.filter !== "sample" || x.in_sample));
-      if (next && S.filter !== "done" && S.filter !== "all") S.sel = next.id;
+      const nextAi = entries().find((x) => x.decided_by === "ai" && x.id !== e.id);
+      if (S.filter === "byai" && nextAi) S.sel = nextAi.id;
+      else if (next && !["done", "all", "byai"].includes(S.filter)) S.sel = next.id;
     } catch (err) { toast("Not saved: " + err.message); }
     render();
   }

@@ -140,3 +140,27 @@ def test_api_requires_the_session_token(tmp_path):
         assert out["stats"]["decided_by_human"] == 1
     finally:
         httpd.shutdown()
+
+
+def test_question_share_counts_qa_speakers_without_prepared_remarks(tmp_path):
+    from themegraph.eval.diagnostics import question_share
+    t = pd.Timestamp("2019-01-31", tz="UTC")
+    pd.DataFrame({
+        "passage_id": ["d#0", "d#1", "d#2", "d#3", "f#0"],
+        "doc_id": ["d", "d", "d", "d", "f"],
+        "genre": ["transcript:prepared", "transcript:qa", "transcript:qa",
+                  "transcript:qa", "10-K:mdna"],
+        "unit": ["CEO|prepared", "Analyst A|qa", "CEO|qa", "Analyst B|qa", "10-K"],
+    }).to_parquet(tmp_path / "passages.parquet")
+    pd.DataFrame({"t": t, "track_id": [1, 1, 2], "passage_id": ["d#1", "d#3", "d#2"]}
+                 ).to_parquet(tmp_path / "assignments.parquet")
+    pd.DataFrame({"candidate_id": ["c1", "c2"], "track_id": [1, 2], "t": t,
+                  "t_first_flag": t, "issuers": [["A"], ["B"]]}
+                 ).to_parquet(tmp_path / "candidate_ledger.parquet")
+    (tmp_path / "explanations.json").write_text(json.dumps(
+        [{"candidate_id": "c1", "quotes": [{"passage_id": "d#1"}, {"passage_id": "d#2"}]}]))
+    q = question_share(tmp_path)
+    assert q["qa_passages"] == {"passages": 3, "questions": 2, "share": 0.667}
+    assert q["topic_members"]["questions"] == 2
+    assert q["candidates_mostly_questions"] == {"candidates": 2, "over_half_questions": 1}
+    assert q["adjudication_quotes"]["share"] == 0.5
