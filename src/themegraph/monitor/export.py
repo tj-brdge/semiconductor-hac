@@ -104,9 +104,13 @@ def summary_row(doc: dict) -> dict:
         "route": doc["route"], "basis": doc["basis"],
         "published_snapshot": doc["published_snapshot"], "last_seen": doc["last_seen"],
         "emergence": {"growth_3m": m.get("growth_3m"), "share": m.get("share"),
+                      "comparable_issuers": len(m.get("comparable_issuers", [])),
                       "n_issuers": m.get("n_issuers"),
                       "new_issuers_3m": m.get("new_issuers_3m"),
-                      "flagged_recently": any(x.get("flagged") for x in doc["measures"][-3:])},
+                      "flagged_recently": any(x.get("flagged_comparable", x.get("flagged"))
+                                              for x in doc["measures"][-3:])},
+        "sectors": m.get("sectors", []),
+        "recently_added": m.get("recently_added", []),
         "strength": {"coherence": m.get("coherence"), "n_issuers": m.get("n_issuers"),
                      "n_segments": m.get("n_segments"),
                      "persistence_12": doc["measures"][-1].get("persistence_12")

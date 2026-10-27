@@ -1,13 +1,43 @@
 # v1 universe. `role: core` names are used in every layer and in return-based
 # evaluation; `role: adjacent` names join the text layer (and market affinity) so
-# themes can link outside semiconductors, but are excluded from return baskets.
+# themes can link outside semiconductors, but are excluded from the research
+# evaluation's return baskets. The theme monitor's baskets include both roles.
 #
 # listed/delisted dates bound point-in-time membership. Dates marked "verify" come
 # from memory and must be checked against FMP profile/delisted data at M1.
 # cik is only given where the issuer is no longer in SEC company_tickers.json;
 # current issuers are resolved automatically.
 
+name: Semiconductor pilot
+description: >-
+  Semiconductor companies (memory, compute, analog, foundry, equipment, EDA) and
+  adjacent companies whose disclosures connect to them (networking and optics,
+  servers, cloud, power and electrical equipment, EV, devices).
+version: "1"
+
 benchmarks: [SPY, SOXX]
+
+# Themes are not sectors: a theme can connect companies from several sectors.
+# Sectors only describe which kinds of companies a theme spans.
+sectors:
+  memory: Semiconductors
+  compute: Semiconductors
+  analog: Semiconductors
+  foundry: Semiconductors
+  equipment: Semiconductor equipment
+  eda: Chip design software
+  networking: Networking and optics
+  servers: Servers and hardware
+  cloud: Cloud and internet
+  devices: Devices
+  power: Power and electrical
+  ev: Autos and EV
+
+# Coverage changes. Add a company by appending an issuer with covered_from: <date>
+# and a change entry; never delete an issuer (mark covered_until instead), so held
+# baskets keep their prices. See docs/MONITOR.md, "Universe changes".
+changes:
+  - {version: "1", date: 2026-10-27, note: "pilot universe as of the monitor's first release"}
 
 issuers:
   # --- memory / storage

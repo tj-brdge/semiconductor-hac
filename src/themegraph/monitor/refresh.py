@@ -30,6 +30,7 @@ from ..market.returns import price_panel
 from .baskets import PriceBook, theme_performance
 from .clusters import SnapshotReader
 from .config import MonitorConfig, load_monitor
+from .coverage import Coverage
 from .export import price_date, publish, theme_document, write_status
 from .registry import Registry
 
@@ -103,7 +104,8 @@ def price_book(prices: pd.DataFrame, universe, mcfg: MonitorConfig) -> PriceBook
 
 def refresh(state_dir: Path, site_dir: Path, *, fixtures: bool = False,
             as_of: dt.date | None = None, ingest_prices: bool = True,
-            ingest_documents: bool = False, now: str | None = None, log=print) -> dict:
+            ingest_documents: bool = False, now: str | None = None, log=print,
+            inputs_hook=None) -> dict:
     as_of = as_of or dt.date.today()
     now = now or (f"{as_of}T23:59:59+00:00" if fixtures else
                   dt.datetime.now(dt.UTC).isoformat(timespec="seconds"))
@@ -128,8 +130,17 @@ def refresh(state_dir: Path, site_dir: Path, *, fixtures: bool = False,
         run("ingest_documents", lambda: ingest_step("documents", as_of, log))
 
     ctxd: dict = {}
-    run("load", lambda: ctxd.update(load_inputs(fixtures, as_of, log)) or
-        f"{len(ctxd['prices'])} prices, {len(ctxd['docs'])} documents")
+    def _load():
+        ctxd.update(load_inputs(fixtures, as_of, log))
+        if inputs_hook is not None:  # tests: change the universe or data
+            ctxd.update(inputs_hook(ctxd, as_of))
+        missing = [b for b in mcfg.market.benchmarks
+                   if b not in set(ctxd["prices"]["symbol"])]
+        if missing:
+            raise RuntimeError(f"no prices for benchmarks {missing}: add them to the "
+                               "universe's benchmarks so they are ingested")
+        return f"{len(ctxd['prices'])} prices, {len(ctxd['docs'])} documents"
+    run("load", _load)
     reg = Registry(state_dir)
     themes_ok = "load" in steps and steps["load"]["ok"] and run(
         "themes", lambda: _themes(reg, ctxd, as_of, now, mcfg, state_dir, log))
@@ -143,6 +154,8 @@ def refresh(state_dir: Path, site_dir: Path, *, fixtures: bool = False,
             meta = {"generated_at": now, "fixture": ctxd["fixture"],
                     "data_as_of": _as_of(ctxd, reg, book_box["book"]),
                     "evaluation_note": EVALUATION_NOTE,
+                    "universe": coverage(ctxd, mcfg).summary(now),
+                    "benchmarks": mcfg.market.benchmarks,
                     "go_live": reg.data.get("go_live"),
                     "themes_processed_through": reg.data.get("last_snapshot")}
             release = publish(site_dir, book_box["docs"], meta, mcfg)
@@ -169,16 +182,22 @@ def _themes(reg: Registry, d: dict, as_of: dt.date, now: str, mcfg: MonitorConfi
     if ctx.vectors is None:
         raise RuntimeError("no documents: the topic layer has nothing to read")
     reader = SnapshotReader(ctx, mcfg)
-    segs = {i.symbol: i.segment for i in u.issuers}
+    cov = coverage(d, mcfg)
     roles = {i.symbol: i.role for i in u.issuers}
     counts = []
     for t in todo:
         if t not in set(ctx.snapshots):
             continue
-        counts.append({"t": str(t.date()), **reg.process(t, reader.clusters(t), mcfg, segs,
-                                                         roles, now)})
+        counts.append({"t": str(t.date()), **reg.process(
+            t, reader.clusters(t), mcfg, cov, roles, now, reader.window_by_issuer(t))})
     reg.save()
     return counts
+
+
+def coverage(d: dict, mcfg: MonitorConfig) -> Coverage:
+    docs = d["docs"]
+    first = docs.groupby("symbol")["available_at"].min().to_dict() if len(docs) else {}
+    return Coverage(d["universe"], first, mcfg.coverage.min_history_months)
 
 
 def _value(reg: Registry, d: dict, mcfg: MonitorConfig, box: dict) -> str:

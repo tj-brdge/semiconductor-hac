@@ -36,6 +36,10 @@ market:
   benchmarks: [SPY, SOXX]
   trend_threshold_pp: 5.0      # 3-month excess vs SPY changed by this much in a month
 
+coverage:                      # universe changes (docs/MONITOR.md, "Universe changes")
+  min_history_months: 12       # a company's documents must go back this far to count in growth
+  min_growth_ratio: 1.25       # emergence route: comparable-company growth over 3 months
+
 evidence:
   quotes: 5
 

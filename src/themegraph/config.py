@@ -139,10 +139,28 @@ class Issuer(_Strict):
     delisted: dt.date | None = None
     successor: Successor | None = None
     cik: int | None = None
+    # Monitored coverage (docs/MONITOR.md, "Universe changes"): when the company
+    # was added to, or removed from, the monitored universe. None = since the start.
+    # Distinct from listed/delisted, which bound when the stock traded.
+    covered_from: dt.date | None = None
+    covered_until: dt.date | None = None
+
+
+class UniverseChange(_Strict):
+    version: str
+    date: dt.date
+    added: list[str] = []
+    removed: list[str] = []
+    note: str = ""
 
 
 class UniverseConfig(_Strict):
+    name: str = "Unnamed universe"
+    description: str = ""
+    version: str = "0"
     benchmarks: list[str]
+    sectors: dict[str, str] = {}   # segment -> sector shown on the dashboard
+    changes: list[UniverseChange] = []
     issuers: list[Issuer]
 
 
@@ -162,4 +180,26 @@ def load_universe(path: Path | None = None) -> UniverseConfig:
     dupes = {s for s in symbols if symbols.count(s) > 1}
     if dupes:
         raise ValueError(f"duplicate symbols in universe: {sorted(dupes)}")
+    check_universe(cfg)
     return cfg
+
+
+def check_universe(cfg: UniverseConfig) -> None:
+    """Sectors cover every segment, and the change log agrees with the coverage
+    dates on the issuers (the issuers are the source of truth)."""
+    if cfg.sectors:
+        missing = sorted({i.segment for i in cfg.issuers} - set(cfg.sectors))
+        if missing:
+            raise ValueError(f"segments without a sector: {missing}")
+    by = {i.symbol: i for i in cfg.issuers}
+    for c in cfg.changes:
+        for s in c.added:
+            if s not in by or by[s].covered_from != c.date:
+                raise ValueError(f"universe change {c.version}: {s} must be an issuer with "
+                                 f"covered_from: {c.date}")
+        for s in c.removed:
+            if s not in by or by[s].covered_until != c.date:
+                raise ValueError(f"universe change {c.version}: {s} must keep its entry "
+                                 f"with covered_until: {c.date}")
+    if cfg.changes and cfg.changes[-1].version != cfg.version:
+        raise ValueError("universe version must equal the latest change's version")

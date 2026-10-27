@@ -35,6 +35,7 @@ class Cluster:
     track_id: int
     members: list[str]
     exposure: dict[str, float]          # symbol -> exposure (constituent candidates)
+    passages_by_issuer: dict[str, int]  # every company with text in the topic
     n_passages: int
     share: float                        # of all passages in the window
     centroid: np.ndarray
@@ -81,6 +82,14 @@ class SnapshotReader:
         led = ctx.ledger if ctx.ledger is not None else pd.DataFrame()
         self.flagged = set(zip(led["track_id"], led["t"], strict=True)) if len(led) else set()
         self.totals = dict(zip(ctx.windows["t"], ctx.windows["n_passages"], strict=True))
+        self.first_doc = p.groupby("symbol")["available_at"].min().to_dict()
+
+    def window_by_issuer(self, t: pd.Timestamp) -> dict[str, int]:
+        """Passages per company in the window ending at t (the share denominator)."""
+        p = self.p
+        win = (p["available_at"] > t - pd.Timedelta(days=self.ctx.cfg.text.window_days)) \
+            & (p["available_at"] <= t)
+        return {k: int(v) for k, v in p.loc[win, "symbol"].value_counts().items()}
 
     def _unit(self, idx: np.ndarray) -> np.ndarray:
         X = self.V[idx] - np.stack([self.genre_mean[g] for g in self.genres[idx]])
@@ -114,6 +123,7 @@ class SnapshotReader:
             out.append(Cluster(
                 t=t, track_id=int(tid), members=members,
                 exposure={r.symbol: round(float(r.exposure), 4) for r in keep.itertuples()},
+                passages_by_issuer={r.symbol: int(r.n_passages) for r in e.itertuples()},
                 n_passages=len(members), share=len(members) / total if total else 0.0,
                 centroid=c.astype(np.float32), coherence=float(sims.mean()),
                 roles={r: round(float(roles.get(r, 0.0)), 3) for r in ROLES},

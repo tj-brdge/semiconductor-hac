@@ -51,6 +51,11 @@ class Market(_S):
     trend_threshold_pp: float = 5.0
 
 
+class CoverageRules(_S):
+    min_history_months: int = 12   # document history before a company counts in growth
+    min_growth_ratio: float = 1.25  # emergence route: comparable growth over 3 months
+
+
 class Evidence(_S):
     quotes: int = 5
 
@@ -69,6 +74,7 @@ class MonitorConfig(_S):
     status: Status = Status()
     basket: Basket = Basket()
     market: Market = Market()
+    coverage: CoverageRules = CoverageRules()
     evidence: Evidence = Evidence()
     freshness: Freshness = Freshness()
 

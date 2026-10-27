@@ -21,7 +21,9 @@ Routes into the published inventory (either is enough):
 
 Three separate groups of measures are kept per month-end (no composite score):
 - emergence: share of window text, change over 3 months, companies now vs 3
-  months ago, whether the emergence rule flagged it;
+  months ago, whether the emergence rule flagged it; growth, new companies and
+  both routes count only comparable companies (monitor/coverage.py), so adding
+  companies to the universe never reads as acceleration;
 - theme strength: coherence, breadth (companies, segments), persistence (months
   present of the last 12), evidence mix (management / filings / analyst questions);
 - market strength is computed from basket prices in baskets.py.
@@ -42,6 +44,7 @@ from scipy.optimize import linear_sum_assignment
 
 from .clusters import Cluster
 from .config import MonitorConfig
+from .coverage import Coverage
 
 SCHEMA = 1
 
@@ -96,8 +99,10 @@ class Registry:
 
     # ---- update ----
     def process(self, t: pd.Timestamp, clusters: list[Cluster], m: MonitorConfig,
-                segments: dict[str, str], roles: dict[str, str], now: str) -> dict:
-        """Apply one month-end. Returns counts of what changed."""
+                cov: Coverage, roles: dict[str, str], now: str,
+                window: dict[str, int]) -> dict:
+        """Apply one month-end. `window` is passages per company in its window (the
+        share denominator). Returns counts of what changed."""
         last = self.data["last_snapshot"]
         if last is not None and pd.Timestamp(last) >= t:
             return {"skipped": True}
@@ -107,6 +112,8 @@ class Registry:
         ts = str(t)
         snaps = self.data.setdefault("snapshots", [])
         snaps.append(ts)
+        self.data.setdefault("snapshot_meta", {})[ts] = {
+            "universe_version": cov.u.version, "window_by_issuer": window}
         recent = set(snaps[-(m.match.lookback_snapshots + 1):])
         cands = [k for k, th in self.themes.items()
                  if th["last_seen"] in recent and th.get("merged_into") is None]
@@ -149,16 +156,17 @@ class Registry:
                 th["evidence"]["first_t"] = ts
         for tid, th in self.themes.items():
             c = present.get(tid)
-            th["measures"].append(self._measures(th, c, ts, snaps, segments))
+            row = self._measures(th, c, ts, snaps, cov, m)
+            th["measures"].append(row)
             if not th["published"] and c is not None:
-                route = self._route(th, c, snaps, median_coh, m)
+                route = self._route(th, c, row, snaps, median_coh, m)
                 if route:
-                    self._publish(th, c, ts, route, now, m, roles)
+                    self._publish(th, c, ts, route, now, m, roles, cov)
                     counts["published"] += 1
             if th["published"]:
                 self._status(th, ts, snaps, m)
                 if c is not None:
-                    self._version(th, c, ts, now, m, roles)
+                    self._version(th, c, ts, now, m, roles, cov)
         self._prune(snaps, m)
         self.data["last_snapshot"] = ts
         return counts
@@ -222,69 +230,98 @@ class Registry:
             th["name"] = " · ".join(new)
             th["name_history"].append({"t": ts, "name": th["name"], "keywords": c.keywords})
 
-    @staticmethod
-    def _measures(th: dict, c: Cluster | None, ts: str, snaps: list[str],
-                  segments: dict[str, str]) -> dict:
+    def _measures(self, th: dict, c: Cluster | None, ts: str, snaps: list[str],
+                  cov: Coverage, m: MonitorConfig) -> dict:
         prev = {r["t"]: r for r in th["measures"]}
-        back = snaps[-4] if len(snaps) >= 4 else None
-        old = prev.get(back) if back else None
+        base = snaps[-4] if len(snaps) >= 4 else None
+        old = prev.get(base) if base else None
         last12 = set(snaps[-12:])
         persistence = sum(s in last12 for s in th["seen"])
         if c is None:
             return {"t": ts, "present": False, "share": 0.0, "persistence_12": persistence}
-        old_share = old["share"] if old else None
-        old_issuers = set(old.get("issuers", [])) if old else set()
+        meta = self.data["snapshot_meta"]
+        window = meta[ts]["window_by_issuer"]
         issuers = sorted(c.exposure)
+        ref = base or ts
+        comp = {s for s in window if cov.comparable(s, ts, ref)}
+        comp_issuers = sorted(s for s in issuers if s in comp)
+
+        def share(by_issuer: dict, win: dict) -> float | None:
+            den = sum(win.get(s, 0) for s in comp)
+            return sum(by_issuer.get(s, 0) for s in comp) / den if den else None
+
+        now_c = share(c.passages_by_issuer, window)
+        old_c = share(old.get("passages_by_issuer", {}), meta.get(base, {}).get(
+            "window_by_issuer", {})) if old and old.get("present") else None
+        growth = round(now_c / old_c, 3) if now_c is not None and old_c else None
+        old_issuers = set(old.get("issuers", [])) if old else set()
         return {
             "t": ts, "present": True,
-            # emergence
+            # emergence (growth, new companies and the routes use comparable companies)
             "share": round(c.share, 5), "n_passages": c.n_passages,
-            "share_3m_ago": old_share,
-            "growth_3m": round(c.share / old_share, 3) if old_share else None,
+            "share_comparable": round(now_c, 5) if now_c is not None else None,
+            "growth_3m": growth,
             "issuers": issuers, "n_issuers": len(issuers),
-            "new_issuers_3m": sorted(set(issuers) - old_issuers) if old else None,
+            "comparable_issuers": comp_issuers,
+            "recently_added": sorted(set(issuers) - comp),
+            "new_issuers_3m": sorted(set(comp_issuers) - old_issuers) if old else None,
             "flagged": c.flagged,
+            "flagged_comparable": bool(
+                c.flagged and len(comp_issuers) >= m.pool.min_issuers
+                and (growth is None or growth >= m.coverage.min_growth_ratio)),
             # theme strength
             "coherence": round(c.coherence, 4),
-            "n_segments": len({segments.get(s, "?") for s in issuers}),
+            "sectors": sorted({cov.sector.get(s, "?") for s in issuers}),
+            "n_segments": len({cov.issuers[s].segment for s in issuers if s in cov.issuers}),
             "persistence_12": persistence, "n_documents": c.n_documents,
             "evidence_roles": c.roles,
+            "passages_by_issuer": c.passages_by_issuer,
         }
 
     @staticmethod
-    def _route(th: dict, c: Cluster, snaps: list[str], median_coh: float,
+    def _route(th: dict, c: Cluster, row: dict, snaps: list[str], median_coh: float,
                m: MonitorConfig) -> str | None:
-        if c.flagged:
+        """Both routes count comparable companies only, so a coverage addition
+        cannot by itself put a topic into the inventory."""
+        if row["flagged_comparable"]:
             return "emergence"
         e = m.established
         window = set(snaps[-e.of_last:])
         if sum(s in window for s in th["seen"]) >= e.present and \
-                len(c.exposure) >= e.min_issuers and c.coherence >= median_coh:
+                len(row["comparable_issuers"]) >= e.min_issuers and c.coherence >= median_coh:
             return "established"
         return None
 
     def _publish(self, th: dict, c: Cluster, ts: str, route: str, now: str,
-                 m: MonitorConfig, roles: dict[str, str]) -> None:
+                 m: MonitorConfig, roles: dict[str, str], cov: Coverage) -> None:
         live = (pd.Timestamp(now) - pd.Timestamp(ts)).days <= m.live_window_days
         th.update(published=True, published_snapshot=ts, published_at=now, route=route,
                   basis="live" if live else "reconstructed", status="new")
-        self._add_version(th, c, ts, now, live, roles, reason="published")
+        self._add_version(th, c, ts, now, live, roles, cov, reason="published")
         self.event(ts, th["id"], "published", route=route, basis=th["basis"])
 
-    def _add_version(self, th, c, ts, now, live, roles, reason):
+    @staticmethod
+    def _eligible(c: Cluster, ts: str, cov: Coverage) -> dict[str, float]:
+        """Basket candidates: companies still in coverage (a company removed from the
+        universe stays in baskets already bought, never in new ones)."""
+        return {s: x for s, x in c.exposure.items() if cov.covered(s, ts)}
+
+    def _add_version(self, th, c, ts, now, live, roles, cov, reason):
         th["versions"].append({
             "version": len(th["versions"]) + 1, "snapshot": ts, "reason": reason,
             "created_at": now, "basis": "live" if live else "reconstructed",
+            "universe_version": cov.u.version,
             # Executable entry: the first benchmark session after this moment.
             "entry_after": now if live else ts,
-            "constituents": [{"symbol": s, "exposure": x, "role": roles.get(s, "unknown")}
-                             for s, x in sorted(c.exposure.items())]})
+            "constituents": [{"symbol": s, "exposure": x, "role": roles.get(s, "unknown"),
+                              "sector": cov.sector.get(s)}
+                             for s, x in sorted(self._eligible(c, ts, cov).items())]})
         th["pending"] = None
 
     def _version(self, th: dict, c: Cluster, ts: str, now: str, m: MonitorConfig,
-                 roles: dict[str, str]) -> None:
+                 roles: dict[str, str], cov: Coverage) -> None:
         cur = {x["symbol"] for x in th["versions"][-1]["constituents"]}
-        new = set(c.exposure)
+        new = set(self._eligible(c, ts, cov))
         if new == cur:
             th["pending"] = None
             return
@@ -293,7 +330,7 @@ class Registry:
         th["pending"] = p
         if p["count"] >= m.basket.version_confirm_snapshots:
             live = (pd.Timestamp(now) - pd.Timestamp(ts)).days <= m.live_window_days
-            self._add_version(th, c, ts, now, live, roles, reason="membership changed")
+            self._add_version(th, c, ts, now, live, roles, cov, reason="membership changed")
             self.event(ts, th["id"], "basket_version", version=len(th["versions"]),
                        added=sorted(new - cur), removed=sorted(cur - new))
 
