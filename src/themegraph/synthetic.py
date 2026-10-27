@@ -70,7 +70,13 @@ def synthetic_universe(per_segment: int = 8) -> UniverseConfig:
               "networking": "NET", "power": "PWR"}
     issuers = [Issuer(symbol=f"{prefix[s]}{i}", segment=s, role=SEGMENTS[s][0])
                for s in SEGMENTS for i in range(1, per_segment + 1)]
-    return UniverseConfig(benchmarks=["SPY", "SOXX"], issuers=issuers)
+    return UniverseConfig(
+        name="Synthetic fixture universe", version="fixture-1",
+        description="Synthetic companies for tests and demos; not real companies.",
+        benchmarks=["SPY", "SOXX"], issuers=issuers,
+        sectors={"memory": "Semiconductors", "compute": "Semiconductors",
+                 "analog": "Semiconductors", "equipment": "Semiconductor equipment",
+                 "networking": "Networking", "power": "Power"})
 
 
 def demo_config(cfg: PipelineConfig) -> PipelineConfig:

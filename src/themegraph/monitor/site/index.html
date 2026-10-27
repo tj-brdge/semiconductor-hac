@@ -69,7 +69,7 @@ svg text { fill: var(--muted); font-size: 11px; font-family: var(--sans); }
   const day = (s) => s ? String(s).slice(0, 10) : "—";
   const ROLE = { management_remarks: "Management remarks", management_answer: "Management answer",
     analyst_question: "Analyst question", filing: "Filing" };
-  let base = "", index = null, status = null;
+  let base = "", index = null, status = null, U = {}, B = ["SPY", "SOXX"];
 
   async function getJSON(u) { const r = await fetch(u, { cache: "no-store" }); if (!r.ok) throw new Error(u + ": " + r.status); return r.json(); }
 
@@ -85,10 +85,18 @@ svg text { fill: var(--muted); font-size: 11px; font-family: var(--sans); }
     return out.join("");
   }
 
+  function universe() {
+    const s = Object.entries(U.sectors || {}).map(([k, v]) => `${esc(k)} (${v})`).join(", ");
+    return `<section class="panel"><span class="label">Covered universe · version ${esc(U.version)}</span>
+      <p style="margin:4px 0">${esc(U.description)}</p><p class="muted" style="margin:0">${U.n_companies} companies: ${s}.
+      Rankings such as “strongest” are within these companies only. Themes can span several sectors.
+      ${(U.recently_added || []).length ? `Recently added, not yet counted in growth comparisons: ${esc(U.recently_added.join(", "))}.` : ""}</p></section>`;
+  }
+
   function header() {
     const a = index.data_as_of || {};
     return `<header class="top"><div><h1><a href="#/" style="color:inherit;text-decoration:none">Theme Monitor</a></h1>
-      <div class="muted">Semiconductor and adjacent themes from earnings calls and SEC filings, with equal-weight stock baskets.</div></div>
+      <div class="muted">${esc(U.name || "Monitored universe")}: themes from the earnings calls and SEC filings of ${U.n_companies ?? "?"} monitored companies, with equal-weight stock baskets.</div></div>
       <div class="muted" style="text-align:right">Prices ${esc(day(a.prices))} · documents ${esc(day(a.documents))} · themes ${esc(day(a.themes))}<br>
       Release <span class="mono">${esc(index.release)}</span> · updated ${esc(day(index.generated_at))}</div></header>${banners()}`;
   }
@@ -98,23 +106,23 @@ svg text { fill: var(--muted); font-size: 11px; font-family: var(--sans); }
     const L = index.lists;
     const table = (ids, empty) => ids.length ? `<div class="scroll"><table>
       <thead><tr><th>Theme</th><th>Status</th><th class="num">Companies</th><th class="num hide-sm">Discussion 3m</th>
-      <th class="num hide-sm">Coherence</th><th class="num hide-sm">Months of 12</th><th class="num">Since publication</th><th class="num">vs SPY</th><th class="num">3m vs SPY</th><th>Market</th></tr></thead>
+      <th class="num hide-sm">Coherence</th><th class="num hide-sm">Months of 12</th><th class="num">Since publication</th><th class="num">vs ${esc(B[0])}</th><th class="num">3m vs ${esc(B[0])}</th><th>Market</th></tr></thead>
       <tbody>${ids.map((id) => { const r = rows[id]; const m = r.market, sp = m.since_publication || {}, t3 = m["3m"] || {};
-        return `<tr class="row" data-id="${esc(id)}"><td><a href="#/theme/${esc(id)}">${esc(r.name)}</a><div class="muted mono">${esc(id)} · ${esc(r.route)} · ${esc(r.basis)}</div></td>
+        return `<tr class="row" data-id="${esc(id)}"><td><a href="#/theme/${esc(id)}">${esc(r.name)}</a><div class="muted mono">${esc(id)} · ${esc(r.route)} · ${esc(r.basis)}</div><div class="muted">${esc((r.sectors || []).join(" · "))}</div></td>
         <td><span class="chip s-${esc(r.status)}">${esc(r.status)}</span></td>
         <td class="num">${r.strength.n_issuers ?? "—"}</td>
         <td class="num hide-sm">${r.emergence.growth_3m == null ? "—" : "×" + r.emergence.growth_3m.toFixed(2)}</td>
         <td class="num hide-sm">${r.strength.coherence?.toFixed(2) ?? "—"}</td>
         <td class="num hide-sm">${r.strength.persistence_12 ?? "—"}</td>
         <td class="num">${m.status === "ok" ? sgn(sp.theme) : `<span class="muted">${esc(m.status)}</span>`}</td>
-        <td class="num">${sgn(sp.excess_vs_SPY)}</td><td class="num">${sgn(t3.excess_vs_SPY)}</td>
+        <td class="num">${sgn(sp["excess_vs_" + B[0]])}</td><td class="num">${sgn(t3["excess_vs_" + B[0]])}</td>
         <td>${m.trend?.trend ? `<span class="chip t-${m.trend.trend}">${m.trend.trend}</span>` : "—"}${m.coverage_latest != null && m.coverage_latest < 1 ? ` <span class="chip p-stale">${pct(m.coverage_latest, 0)} priced</span>` : ""}</td></tr>`; }).join("")}</tbody></table></div>`
       : `<p class="muted">${empty}</p>`;
-    $("#app").innerHTML = header() + `
+    $("#app").innerHTML = header() + universe() + `
       <section class="panel"><h2>Emerging</h2><p class="muted">Flagged by the emergence rule in the last three month-ends, or published through it and still growing. Sorted by 3-month growth in discussion.</p>${table(L.emerging, "Nothing is emerging at the moment.")}</section>
       <section class="panel"><h2>Strong established themes</h2><p class="muted">Present in at least ${6} of the last 12 month-ends with four or more companies. Sorted by persistence, then breadth.</p>${table(L.established, "No established themes yet.")}</section>
-      <div class="grid2"><section class="panel"><h2>Gaining market strength</h2><p class="muted">3-month return vs SPY up by 5 points or more over the last month.</p>${table(L.market_gaining, "None this month.")}</section>
-      <section class="panel"><h2>Losing market strength</h2><p class="muted">3-month return vs SPY down by 5 points or more over the last month.</p>${table(L.market_losing, "None this month.")}</section></div>
+      <div class="grid2"><section class="panel"><h2>Gaining market strength</h2><p class="muted">3-month return vs ${esc(B[0])} up by 5 points or more over the last month.</p>${table(L.market_gaining, "None this month.")}</section>
+      <section class="panel"><h2>Losing market strength</h2><p class="muted">3-month return vs ${esc(B[0])} down by 5 points or more over the last month.</p>${table(L.market_losing, "None this month.")}</section></div>
       <section class="panel"><h2>Inactive or merged</h2><p class="muted">Kept with their history; not deleted.</p>${table(L.inactive, "None.")}</section>
       <p class="muted">${esc(index.evaluation_note)}</p>`;
     document.querySelectorAll("tr.row").forEach((tr) => tr.addEventListener("click", (e) => { if (e.target.tagName !== "A") location.hash = "#/theme/" + tr.dataset.id; }));
@@ -146,7 +154,7 @@ svg text { fill: var(--muted); font-size: 11px; font-family: var(--sans); }
     catch (e) { $("#app").innerHTML = header() + `<p class="banner bad">Theme ${esc(id)} is not in the current release.</p>`; return; }
     const p = t.performance, R = p.returns || {};
     const m = [...t.measures].reverse().find((r) => r.present) || {};
-    const rr = (k, label) => R[k] ? `<tr><td>${label}</td><td class="num">${sgn(R[k].theme)}</td><td class="num">${sgn(R[k].SPY)}</td><td class="num">${sgn(R[k].SOXX)}</td><td class="num">${sgn(R[k].excess_vs_SPY)}</td><td class="num">${sgn(R[k].excess_vs_SOXX)}</td></tr>` : "";
+    const rr = (k, label) => R[k] ? `<tr><td>${label}</td><td class="num">${sgn(R[k].theme)}</td>${B.map((b) => `<td class="num">${sgn(R[k][b])}</td>`).join("")}${B.map((b) => `<td class="num">${sgn(R[k]["excess_vs_" + b])}</td>`).join("")}</tr>` : "";
     const versions = t.basket_versions.map((v, i) => { const prev = i ? new Set(t.basket_versions[i - 1].constituents.map((c) => c.symbol)) : new Set();
       const cur = new Set(v.constituents.map((c) => c.symbol)); const add = [...cur].filter((s) => !prev.has(s)), rem = [...prev].filter((s) => !cur.has(s));
       return `<tr><td>v${v.version}</td><td>${esc(day(v.snapshot))}</td><td>${esc(v.basis)}</td><td>${esc(v.reason)}</td><td class="mono">${i ? `+${add.join(", ") || "—"} / −${rem.join(", ") || "—"}` : [...cur].join(", ")}</td></tr>`; }).join("");
@@ -157,25 +165,26 @@ svg text { fill: var(--muted); font-size: 11px; font-family: var(--sans); }
         <div class="muted mono">${esc(t.id)} · entered by ${esc(t.route)} rule on ${esc(day(t.published_snapshot))} · first seen ${esc(day(t.first_seen))} · ${esc(t.basis)}</div></div>
         <span class="chip s-${esc(t.status)}">${esc(t.status)}</span></div>
         <p>${esc(t.description)}</p>
+        <p class="muted">Sectors spanned: ${esc((m.sectors || []).join(", ") || "—")}.${m.recently_added?.length ? ` Recently added to coverage (shown, not counted in growth): ${esc(m.recently_added.join(", "))}.` : ""}</p>
         ${t.merged_into ? `<p class="banner warn">Merged into <a href="#/theme/${esc(t.merged_into)}">${esc(t.merged_into)}</a>.</p>` : ""}
         <div class="kpis">
           <div><span class="label">Emergence</span><b>${m.growth_3m == null ? "—" : "×" + m.growth_3m.toFixed(2)}</b><span class="muted">discussion vs 3 months ago · ${m.n_issuers ?? "—"} companies${m.new_issuers_3m?.length ? `, ${m.new_issuers_3m.length} new` : ""}</span></div>
           <div><span class="label">Theme strength</span><b>${m.coherence?.toFixed(2) ?? "—"} coherence</b><span class="muted">${m.persistence_12 ?? "—"} of 12 months · ${m.n_segments ?? "—"} segments · ${m.n_documents ?? "—"} documents</span></div>
-          <div><span class="label">Market strength</span><b>${p.status === "ok" ? sgn(R.since_publication?.excess_vs_SPY) + " vs SPY" : esc(p.status)}</b><span class="muted">since publication · ${p.participation_3m?.eligible ? `${p.participation_3m.positive}/${p.participation_3m.eligible} up over 3m` : ""}</span></div>
+          <div><span class="label">Market strength</span><b>${p.status === "ok" ? sgn(R.since_publication?.["excess_vs_" + B[0]]) + " vs " + esc(B[0]) : esc(p.status)}</b><span class="muted">since publication · ${p.participation_3m?.eligible ? `${p.participation_3m.positive}/${p.participation_3m.eligible} up over 3m` : ""}</span></div>
         </div></section>
       <section class="panel"><h3>Equal-weight basket vs benchmarks (index = 100 at entry)</h3>
-        ${p.status === "ok" ? chart(p.series, ["theme", "SPY", "SOXX"], ["var(--theme)", "var(--spy)", "var(--soxx)"]) : `<p class="muted">${esc(p.note || p.status)}</p>`}
+        ${p.status === "ok" ? chart(p.series, ["theme", ...B], ["var(--theme)", "var(--spy)", "var(--soxx)", "var(--muted)"]) : `<p class="muted">${esc(p.note || p.status)}</p>`}
         <p class="muted">${esc(p.price_basis || "")}. Equal starting capital per company, bought at the first close after publication (${esc(p.first_entry || "—")}), held without rebalancing; a new basket version starts at its own entry and is chain-linked. Last price ${esc(p.last_price_date || "—")}; ${pct(p.coverage_latest, 0)} of basket value had a fresh price.</p></section>
       <div class="grid2">
-        <section class="panel"><h3>Returns</h3><div class="scroll"><table><thead><tr><th>Period</th><th class="num">Theme</th><th class="num">SPY</th><th class="num">SOXX</th><th class="num">vs SPY</th><th class="num">vs SOXX</th></tr></thead>
+        <section class="panel"><h3>Returns</h3><div class="scroll"><table><thead><tr><th>Period</th><th class="num">Theme</th>${B.map((b) => `<th class="num">${esc(b)}</th>`).join("")}${B.map((b) => `<th class="num">vs ${esc(b)}</th>`).join("")}</tr></thead>
           <tbody>${rr("since_publication", "Since publication")}${rr("1m", "1 month")}${rr("3m", "3 months")}${rr("6m", "6 months")}${rr("12m", "12 months")}</tbody></table></div></section>
         <section class="panel"><h3>Discussion history</h3><div class="scroll"><table><thead><tr><th>Month</th><th class="num">Share</th><th class="num">Companies</th><th class="num">Coherence</th><th>Flag</th></tr></thead>
           <tbody>${hist.map((r) => `<tr><td>${esc(day(r.t))}</td><td class="num">${r.present ? pct(r.share, 2) : '<span class="muted">absent</span>'}</td><td class="num">${r.n_issuers ?? "—"}</td><td class="num">${r.coherence?.toFixed(2) ?? "—"}</td><td>${r.flagged ? '<span class="chip t-gaining">emergence</span>' : ""}</td></tr>`).reverse().join("")}</tbody></table></div></section>
       </div>
       <section class="panel"><h3>Basket (version ${p.current_version ?? "—"}, entered ${esc(p.current_entry || "—")})</h3><p class="muted">These are exactly the holdings used in the index above, including adjacent companies.</p>
         ${t.pending_version ? `<p class="banner warn">Version ${t.pending_version.version} has been decided (${esc(t.pending_version.constituents.join(", "))}) and will be bought at the first close after ${esc(day(t.pending_version.entry_after))}. Until then the index holds the basket below.</p>` : ""}
-        <div class="scroll"><table><thead><tr><th>Company</th><th>Role</th><th class="num">Exposure</th><th class="num">Start weight</th><th class="num">Weight now</th><th class="num">Return</th><th class="num">Contribution</th><th>Price</th></tr></thead>
-        <tbody>${(p.constituents || []).map((c) => `<tr><td class="mono">${esc(c.symbol)}</td><td>${esc(c.role)}</td><td class="num">${pct(c.exposure, 0)}</td><td class="num">${pct(c.start_weight)}</td><td class="num">${pct(c.weight_now)}</td><td class="num">${sgn(c.return_since_entry)}</td><td class="num">${sgn(c.contribution, 2)}</td><td><span class="chip p-${esc(c.price_status)}">${esc(c.price_status.replace("_", " "))}</span>${c.holding !== "held" && c.holding !== "not_bought" ? ` <span class="chip">${esc(c.holding)}</span>` : ""}</td></tr>`).join("")}</tbody></table></div></section>
+        <div class="scroll"><table><thead><tr><th>Company</th><th>Sector</th><th>Role</th><th class="num">Exposure</th><th class="num">Start weight</th><th class="num">Weight now</th><th class="num">Return</th><th class="num">Contribution</th><th>Price</th></tr></thead>
+        <tbody>${(p.constituents || []).map((c) => `<tr><td class="mono">${esc(c.symbol)}</td><td>${esc(c.sector || "—")}</td><td>${esc(c.role)}</td><td class="num">${pct(c.exposure, 0)}</td><td class="num">${pct(c.start_weight)}</td><td class="num">${pct(c.weight_now)}</td><td class="num">${sgn(c.return_since_entry)}</td><td class="num">${sgn(c.contribution, 2)}</td><td><span class="chip p-${esc(c.price_status)}">${esc(c.price_status.replace("_", " "))}</span>${c.holding !== "held" && c.holding !== "not_bought" ? ` <span class="chip">${esc(c.holding)}</span>` : ""}</td></tr>`).join("")}</tbody></table></div></section>
       <section class="panel"><h3>Evidence (latest, ${esc(day(t.evidence.latest_t))})</h3>
         ${t.evidence.latest.map((q) => `<div class="quote ${esc(q.role)}"><div><span class="role ${esc(q.role)}">${esc(ROLE[q.role] || q.role)}</span> <span class="mono">${esc(q.symbol)} · ${esc(q.date)} · ${esc(q.doc_type)}</span> ${q.url ? `<a href="${esc(q.url)}" rel="noopener" target="_blank">source</a>` : ""}</div>${esc(q.text)}…</div>`).join("")}
         <p class="muted">Analyst questions show what investors were asking about; they are not company statements.</p>
@@ -201,6 +210,8 @@ svg text { fill: var(--muted); font-size: 11px; font-family: var(--sans); }
       const latest = await getJSON("data/latest.json");
       base = "data/" + latest.path;
       index = await getJSON(base + "index.json");
+      U = index.universe || {};
+      B = index.benchmarks || U.benchmarks || B;
     } catch (e) {
       $("#app").innerHTML = `<h1>Theme Monitor</h1>${status ? "" : ""}<p class="banner bad">No published data yet (${esc(e.message)}). Run <span class="mono">themegraph monitor refresh</span>.</p>`;
       return;

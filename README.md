@@ -60,7 +60,11 @@ uv run themegraph monitor refresh                                  # live: price
 The monitor keeps every published theme with stable IDs and its history. A theme
 enters through the emergence rule or by persisting. For each theme it shows the
 emergence, theme-strength and market-strength measures separately, along with the
-companies, dated evidence, and an equal-weight basket index against SPY and SOXX.
+companies, dated evidence, and an equal-weight basket index against the configured
+benchmarks (SPY and SOXX for now). v1 covers the semiconductor pilot universe in
+`config/universe.yaml`: "strongest" means strongest among those companies, and
+adding companies is versioned so it never reads as theme growth or rewrites
+basket history (docs/MONITOR.md, "Universe changes").
 The dashboard reads `site/data/`, which any static host can serve. Method, feed
 schema and scheduling are in docs/MONITOR.md.
 

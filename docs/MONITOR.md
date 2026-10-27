@@ -179,6 +179,48 @@ A rerun with the same data changes nothing in the registry.
 Here `<sync site/>` is any static upload, for example
 `aws s3 sync site/ s3://bucket/ --delete` or `npx wrangler pages deploy site`.
 
+## Universe changes (`config/universe.yaml`, `monitor/coverage.py`)
+
+v1 covers the semiconductor pilot universe. **"Strongest" always means strongest
+among the monitored companies**, and the dashboard states which companies those
+are: universe name, version, company count by sector, benchmarks, and any
+recently added companies. Broader coverage is a later milestone; the boundaries
+are configuration, not code:
+
+| Configured in `config/universe.yaml` | Used by |
+|---|---|
+| `issuers` (symbol, segment, role, currency, `covered_from`, `covered_until`) | ingestion, topic detection, baskets |
+| `sectors` (segment → sector label) | theme sector spans, constituent sectors, the coverage statement |
+| `benchmarks` | ingestion and every comparison column and chart line (the first is the trading calendar) |
+| `name`, `description`, `version`, `changes` | the coverage statement and the feed |
+
+**Themes are not sectors.** A theme is a topic in the text; its companies can come
+from any sector, and each theme lists the sectors it spans (for example,
+AI build-out across memory, networking and power). Adjacent companies (role
+`adjacent`) are excluded from the research return baskets but **included** in the
+monitor's baskets, so the displayed company list and the calculated basket match.
+
+**Adding a company.** Add the issuer with `covered_from: <date>`, append a change
+`{version, date, added: [...]}`, set `version` to that change's version, then run
+`themegraph monitor refresh --documents`. `load_universe` refuses a change log that
+disagrees with the issuers' dates, or segments without a sector.
+
+**Removing a company.** Do not delete its entry; set `covered_until: <date>` and
+record `removed: [...]` in a change. Its history stays, and new basket versions no
+longer include it. Existing versions keep holding it under the basket rules.
+
+**Comparable companies.** Back-filled documents for a newly added company must not
+look like accelerating adoption. A company counts in growth, new-company counts
+and both routes into the inventory at month-end t, against the baseline 3 months
+earlier, only if it was covered at the baseline, is covered at t, and its first
+document is at least `coverage.min_history_months` (12) before t. Other companies
+are still shown on the theme, labelled *recently added*, and are bought into new
+basket versions from their own entry date. The emergence route also requires
+comparable-company growth of at least `coverage.min_growth_ratio` (1.25×) where a
+baseline exists. Measures and basket versions written before a change are never
+recomputed, and each measure row and basket version records the universe version
+it was computed under.
+
 ## Limits and decisions
 
 - **Survivorship.** The universe is today's list of companies, so reconstructed
