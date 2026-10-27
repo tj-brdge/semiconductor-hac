@@ -29,7 +29,8 @@ and inspected), **deferred** (not built).
 | Anchored topics (`--topic-mode anchored`: yearly discovery, monthly assignment, new topics from unclaimed text) | live dev runs at assign 0.45, 0.35 and 0.40. **No tested threshold met both confirmation criteria** (at 0.40, median per-window assigned share 0.475 vs window 0.583; median tightness 0.611 vs 0.632). The comparison uses the stated value 0.40 with that caveat; both modes need rerunning first (docs/EVIDENCE.md) |
 | Window vs anchored comparison (`themegraph compare`, declared criteria in DESIGN.md) | tested on synthetic data; **real comparison pending** (needs both runs rerun with the approved labels, then adjudication) |
 | Evaluation: detection, co-movement, buy-and-hold returns, dependence-grouped inference, adjudication | tested |
-| Holdout lifecycle (attempt logged before outcomes, one clean attempt, verification) | tested; the real holdout has **not** been run |
+| **Theme monitor** (`themegraph monitor refresh` / `serve`: persistent theme inventory, equal-weight basket indexes vs SPY/SOXX, static data feed and dashboard; docs/MONITOR.md) | tested end to end on labelled fixture data (two refreshes, rerun, failed refresh); **not yet run on live data** |
+| Holdout lifecycle (attempt logged before outcomes, one clean attempt, verification) | tested; the formal holdout run has **not** been done, but from 2026-10-27 the monitor reads 2022–2026 data, so that period counts as **inspected**, not untouched (DESIGN.md) |
 | Forward prediction log (`themegraph forward`) | tested; not yet used on live data |
 | Theme labels (`labels/themes.yaml`) | 17 entries approved 2026-10-25 and copied from `labels/themes_draft.yaml` (evidence and verification kept there); not frozen |
 | Layer ablations (text-only vs market-only), beta matching, follow-through/fundamentals layer | deferred |
@@ -46,6 +47,22 @@ The demo plants three themes in synthetic prices and transcripts: a real theme i
 the development period, a hype-only theme that never co-moves (negative control),
 and a real theme in the holdout period. The pipeline should find all three and
 show co-movement only for the real ones.
+
+## Theme monitor
+
+```bash
+uv run themegraph monitor refresh --fixtures --as-of 2021-06-30   # synthetic, labelled as such
+uv run themegraph monitor refresh --fixtures --as-of 2021-12-31   # second refresh: updates, no duplicates
+uv run themegraph monitor serve                                    # http://127.0.0.1:8780/
+uv run themegraph monitor refresh                                  # live: prices, themes, baskets, export
+```
+
+The monitor keeps every published theme with stable IDs and its history. A theme
+enters through the emergence rule or by persisting. For each theme it shows the
+emergence, theme-strength and market-strength measures separately, along with the
+companies, dated evidence, and an equal-weight basket index against SPY and SOXX.
+The dashboard reads `site/data/`, which any static host can serve. Method, feed
+schema and scheduling are in docs/MONITOR.md.
 
 ## Real data
 

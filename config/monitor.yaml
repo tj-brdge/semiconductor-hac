@@ -1,0 +1,44 @@
+# Theme monitor settings (docs/MONITOR.md). Separate from config/pipeline.yaml: the
+# research specification and its declared results are not changed by the monitor.
+# None of these values were chosen by looking at basket returns.
+
+bootstrap_snapshots: 24        # month-ends replayed on the first refresh (reconstructed)
+live_window_days: 35           # a theme published within this many days of its snapshot is "live"
+
+pool:                          # clusters tracked internally (not all are published)
+  min_issuers: 3               # companies with exposure >= basket.min_exposure
+  max_issuer_share: 0.5        # no single company with more than half the passages
+  prune_after_snapshots: 6     # unpublished clusters unseen this long are dropped
+
+match:                         # identity across months and refreshes
+  min_jaccard: 0.15            # shared member passages (consecutive windows overlap)
+  min_centroid_cosine: 0.85    # or same meaning (genre-centred member centroid)
+  lookback_snapshots: 6        # how long a theme can be absent and still be matched
+
+established:                   # the second route into the inventory
+  present: 6                   # present in at least this many ...
+  of_last: 9                   # ... of the last month-ends
+  min_issuers: 4
+  min_coherence_quantile: 0.5  # tightness at least the snapshot's median cluster
+
+status:
+  inactive_after_snapshots: 3  # absent this many month-ends in a row
+  compare_snapshots: 3         # mean share, last 3 vs previous 3
+  strengthening_ratio: 1.25
+  cooling_ratio: 0.8
+
+basket:
+  min_exposure: 0.05           # share of a company's window text in the theme
+  version_confirm_snapshots: 2 # a membership change must hold this long
+  stale_sessions: 5            # venue sessions without a close before a price is stale
+
+market:
+  benchmarks: [SPY, SOXX]
+  trend_threshold_pp: 5.0      # 3-month excess vs SPY changed by this much in a month
+
+evidence:
+  quotes: 5
+
+freshness:
+  price_stale_sessions: 3      # status turns stale when the newest close is older
+  documents_stale_days: 21

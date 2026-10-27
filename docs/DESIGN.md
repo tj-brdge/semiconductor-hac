@@ -905,6 +905,20 @@ Measured from `themegraph compare runs/cmp2-window runs/cmp2-anchored`:
   remaining manual decisions; separating them would require new runs and a new
   review.
 
+### Evaluation status change: monitoring (2026-10-27)
+
+The product is a theme monitor (docs/MONITOR.md) that reads data through the
+current date. That includes 2022-01-01..2026-10-31, the period reserved as the
+holdout.
+- **The holdout is inspected.** From 2026-10-27 that period counts as inspected,
+  not as an untouched holdout. A later formal holdout run would still be
+  reproducible, but must not be described as out-of-sample evidence.
+- **Clean evidence from now on:** the forward prediction log, and the monitor's
+  `live` index days (observed after the registry's first refresh).
+- **Research results stand.** The declared research results above are unchanged.
+  The window vs anchored comparison stays open as research. The monitor uses
+  window mode, the current default, and anchored mode remains experimental.
+
 ## 12. Open questions
 
 1. Include the adjacency ring (§4.2) in v1? Recommended: yes, for text only.
