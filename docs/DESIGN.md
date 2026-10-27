@@ -881,6 +881,30 @@ any decisions were seen:
 - **Limitation:** for a match entry the theme name is necessarily visible, so those
   judgements are not blind to the label. That is why they stay with the person.
 
+### Comparison round 1 (cmp2 runs, 2026-10-27): interim, adjudication incomplete
+
+Measured from `themegraph compare runs/cmp2-window runs/cmp2-anchored`:
+- **Blind agreement failed the bar** declared in advance: 45% (window) and 35%
+  (anchored), each on 20 blind entries, against a bar of 80%. So Claude's 91 and 15
+  bulk decisions do not count, and those entries must be decided by the person. The
+  bar is not lowered.
+- **Labelled themes (all decided by the person):** both runs confirm 1 of 6
+  (`memory_supercycle_2016`).
+  - Lead before consensus: 821 days (window) vs 424 days (anchored).
+  - Auto-matches rejected on reading: window `chip_shortage_auto_2021` and
+    `handset_5g_2019`; anchored `handset_5g_2019`.
+- **Negative controls (decided by the person):** window 0 confirmed false alarms;
+  anchored 1 (`crypto_mining_2021`).
+- **Not yet a result:** unmatched noise, duplicates and real-but-unlabelled counts
+  include Claude's decisions. The decision rule needs confirmed noise per year, so
+  no method is chosen yet.
+- **Open methodological question, raised by the user while reviewing:** analysts'
+  questions share the `transcript:qa` genre with management's answers.
+  `themegraph questions RUN` estimates their share in topics, candidates and quotes,
+  computed from the saved runs. Whether to separate them is to be decided before the
+  remaining manual decisions; separating them would require new runs and a new
+  review.
+
 ## 12. Open questions
 
 1. Include the adjacency ring (§4.2) in v1? Recommended: yes, for text only.

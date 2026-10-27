@@ -191,6 +191,15 @@ def cmd_review(a):
     serve(runs, port=a.port, model=a.model, open_browser=not a.no_browser)
 
 
+def cmd_questions(a):
+    """Share of analysts' questions in a run's Q&A text, topics, candidates and quotes."""
+    from .eval.diagnostics import question_share
+
+    for d in a.run_dirs:
+        print(d)
+        print(json.dumps(question_share(Path(d)), indent=1))
+
+
 def cmd_compare(a):
     """Side-by-side development comparison of two runs (declared criteria)."""
     from .eval.compare import compare, render
@@ -304,6 +313,9 @@ def main(argv=None):
                    help="Claude model for suggestions (needs the review extra)")
     s.add_argument("--no-browser", action="store_true")
     s.set_defaults(fn=cmd_review)
+    s = sub.add_parser("questions", help="share of analyst questions in a run's text")
+    s.add_argument("run_dirs", nargs="+")
+    s.set_defaults(fn=cmd_questions)
     s = sub.add_parser("compare", help="compare two development runs (window vs anchored)")
     s.add_argument("run_a")
     s.add_argument("run_b")
