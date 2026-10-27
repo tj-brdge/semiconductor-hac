@@ -303,3 +303,19 @@ def test_a_backdated_version_is_not_counted_as_observed():
     s = pd.DataFrame(perf["series"]).set_index("date")["basis"]
     assert s.loc[str(CAL[40].date())] == "reconstructed"
     assert perf["returns"]["live"]["start"] == str(CAL[50].date())
+
+
+def test_hindsight_path_is_separate_from_the_index_and_its_returns():
+    # Basket entered at session 30; A doubles over the whole calendar, B is flat.
+    t = _theme((str(CAL[29]), ["A", "B"]))
+    perf = theme_performance(t, _book(), ["SPY"], None)
+    h = perf["hindsight"]
+    assert h["end"] == perf["first_entry"] == perf["series"][0]["date"]
+    assert h["series"][-1]["theme"] == 100.0 and h["series"][-1]["SPY"] == 100.0
+    assert h["start"] == str(CAL[0].date()) and h["companies"] == ["A", "B"]
+    a0, a30 = 10.0, 10 + 10 * 30 / (len(CAL) - 1)
+    assert h["theme_return"] == pytest.approx((a30 / a0 + 1) / 2 - 1)
+    # The index and its returns are unchanged by it: they start at entry.
+    assert perf["series"][0]["theme"] == 100.0
+    assert perf["returns"]["full_period"]["start"] == perf["first_entry"]
+    assert all(r["date"] >= perf["first_entry"] for r in perf["series"])

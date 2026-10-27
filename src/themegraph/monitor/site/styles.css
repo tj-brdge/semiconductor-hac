@@ -200,6 +200,11 @@ main[aria-busy="true"] { opacity: .6; transition: opacity .2s; }
 .chart .base { stroke: var(--line-strong); stroke-dasharray: 3 3; }
 .chart .band { fill: var(--live-band); }
 .chart .band-label { fill: var(--teal); font: 600 11px var(--sans); }
+.chart .band-hind { fill: var(--sunk); }
+.chart .band-hind + .band-label, .chart .band-label.hind { fill: var(--muted); }
+.check { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; font-size: .92rem; color: var(--ink-2); cursor: pointer; }
+.check input { width: 20px; height: 20px; accent-color: var(--navy); }
+.hind-key { display: inline-block; width: 16px; height: 0; border-top: 2px dotted var(--series-1); vertical-align: middle; margin-right: 6px; }
 .chart .cross { stroke: var(--ink-2); stroke-width: 1; }
 .chart .event-guide { stroke: var(--navy); stroke-width: 1; stroke-dasharray: 2 3; opacity: .7; }
 .chart .event-arrow { fill: var(--navy); }

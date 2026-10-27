@@ -251,6 +251,14 @@ method & data (coverage, freshness, the last refresh's stages, release ID).
   versions, each at the session that acted on it. The basket starts when the theme
   is decided, so for a theme that entered by emergence the arrow is at the chart's
   first day; earlier events are listed under the chart, not drawn.
+- **Hindsight (opt-in).** A theme page can show the six months before the basket
+  started: the first basket's companies held equally from the window's first close,
+  scaled to meet the basket at 100 on its entry close, with the benchmarks on the
+  same basis, as a dotted line on a grey band. The companies were chosen with
+  information from the entry date, so nobody could have held this; it lives in
+  `performance.hindsight`, separate from `series` and `returns`, and never enters a
+  return figure or the headline numbers (`baskets.hindsight`). It answers "had these
+  stocks already moved before the theme was found?"
 - Discussion measures and stock measures are shown side by side, never combined.
   "Relative performance improving/weakening" (feed: `market_gaining`/`losing`):
   the basket's 3-month return minus the first benchmark's changed by at least
