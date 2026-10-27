@@ -200,6 +200,31 @@ def cmd_questions(a):
         print(json.dumps(question_share(Path(d)), indent=1))
 
 
+def cmd_monitor(a):
+    """Theme monitor: refresh the inventory and data feed, or serve the dashboard."""
+    from .monitor import refresh as M
+
+    if a.action == "refresh":
+        as_of = dt.date.fromisoformat(a.as_of) if a.as_of else None
+        if a.fixtures and as_of is None:
+            sys.exit("--fixtures needs --as-of (fixture data ends 2021-12-31)")
+        st = M.refresh(Path(a.state), Path(a.site), fixtures=a.fixtures, as_of=as_of,
+                       ingest_prices=not a.no_ingest, ingest_documents=a.documents)
+        print(json.dumps({k: st[k] for k in ("ok", "errors", "published_release",
+                                             "data_as_of", "stale")}, indent=1,
+                         default=str))
+        sys.exit(0 if st["ok"] else 1)
+    import functools
+    import http.server
+    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=a.site)
+    with http.server.ThreadingHTTPServer(("127.0.0.1", a.port), handler) as httpd:
+        print(f"Dashboard: http://127.0.0.1:{a.port}/  (Ctrl+C to stop)")
+        try:
+            httpd.serve_forever()
+        except KeyboardInterrupt:
+            pass
+
+
 def cmd_compare(a):
     """Side-by-side development comparison of two runs (declared criteria)."""
     from .eval.compare import compare, render
@@ -313,6 +338,19 @@ def main(argv=None):
                    help="Claude model for suggestions (needs the review extra)")
     s.add_argument("--no-browser", action="store_true")
     s.set_defaults(fn=cmd_review)
+    s = sub.add_parser("monitor", help="theme monitor: refresh the data feed or serve it")
+    s.add_argument("action", choices=["refresh", "serve"])
+    s.add_argument("--state", default=str(ROOT / "monitor_state"),
+                   help="registry directory (persistent)")
+    s.add_argument("--site", default=str(ROOT / "site"), help="dashboard directory")
+    s.add_argument("--as-of", help="data cutoff date (default: today)")
+    s.add_argument("--fixtures", action="store_true",
+                   help="synthetic labelled fixture data instead of the store")
+    s.add_argument("--no-ingest", action="store_true", help="skip the price download")
+    s.add_argument("--documents", action="store_true",
+                   help="also download transcripts and filings (weekly job)")
+    s.add_argument("--port", type=int, default=8780)
+    s.set_defaults(fn=cmd_monitor)
     s = sub.add_parser("questions", help="share of analyst questions in a run's text")
     s.add_argument("run_dirs", nargs="+")
     s.set_defaults(fn=cmd_questions)

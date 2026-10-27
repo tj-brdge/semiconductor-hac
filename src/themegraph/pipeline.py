@@ -77,6 +77,7 @@ class RunContext:
     timings: dict = field(default_factory=dict)  # seconds per stage
     diagnostics: dict = field(default_factory=dict)  # eval/diagnostics.py
     coverage_samples: str = ""  # text-only reading sample (coverage_samples.md)
+    vectors: np.ndarray | None = None  # passage embeddings aligned with `passages`
     embedder_id: str = ""
     _aff_cache: dict = field(default_factory=dict)
 
@@ -173,7 +174,7 @@ def build(prices: pd.DataFrame, docs: pd.DataFrame, cfg: PipelineConfig,
     exposures, totals, active, best, assigned, win_rows = [], {}, {}, {}, [], []
     if len(docs):
         p, V = prepare_passages(docs, cfg, embedder, cache_dir, log)
-        ctx.passages = p
+        ctx.passages, ctx.vectors = p, V
         anchored = cfg.text.topic_mode == "anchored"
         if anchored:
             cache = ClusterCache(cache_dir / "clusters", embedder.model_id, cfg.text,
