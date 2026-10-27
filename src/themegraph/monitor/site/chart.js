@@ -46,9 +46,11 @@ export function sparkline({ dates, theme, benchmark, liveFrom, label }) {
  * rows:   [{date, basis, v: {key: value}}] already rebased by the caller
  * series: [{key, label, color, dash, width}]
  * format: value -> text for the readout
+ * markers: [{index, label}] events drawn as arrows at rows[index] (the caller maps
+ *          each event to its session and leaves out events outside the rows)
  * Returns {destroy()}.
  */
-export function lineChart(host, { rows, series, format, title, announce }) {
+export function lineChart(host, { rows, series, format, title, announce, markers = [] }) {
   host.textContent = "";
   host.classList.add("chart");
   const svg = el("svg", { tabindex: "0", role: "group", "aria-label": `${title}. Use the left and right arrow keys to read values by date.` }, host);
@@ -57,12 +59,14 @@ export function lineChart(host, { rows, series, format, title, announce }) {
   tip.hidden = true;
   host.appendChild(tip);
   let idx = null, geom = null;
+  const at = new Map(); // row index -> event labels (same-session events merge)
+  for (const m of markers) at.set(m.index, [...(at.get(m.index) || []), m.label]);
 
   function draw() {
     const width = Math.max(host.clientWidth, 280);
     const narrow = width < 560;
     const H = narrow ? 230 : 300;
-    const M = { l: 40, r: narrow ? 10 : 92, t: 12, b: 28 };
+    const M = { l: 40, r: narrow ? 10 : 92, t: at.size ? 34 : 12, b: 28 };
     svg.setAttribute("viewBox", `0 0 ${width} ${H}`);
     svg.setAttribute("height", H);
     svg.textContent = "";
@@ -118,6 +122,21 @@ export function lineChart(host, { rows, series, format, title, announce }) {
         t.textContent = `${e.s.label} ${last.v[e.s.key].toFixed(0)}`;
       }
     }
+    // Event arrows: a downward arrow above the plot, a dashed guide to the axis,
+    // and a label (stacked when events are close together).
+    const ev = el("g", { class: "events" }, svg);
+    let prevX = -Infinity, level = 0;
+    for (const [i, labels] of [...at.entries()].sort((a, b) => a[0] - b[0])) {
+      const x = X(i);
+      level = x - prevX < 120 ? (level + 1) % 2 : 0;
+      prevX = x;
+      el("line", { class: "event-guide", x1: x, x2: x, y1: M.t, y2: H - M.b }, ev);
+      el("path", { class: "event-arrow", d: `M${x - 5},${M.t - 10} L${x + 5},${M.t - 10} L${x},${M.t - 2} Z` }, ev);
+      const right = x < width - M.r - 140;
+      const t = el("text", { class: "event-label", x: right ? x + 8 : x - 8, y: M.t - 14 - level * 13,
+        "text-anchor": right ? "start" : "end" }, ev);
+      t.textContent = labels.join(" · ");
+    }
     const cross = el("line", { class: "cross", y1: M.t, y2: H - M.b, visibility: "hidden" }, svg);
     const dots = series.map((s) => el("circle", { r: 4, fill: s.color, stroke: "var(--surface)", "stroke-width": 2, visibility: "hidden" }, svg));
     geom.cross = cross; geom.dots = dots;
@@ -139,6 +158,13 @@ export function lineChart(host, { rows, series, format, title, announce }) {
     d.textContent = `${fmtDate(r.date)} · ${r.basis === "live" ? "live" : "simulated"}`;
     tip.appendChild(d);
     const parts = [];
+    for (const label of at.get(idx) || []) {
+      const e = document.createElement("div");
+      e.className = "e";
+      e.textContent = `▼ ${label}`;
+      tip.appendChild(e);
+      parts.push(label);
+    }
     for (const s of series) {
       const row = document.createElement("div");
       row.className = "r";

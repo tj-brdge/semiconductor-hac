@@ -201,6 +201,11 @@ main[aria-busy="true"] { opacity: .6; transition: opacity .2s; }
 .chart .band { fill: var(--live-band); }
 .chart .band-label { fill: var(--teal); font: 600 11px var(--sans); }
 .chart .cross { stroke: var(--ink-2); stroke-width: 1; }
+.chart .event-guide { stroke: var(--navy); stroke-width: 1; stroke-dasharray: 2 3; opacity: .7; }
+.chart .event-arrow { fill: var(--navy); }
+.chart .event-label { fill: var(--navy); font: 600 11.5px var(--sans); }
+.tip .e { color: var(--navy); font-weight: 650; margin-bottom: 4px; }
+.event-key { color: var(--navy); font-size: .75rem; margin-right: 6px; }
 .tip { position: absolute; pointer-events: none; background: var(--surface); border: 1px solid var(--line-strong);
   border-radius: 8px; padding: 8px 10px; font-size: .82rem; box-shadow: 0 4px 14px rgba(0,0,0,.12); min-width: 170px; z-index: 2; }
 .tip .d { color: var(--muted); margin-bottom: 4px; }

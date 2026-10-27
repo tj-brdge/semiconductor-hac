@@ -246,6 +246,11 @@ method & data (coverage, freshness, the last refresh's stages, release ID).
   A theme without that much price history shows how much it has instead.
 - Simulated and live returns are labelled everywhere ("Simulated", "Live",
   "Simulated + live"); live days are shaded on charts.
+- Theme charts mark events with arrows: the first month the emergence rule flagged
+  the theme, the month it entered the monitor (when different), and later basket
+  versions, each at the session that acted on it. The basket starts when the theme
+  is decided, so for a theme that entered by emergence the arrow is at the chart's
+  first day; earlier events are listed under the chart, not drawn.
 - Discussion measures and stock measures are shown side by side, never combined.
   "Relative performance improving/weakening" (feed: `market_gaining`/`losing`):
   the basket's 3-month return minus the first benchmark's changed by at least

@@ -293,8 +293,9 @@ async function themePage(id, token) {
       <div class="section-head"><h2 id="h-perf">Equal-weight basket vs benchmarks</h2>
         ${p.status === "ok" ? `<div class="seg" role="group" aria-label="Chart range">${RANGES.map(([k, l]) => `<button type="button" data-range="${k}">${l}</button>`).join("")}</div>` : ""}</div>
       ${p.status === "ok" ? `<div class="kpis" id="kpis"></div>
-        <div class="legend"><span><i class="key" style="border-top-color:var(--series-1);border-top-width:3px"></i>Theme basket</span>${B.map((b, i) => `<span><i class="key dash" style="border-top-color:var(--series-${i + 2})"></i>${esc(b)}</span>`).join("")}<span><i class="band-key"></i>Live (observed)</span><span class="muted">Unshaded: simulated</span></div>
+        <div class="legend"><span><i class="key" style="border-top-color:var(--series-1);border-top-width:3px"></i>Theme basket</span>${B.map((b, i) => `<span><i class="key dash" style="border-top-color:var(--series-${i + 2})"></i>${esc(b)}</span>`).join("")}<span><i class="band-key"></i>Live (observed)</span><span><span class="event-key" aria-hidden="true">▼</span>Event</span><span class="muted">Unshaded: simulated</span></div>
         <div id="chart"></div><p class="sr" aria-live="polite" id="readout"></p>
+        <p class="small muted" id="events-note"></p>
         <p class="small muted">${seriesNote} Index = 100 at the start of the selected range. ${esc(p.price_basis)}.</p>
         <details><summary>Chart data as a table</summary><div class="body table-wrap" id="chart-table"></div></details>`
         : `<p class="empty">${esc(p.note || "No prices yet.")}</p>`}
@@ -366,6 +367,18 @@ function mountChart(t) {
   const p = t.performance, B = S.B, all = p.series;
   const hasLive = all.some((r) => r.basis === "live");
   let range = all.length > 252 ? "1y" : "all";
+  // Events on the chart, each at the first session on or after its date.
+  const firstFlag = t.measures.find((m) => m.flagged_comparable ?? m.flagged);
+  const events = [];
+  if (firstFlag) events.push({ date: firstFlag.t, label: "First flagged as emerging" });
+  if (!firstFlag || t.published_snapshot.slice(0, 10) !== firstFlag.t.slice(0, 10))
+    events.push({ date: t.published_snapshot, label: "Entered the monitor" });
+  t.basket_versions.slice(1).forEach((v) => events.push({ date: p.series.find((r) => r.date >= v.entry_after.slice(0, 10))?.date || v.entry_after, label: `Basket v${v.version}`, entry: true }));
+  // A month-end event belongs to the session that acted on it: the next one.
+  // Events before the first basket's month-end happened before there was a basket.
+  const sessionOf = (e) => e.date.slice(0, 10) < t.basket_versions[0].snapshot.slice(0, 10) ? -1
+    : all.findIndex((r) => (e.entry ? r.date >= e.date.slice(0, 10) : r.date > e.date.slice(0, 10)));
+  events.forEach((e) => { e.at = sessionOf(e); });
   const keys = [{ key: "theme", label: "Basket", color: "var(--series-1)", width: 2.75 },
     ...B.map((b, i) => ({ key: b, label: b, color: `var(--series-${i + 2})`, dash: "6 4", width: 1.75 }))];
   const draw = () => {
@@ -378,7 +391,12 @@ function mountChart(t) {
     const rows = slice.map((r) => ({ date: r.date, basis: r.basis, v: Object.fromEntries(keys.map((k) => [k.key, r[k.key] == null || !base[k.key] ? null : (100 * r[k.key]) / base[k.key]])) }));
     S.chart?.destroy();
     S.chart = lineChart($("#chart"), { rows, series: keys, format: (v) => v.toFixed(1), title: `Basket and benchmarks, ${spec[1]} range, index 100 at ${fmtDate(rows[0].date)}`,
-      announce: (s) => { $("#readout").textContent = s; } });
+      announce: (s) => { $("#readout").textContent = s; },
+      markers: events.filter((e) => e.at >= start).map((e) => ({ index: e.at - start, label: e.label })) });
+    const early = events.filter((e) => e.at >= 0 && e.at < start);
+    $("#events-note").textContent = events.length ? [
+      ...events.map((e) => `${e.label}: ${fmtDate(e.date)}${e.at === 0 ? " (the basket starts here)" : e.at === -1 ? " (before the basket existed, so not on the chart)" : ""}`),
+      early.length ? `${early.length === 1 ? "One event is" : "Some events are"} before this range; choose All to see ${early.length === 1 ? "it" : "them"}` : ""].filter(Boolean).join(". ") + "." : "";
     const last = rows[rows.length - 1], kinds = new Set(slice.slice(1).map((r) => r.basis));
     const basis = kinds.size === 1 ? [...kinds][0] : "mixed";
     const ret = (k) => last.v[k] == null ? null : last.v[k] / 100 - 1;
