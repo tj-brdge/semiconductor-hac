@@ -919,6 +919,34 @@ holdout.
   The window vs anchored comparison stays open as research. The monitor uses
   window mode, the current default, and anchored mode remains experimental.
 
+### Market layer v2 (specification change, 2026-10-28)
+
+Decided by the project owner on 2026-10-28, before any result under it was seen.
+`market.estimator: single_index` replaces v1 (`residual_lw`) in config/pipeline.yaml:
+
+| | v1 (to 2026-10-27) | v2 |
+|---|---|---|
+| Returns | daily log returns summed onto the SPY calendar | simple daily returns linked geometrically onto the SPY calendar (each stock's own sessions compounded into the calendar step) |
+| Market removed by | OLS residuals on SPY and SOXX within each window | the single-index model on SPY |
+| Covariance | Ledoit-Wolf shrinkage of standardised residuals toward the identity | Ledoit-Wolf (2003) shrinkage of the return covariance toward the single-index model |
+| Correlation used | correlation of the residuals | correlation of what the shrunk covariance leaves beyond the index |
+
+Why: SOXX in the residual model removed the co-movement among semiconductor stocks
+that a semiconductor theme should show, and does not apply to other sectors.
+Clustering (average-linkage HAC on sqrt(2(1 - correlation)), cophenetic affinity)
+and every use of affinity are unchanged.
+
+Property to keep in mind: with a single-index target, every off-diagonal
+beyond-index correlation equals the sample one times (1 - shrinkage). The intensity
+is high in short windows (about 0.9 for 63-126 sessions with this universe size), so
+levels are small. Rankings, and comparisons against random baskets of the same
+segment mix, are unaffected; those are what the research tests and the dashboard use.
+
+Results declared before this change (the comparison rounds, the threshold
+confirmations and the adjudications) were produced with v1 and stand as recorded;
+they are not recomputed. Runs record the estimator in their configuration hash.
+`estimator: residual_lw` reproduces v1.
+
 ## 12. Open questions
 
 1. Include the adjacency ring (§4.2) in v1? Recommended: yes, for text only.

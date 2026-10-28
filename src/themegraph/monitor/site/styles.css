@@ -189,6 +189,8 @@ main[aria-busy="true"] { opacity: .6; transition: opacity .2s; }
 .dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: .92rem; }
 .dl dt { color: var(--muted); }
 .dl dd { margin: 0; }
+.together { border-top: 1px solid var(--line); padding-top: 14px; display: grid; gap: 8px; }
+.together .plain { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: .92rem; }
 
 /* Chart */
 .chart { position: relative; width: 100%; }

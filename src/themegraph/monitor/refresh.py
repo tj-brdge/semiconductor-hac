@@ -34,6 +34,7 @@ from ..config import file_sha256, load_pipeline, load_universe
 from ..market.returns import price_panel
 from .baskets import PriceBook, theme_performance
 from .clusters import SnapshotReader
+from .comovement import trading_together
 from .config import MonitorConfig, load_monitor
 from .coverage import Coverage
 from .export import price_date, publish, theme_document, write_status
@@ -348,11 +349,21 @@ def _value(reg: Registry, d: dict, mcfg: MonitorConfig, box: dict) -> str:
     book = price_book(d["prices"], d["universe"], mcfg)
     snaps = reg.data.get("snapshots", [])
     docs = []
+    perfs = {}
     for th in reg.published():
         sb = (th.get("sector_benchmark") or {}).get("symbol")
         bench = mcfg.market.benchmarks + ([sb] if sb and sb not in mcfg.market.benchmarks else [])
-        perf = theme_performance(th, book, bench, reg.data.get("go_live"))
-        docs.append(theme_document(th, perf, snaps, mcfg))
+        perfs[th["id"]] = theme_performance(th, book, bench, reg.data.get("go_live"))
+    c = mcfg.comovement
+    together = trading_together(
+        book, d["universe"],
+        {k: [x["symbol"] for x in p["constituents"]] for k, p in perfs.items()
+         if p.get("status") == "ok"},
+        c.window_sessions, c.min_observations_share, c.null_draws, c.index)
+    for th in reg.published():
+        doc = theme_document(th, perfs[th["id"]], snaps, mcfg)
+        doc["trading_together"] = together.get(th["id"])
+        docs.append(doc)
     box.update(book=book, docs=docs)
     return f"{len(docs)} themes valued through {price_date(book)}"
 

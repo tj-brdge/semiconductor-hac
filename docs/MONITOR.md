@@ -312,6 +312,29 @@ technology pilot (docs/TECH_PILOT_V2.md, `monitor_state-tech-v2/`, `site-tech-v2
 and counts of provider requests, raw-cache hits, embeddings computed and reused, and
 cluster windows computed and reused (`themegraph/usage.py`; counts only).
 
+## Trading together (`monitor/comovement.py`)
+
+Whether a theme's stocks move as a group beyond the market. Prices only; it is
+shown beside the basket's returns and never affects which themes are published.
+
+- Returns: simple daily returns on the benchmark calendar, linked geometrically
+  (a company's last close is carried over days without one, so a move across a gap
+  lands on its next close and compounds to the true price change).
+- Covariance: all monitored companies with their own close on at least 90% of the
+  sessions, over the last 126 sessions and the 126 before, shrunk toward a
+  single-index model on SPY (Ledoit & Wolf 2003, `market.hac.single_index_shrinkage`,
+  the same estimator as the research market layer v2).
+- Measure: the average correlation beyond SPY among the companies in the current
+  basket, and its percentile among 1,000 random baskets of the same size and
+  segment mix (`eval.comovement.matched_null_sets`, seeded per theme so reruns
+  agree). The page reads "Trading together" at the 90th percentile or above, "Less
+  connected than usual" at the 10th or below, "Not unusual" otherwise.
+- With a single-index target every beyond-index correlation is the sample value
+  times (1 - shrinkage), and the shrinkage is high over six months, so the level is
+  small and only the comparison is used for the verdict. When most random-basket
+  slots cannot come from the theme's own segments, the page says that sector
+  co-movement may explain part of it.
+
 ## Universe changes (`config/universe.yaml`, `monitor/coverage.py`)
 
 v1 covers the semiconductor pilot universe. **"Strongest" always means strongest

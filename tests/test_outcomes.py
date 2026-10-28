@@ -100,9 +100,11 @@ def test_correlation_survives_staggered_gaps():
     for i, c in enumerate("ABCD"):  # every row misses one column; each column 75% present
         rets.iloc[i::4, rets.columns.get_loc(c)] = np.nan
     assert rets[list("ABCD")].dropna().empty  # the old row-dropping had nothing left
-    snap = market_snapshot(rets, idx[-1], 60, cfg.model_copy(
-        update={"min_observations_share": 0.7}), list("ABCD"), ["S"])
-    assert snap["affinity"] is not None
+    for est in ("residual_lw", "single_index"):  # v1 and v2 (index S) both cope
+        snap = market_snapshot(rets, idx[-1], 60, cfg.model_copy(
+            update={"min_observations_share": 0.7, "estimator": est, "index": "S"}),
+            list("ABCD"), ["S"])
+        assert snap["affinity"] is not None, est
 
 
 def _flat_panel(n=30, members=("A", "B", "C", "D", "E", "ACQ")):

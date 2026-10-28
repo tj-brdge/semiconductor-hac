@@ -228,6 +228,30 @@ function allThemes(params) {
 // -- one theme -----------------------------------------------------------------------
 const RANGES = [["3m", "3M", 63], ["6m", "6M", 126], ["1y", "1Y", 252], ["all", "All", null], ["live", "Live", null]];
 
+function togetherHTML(tt) {
+  if (!tt) return "";
+  const names = S.index.benchmark_labels || {};
+  const idx = `${tt.index}${names[tt.index] ? ` (${names[tt.index]})` : ""}`;
+  const pctText = (x) => `${Math.round(x.percentile * 100)}%`;
+  const line = (x, when) => {
+    if (!x) return `<li>${when}: not enough price history.</li>`;
+    if (x.percentile == null) return `<li>${when}: ${esc(x.note || "not enough price history")}.</li>`;
+    return `<li>${when} (${esc(fmtDate(x.start))} – ${esc(fmtDate(x.end))}): the ${x.companies} companies moved together more than <b>${pctText(x)}</b> of ${x.random_baskets} random baskets with the same mix of segments.</li>`;
+  };
+  const n = tt.now, b = tt.before;
+  const verdict = !n || n.percentile == null ? "" : n.percentile >= 0.9 ? "Trading together"
+    : n.percentile <= 0.1 ? "Less connected than usual" : "Not unusual";
+  return `<div class="together"><h3>Trading together, beyond the market</h3>
+    <p class="small muted">Whether these stocks move as a group once the part explained by ${esc(idx)} is removed. Prices only: separate from how much the theme is discussed and from the basket's return.</p>
+    ${verdict ? `<p><b>${verdict}</b></p>` : ""}
+    ${n && n.same_segment_share != null && n.same_segment_share < 0.5 ? `<p class="small muted">Few other monitored companies share these segments, so most random baskets come from other segments (${Math.round(n.same_segment_share * 100)}% matched). Part of this may be ordinary sector co-movement rather than the theme.</p>` : ""}
+    <ul class="plain">${line(n, "Last 6 months")}${line(b, "6 months before")}</ul>
+    ${n && n.percentile != null ? `<details><summary>How this is measured</summary><div class="body prose small">
+      <p>Daily returns of every monitored company with its own close on at least 90% of the sessions, linked across days without a close. Their covariance is shrunk toward a single-index model on ${esc(tt.index)} (Ledoit and Wolf, 2003; shrinkage ${n.shrinkage.toFixed(2)} for the last 6 months), and each pair's correlation beyond what ${esc(tt.index)} explains is averaged over the basket: ${n.excess_corr.toFixed(3)} now${b && b.excess_corr != null ? `, ${b.excess_corr.toFixed(3)} before` : ""}.</p>
+      <p>With this model every pair's level is scaled down by the same factor (one minus the shrinkage), so the comparison with random baskets of the same size and segment mix is the measure, not the level. ${n.left_out?.length ? `Left out for too few closes: ${esc(n.left_out.join(", "))}.` : ""}</p></div></details>` : ""}
+  </div>`;
+}
+
 function benchText(t, B) {
   const names = S.index.benchmark_labels || {};
   const sb = t.sector_benchmark || {};
@@ -335,7 +359,8 @@ async function themePage(id, token) {
         ${p.status === "ok" ? `<div class="table-wrap"><table class="stack"><thead><tr><th>Period</th><th class="num">Basket</th>${B.map((b) => `<th class="num">${esc(b)}</th>`).join("")}${B.map((b) => `<th class="num">vs ${esc(b)}</th>`).join("")}</tr></thead>
           <tbody>${retRow("3m", "3 months")}${retRow("6m", "6 months")}${retRow("12m", "12 months")}${rec ? retRow("reconstructed", "Simulated period") : ""}${live ? retRow("live", "Live period") : ""}${retRow("full_period", "Whole history")}</tbody></table></div>
           <p class="small muted">pts: percentage points (basket return minus benchmark return).
-          ${trend.trend ? `Relative performance is <b>${esc(trend.trend === "gaining" ? "improving" : trend.trend === "losing" ? "weakening" : "steady")}</b>: the 3-month return vs ${esc(B[0])} is ${num(trend.excess_3m_pp, 1)} pts, ${num(trend.change_pp_1m, 1)} pts from the previous month-end.` : ""}</p>`
+          ${trend.trend ? `Relative performance is <b>${esc(trend.trend === "gaining" ? "improving" : trend.trend === "losing" ? "weakening" : "steady")}</b>: the 3-month return vs ${esc(B[0])} is ${num(trend.excess_3m_pp, 1)} pts, ${num(trend.change_pp_1m, 1)} pts from the previous month-end.` : ""}</p>
+          ${togetherHTML(t.trading_together)}`
         : `<p class="empty">${esc(p.note || "No prices yet.")}</p>`}
       </section>
     ${p.status === "ok" ? `<section class="panel" aria-labelledby="h-cons"><h2 id="h-cons">Companies in the basket</h2>

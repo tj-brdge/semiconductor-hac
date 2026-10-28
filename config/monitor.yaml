@@ -52,3 +52,9 @@ labels:                        # readable titles and summaries (docs/MONITOR.md,
   writer: auto                 # auto | claude | keywords; auto uses Claude only when credentials exist
   model: claude-opus-5-5
   max_per_refresh: 40          # labels are written once per theme and keyword name
+
+comovement:                    # "trading together" (docs/MONITOR.md); prices only, never a route in
+  window_sessions: 126         # last six months, compared with the six months before
+  min_observations_share: 0.9  # a company needs its own close on 90% of the sessions
+  null_draws: 1000             # random baskets with the same segment mix
+  index: SPY                   # single-index model (Ledoit & Wolf 2003)
