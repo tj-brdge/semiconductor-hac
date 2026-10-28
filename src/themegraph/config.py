@@ -39,6 +39,14 @@ class Market(_Strict):
     windows: list[int]
     linkage: Literal["average", "complete", "single"] = "average"
     min_observations_share: float = 0.9
+    # How "trading together" is estimated (DESIGN.md, "Market layer v2"):
+    # - single_index: simple daily returns linked geometrically onto the benchmark
+    #   calendar; covariance shrunk toward a single-index model on `index`
+    #   (Ledoit & Wolf 2003); correlation of what remains beyond the index.
+    # - residual_lw (v1, kept to reproduce earlier results): log returns, OLS
+    #   residuals on `residualize_against`, Ledoit-Wolf shrinkage to the identity.
+    estimator: Literal["single_index", "residual_lw"] = "residual_lw"
+    index: str = "SPY"
 
 
 class Macro(_Strict):

@@ -21,6 +21,11 @@ market:
   windows: [63, 126]
   linkage: average
   min_observations_share: 0.9
+  # Market layer v2 (2026-10-28, DESIGN.md "Market layer v2"): simple daily returns
+  # linked geometrically, single-index shrinkage on SPY, co-movement beyond SPY.
+  # residualize_against is used only by the v1 estimator (residual_lw).
+  estimator: single_index
+  index: SPY
 
 macro:
   factors: [us2y, us10y, dxy, wti, cpi]

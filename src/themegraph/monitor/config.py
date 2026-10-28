@@ -82,6 +82,14 @@ class Labels(_S):
     max_per_refresh: int = 40
 
 
+class Comovement(_S):
+    """Trading together (monitor/comovement.py): single-index shrinkage on `index`."""
+    window_sessions: int = 126
+    min_observations_share: float = 0.9
+    null_draws: int = 1000
+    index: str = "SPY"
+
+
 class MonitorConfig(_S):
     bootstrap_snapshots: int = 24
     live_window_days: int = 35
@@ -95,6 +103,7 @@ class MonitorConfig(_S):
     evidence: Evidence = Evidence()
     freshness: Freshness = Freshness()
     labels: Labels = Labels()
+    comovement: Comovement = Comovement()
 
 
 def _merge(base: dict, over: dict) -> dict:

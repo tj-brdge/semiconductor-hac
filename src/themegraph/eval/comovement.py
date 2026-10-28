@@ -41,11 +41,12 @@ def matched_null_sets(issuers: list[str], pool: list[str], segments: dict[str, s
     for s in issuers:
         need[segments.get(s, "?")] = need.get(segments.get(s, "?"), 0) + 1
     out, same = [], 0
+    by_seg = {seg: [s for s in outsiders if segments.get(s, "?") == seg] for seg in need}
     for _ in range(draws):
         left = set(outsiders)
         pick = []
         for seg in sorted(need):
-            cands = sorted(s for s in left if segments.get(s, "?") == seg)
+            cands = [s for s in by_seg[seg] if s in left]  # sorted, as outsiders are
             n = min(need[seg], len(cands))
             chosen = list(rng.choice(cands, n, replace=False)) if n else []
             pick += chosen

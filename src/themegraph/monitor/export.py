@@ -152,6 +152,8 @@ def summary_row(doc: dict, bench: str) -> dict:
                    "live_from": perf.get("live_from"), "trend": doc["market_trend"],
                    "coverage_latest": perf.get("coverage_latest"),
                    "n_constituents": len(perf.get("constituents", [])),
+                   "trading_together_pct": ((doc.get("trading_together") or {}).get("now")
+                                            or {}).get("percentile"),
                    "spark": spark(perf, bench)},
     }
 
