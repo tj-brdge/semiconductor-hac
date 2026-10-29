@@ -91,7 +91,7 @@ class Comovement(_S):
 
 
 class MonitorConfig(_S):
-    bootstrap_snapshots: int = 24
+    bootstrap_snapshots: int = 120
     live_window_days: int = 35
     pool: Pool = Pool()
     match: Match = Match()

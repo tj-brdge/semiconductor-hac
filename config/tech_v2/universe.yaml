@@ -11,7 +11,7 @@
 #
 # Selection criteria (not returns): primary business in one of the three
 # categories; listed on NYSE or Nasdaq today; periodic SEC reports (10-K/10-Q or
-# 20-F) since at least 2023-10-27, so the history covers the 24-month replay and the
+# 20-F) since at least 2023-10-27, so the history covers two years of the replay and the
 # 12-month minimum before a company counts in growth comparisons; the filer's
 # history is the same business. Exclusions and gaps are listed in the doc.
 extends: ../universe.yaml
@@ -33,63 +33,65 @@ sectors:
   data_cloud: Data and cloud software
 
 changes:
+  # Built with full history (docs/TECH_PILOT_V2.md, "How the pilot is built"): the
+  # 51 companies are covered from the start, like the original 76, so the first
+  # refresh replays 120 month-ends (10 years) with all 127 companies (labelled simulated).
   - version: "2"
-    date: 2026-11-01
-    note: "Technology pilot v2: 51 software, cybersecurity and data/cloud companies added"
-    added: [CRM, ADBE, NOW, INTU, WDAY, ADSK, SAP, TEAM, HUBS, DOCU, ZM, PAYC, PCTY, PTC, MNDY, PEGA, BOX, DBX, NICE, WK, BL, PANW, CRWD, FTNT, ZS, NET, OKTA, S, QLYS, TENB, RPD, VRNS, CHKP, GEN, AKAM, SNOW, DDOG, MDB, PLTR, ESTC, DT, TWLO, GTLB, NTNX, PATH, FROG, DOCN, FSLY, IBM, TDC, AI]
+    date: 2026-10-29
+    note: "Technology pilot v2: 51 software, cybersecurity and data/cloud companies, with full history"
 
 issuers:
   # --- application software (horizontal enterprise platforms)
-  - {symbol: CRM, segment: app_software, role: core, cik: 1108524, covered_from: 2026-11-01}  # Salesforce, Inc.; NYSE; SIC 7372; 10-K+10-Q since 2004-08-25
-  - {symbol: ADBE, segment: app_software, role: core, cik: 796343, covered_from: 2026-11-01}  # ADOBE INC.; Nasdaq; SIC 7372; 10-K+10-Q since 1995-02-17
-  - {symbol: NOW, segment: app_software, role: core, cik: 1373715, covered_from: 2026-11-01}  # ServiceNow, Inc.; NYSE; SIC 7372; 10-K+10-Q since 2012-08-10
-  - {symbol: INTU, segment: app_software, role: core, cik: 896878, covered_from: 2026-11-01}  # INTUIT INC.; Nasdaq; SIC 7372; 10-K+10-Q since 1996-06-12
-  - {symbol: WDAY, segment: app_software, role: core, cik: 1327811, covered_from: 2026-11-01}  # Workday, Inc.; Nasdaq; SIC 7374; 10-K+10-Q since 2012-12-07
-  - {symbol: ADSK, segment: app_software, role: core, cik: 769397, covered_from: 2026-11-01}  # Autodesk, Inc.; Nasdaq; SIC 7372; 10-K+10-Q since 1995-05-01
-  - {symbol: SAP, segment: app_software, role: core, cik: 1000184, covered_from: 2026-11-01}  # SAP SE; NYSE; SIC 7372; 20-F since 1999-05-18
-  - {symbol: TEAM, segment: app_software, role: core, cik: 1650372, covered_from: 2026-11-01}  # Atlassian Corp; Nasdaq; SIC 7372; 10-K+10-Q+20-F since 2016-08-18
-  - {symbol: HUBS, segment: app_software, role: core, cik: 1404655, covered_from: 2026-11-01}  # HUBSPOT INC; NYSE; SIC 7372; 10-K+10-Q since 2014-11-13
-  - {symbol: DOCU, segment: app_software, role: core, cik: 1261333, covered_from: 2026-11-01}  # DOCUSIGN, INC.; Nasdaq; SIC 7372; 10-K+10-Q since 2018-06-08
-  - {symbol: ZM, segment: app_software, role: core, cik: 1585521, covered_from: 2026-11-01}  # Zoom Communications, Inc.; Nasdaq; SIC 7370; 10-K+10-Q since 2019-06-07
-  - {symbol: PAYC, segment: app_software, role: core, cik: 1590955, covered_from: 2026-11-01}  # Paycom Software, Inc.; NYSE; SIC 7372; 10-K+10-Q since 2014-05-21
-  - {symbol: PCTY, segment: app_software, role: core, cik: 1591698, covered_from: 2026-11-01}  # Paylocity Holding Corp; Nasdaq; SIC 7372; 10-K+10-Q since 2014-05-14
-  - {symbol: PTC, segment: app_software, role: core, cik: 857005, covered_from: 2026-11-01}  # PTC INC.; Nasdaq; SIC 7372; 10-K+10-Q since 1995-05-15
-  - {symbol: MNDY, segment: app_software, role: core, cik: 1845338, covered_from: 2026-11-01}  # monday.com Ltd.; Nasdaq; SIC 7372; 20-F since 2022-03-16
-  - {symbol: PEGA, segment: app_software, role: core, cik: 1013857, covered_from: 2026-11-01}  # PEGASYSTEMS INC; Nasdaq; SIC 7374; 10-K+10-Q since 1997-03-31
-  - {symbol: BOX, segment: app_software, role: core, cik: 1372612, covered_from: 2026-11-01}  # BOX INC; NYSE; SIC 7372; 10-K+10-Q since 2015-03-30
-  - {symbol: DBX, segment: app_software, role: core, cik: 1467623, covered_from: 2026-11-01}  # DROPBOX, INC.; Nasdaq; SIC 7372; 10-K+10-Q since 2018-05-11
-  - {symbol: NICE, segment: app_software, role: core, cik: 1003935, covered_from: 2026-11-01}  # NICE Ltd.; Nasdaq; SIC 7372; 20-F since 2002-06-24
-  - {symbol: WK, segment: app_software, role: core, cik: 1445305, covered_from: 2026-11-01}  # WORKIVA INC; NYSE; SIC 7372; 10-K+10-Q since 2015-03-11
-  - {symbol: BL, segment: app_software, role: core, cik: 1666134, covered_from: 2026-11-01}  # BLACKLINE, INC.; Nasdaq; SIC 7372; 10-K+10-Q since 2016-12-12
+  - {symbol: CRM, segment: app_software, role: core, cik: 1108524}  # Salesforce, Inc.; NYSE; SIC 7372; 10-K+10-Q since 2004-08-25
+  - {symbol: ADBE, segment: app_software, role: core, cik: 796343}  # ADOBE INC.; Nasdaq; SIC 7372; 10-K+10-Q since 1995-02-17
+  - {symbol: NOW, segment: app_software, role: core, cik: 1373715}  # ServiceNow, Inc.; NYSE; SIC 7372; 10-K+10-Q since 2012-08-10
+  - {symbol: INTU, segment: app_software, role: core, cik: 896878}  # INTUIT INC.; Nasdaq; SIC 7372; 10-K+10-Q since 1996-06-12
+  - {symbol: WDAY, segment: app_software, role: core, cik: 1327811}  # Workday, Inc.; Nasdaq; SIC 7374; 10-K+10-Q since 2012-12-07
+  - {symbol: ADSK, segment: app_software, role: core, cik: 769397}  # Autodesk, Inc.; Nasdaq; SIC 7372; 10-K+10-Q since 1995-05-01
+  - {symbol: SAP, segment: app_software, role: core, cik: 1000184}  # SAP SE; NYSE; SIC 7372; 20-F since 1999-05-18
+  - {symbol: TEAM, segment: app_software, role: core, cik: 1650372}  # Atlassian Corp; Nasdaq; SIC 7372; 10-K+10-Q+20-F since 2016-08-18
+  - {symbol: HUBS, segment: app_software, role: core, cik: 1404655}  # HUBSPOT INC; NYSE; SIC 7372; 10-K+10-Q since 2014-11-13
+  - {symbol: DOCU, segment: app_software, role: core, cik: 1261333}  # DOCUSIGN, INC.; Nasdaq; SIC 7372; 10-K+10-Q since 2018-06-08
+  - {symbol: ZM, segment: app_software, role: core, cik: 1585521}  # Zoom Communications, Inc.; Nasdaq; SIC 7370; 10-K+10-Q since 2019-06-07
+  - {symbol: PAYC, segment: app_software, role: core, cik: 1590955}  # Paycom Software, Inc.; NYSE; SIC 7372; 10-K+10-Q since 2014-05-21
+  - {symbol: PCTY, segment: app_software, role: core, cik: 1591698}  # Paylocity Holding Corp; Nasdaq; SIC 7372; 10-K+10-Q since 2014-05-14
+  - {symbol: PTC, segment: app_software, role: core, cik: 857005}  # PTC INC.; Nasdaq; SIC 7372; 10-K+10-Q since 1995-05-15
+  - {symbol: MNDY, segment: app_software, role: core, cik: 1845338}  # monday.com Ltd.; Nasdaq; SIC 7372; 20-F since 2022-03-16
+  - {symbol: PEGA, segment: app_software, role: core, cik: 1013857}  # PEGASYSTEMS INC; Nasdaq; SIC 7374; 10-K+10-Q since 1997-03-31
+  - {symbol: BOX, segment: app_software, role: core, cik: 1372612}  # BOX INC; NYSE; SIC 7372; 10-K+10-Q since 2015-03-30
+  - {symbol: DBX, segment: app_software, role: core, cik: 1467623}  # DROPBOX, INC.; Nasdaq; SIC 7372; 10-K+10-Q since 2018-05-11
+  - {symbol: NICE, segment: app_software, role: core, cik: 1003935}  # NICE Ltd.; Nasdaq; SIC 7372; 20-F since 2002-06-24
+  - {symbol: WK, segment: app_software, role: core, cik: 1445305}  # WORKIVA INC; NYSE; SIC 7372; 10-K+10-Q since 2015-03-11
+  - {symbol: BL, segment: app_software, role: core, cik: 1666134}  # BLACKLINE, INC.; Nasdaq; SIC 7372; 10-K+10-Q since 2016-12-12
   # --- cybersecurity
-  - {symbol: PANW, segment: security, role: core, cik: 1327567, covered_from: 2026-11-01}  # Palo Alto Networks Inc; Nasdaq; SIC 3577; 10-K+10-Q since 2012-10-04
-  - {symbol: CRWD, segment: security, role: core, cik: 1535527, covered_from: 2026-11-01}  # CrowdStrike Holdings, Inc.; Nasdaq; SIC 7372; 10-K+10-Q since 2019-07-19
-  - {symbol: FTNT, segment: security, role: core, cik: 1262039, covered_from: 2026-11-01}  # Fortinet, Inc.; Nasdaq; SIC 3577; 10-K+10-Q since 2010-03-05
-  - {symbol: ZS, segment: security, role: core, cik: 1713683, covered_from: 2026-11-01}  # Zscaler, Inc.; Nasdaq; SIC 7371; 10-K+10-Q since 2018-06-07
-  - {symbol: NET, segment: security, role: core, cik: 1477333, covered_from: 2026-11-01}  # Cloudflare, Inc.; NYSE; SIC 7372; 10-K+10-Q since 2019-11-12
-  - {symbol: OKTA, segment: security, role: core, cik: 1660134, covered_from: 2026-11-01}  # Okta, Inc.; Nasdaq; SIC 7372; 10-K+10-Q since 2017-06-08
-  - {symbol: S, segment: security, role: core, cik: 1583708, covered_from: 2026-11-01}  # SentinelOne, Inc.; NYSE; SIC 7372; 10-K+10-Q since 2021-09-10
-  - {symbol: QLYS, segment: security, role: core, cik: 1107843, covered_from: 2026-11-01}  # QUALYS, INC.; Nasdaq; SIC 7372; 10-K+10-Q since 2012-11-09
-  - {symbol: TENB, segment: security, role: core, cik: 1660280, covered_from: 2026-11-01}  # Tenable Holdings, Inc.; Nasdaq; SIC 7372; 10-K+10-Q since 2018-09-07
-  - {symbol: RPD, segment: security, role: core, cik: 1560327, covered_from: 2026-11-01}  # Rapid7, Inc.; Nasdaq; SIC 7372; 10-K+10-Q since 2015-08-19
-  - {symbol: VRNS, segment: security, role: core, cik: 1361113, covered_from: 2026-11-01}  # VARONIS SYSTEMS INC; Nasdaq; SIC 7372; 10-K+10-Q since 2014-05-08
-  - {symbol: CHKP, segment: security, role: core, cik: 1015922, covered_from: 2026-11-01}  # CHECK POINT SOFTWARE TECHNOLOGIES LTD; Nasdaq; SIC 7372; 20-F since 2000-06-28
-  - {symbol: GEN, segment: security, role: core, cik: 849399, covered_from: 2026-11-01}  # Gen Digital Inc.; Nasdaq; SIC 7372; 10-K+10-Q since 1995-06-08
-  - {symbol: AKAM, segment: security, role: core, cik: 1086222, covered_from: 2026-11-01}  # AKAMAI TECHNOLOGIES INC; Nasdaq; SIC 7389; 10-K+10-Q since 2000-05-15
+  - {symbol: PANW, segment: security, role: core, cik: 1327567}  # Palo Alto Networks Inc; Nasdaq; SIC 3577; 10-K+10-Q since 2012-10-04
+  - {symbol: CRWD, segment: security, role: core, cik: 1535527}  # CrowdStrike Holdings, Inc.; Nasdaq; SIC 7372; 10-K+10-Q since 2019-07-19
+  - {symbol: FTNT, segment: security, role: core, cik: 1262039}  # Fortinet, Inc.; Nasdaq; SIC 3577; 10-K+10-Q since 2010-03-05
+  - {symbol: ZS, segment: security, role: core, cik: 1713683}  # Zscaler, Inc.; Nasdaq; SIC 7371; 10-K+10-Q since 2018-06-07
+  - {symbol: NET, segment: security, role: core, cik: 1477333}  # Cloudflare, Inc.; NYSE; SIC 7372; 10-K+10-Q since 2019-11-12
+  - {symbol: OKTA, segment: security, role: core, cik: 1660134}  # Okta, Inc.; Nasdaq; SIC 7372; 10-K+10-Q since 2017-06-08
+  - {symbol: S, segment: security, role: core, cik: 1583708}  # SentinelOne, Inc.; NYSE; SIC 7372; 10-K+10-Q since 2021-09-10
+  - {symbol: QLYS, segment: security, role: core, cik: 1107843}  # QUALYS, INC.; Nasdaq; SIC 7372; 10-K+10-Q since 2012-11-09
+  - {symbol: TENB, segment: security, role: core, cik: 1660280}  # Tenable Holdings, Inc.; Nasdaq; SIC 7372; 10-K+10-Q since 2018-09-07
+  - {symbol: RPD, segment: security, role: core, cik: 1560327}  # Rapid7, Inc.; Nasdaq; SIC 7372; 10-K+10-Q since 2015-08-19
+  - {symbol: VRNS, segment: security, role: core, cik: 1361113}  # VARONIS SYSTEMS INC; Nasdaq; SIC 7372; 10-K+10-Q since 2014-05-08
+  - {symbol: CHKP, segment: security, role: core, cik: 1015922}  # CHECK POINT SOFTWARE TECHNOLOGIES LTD; Nasdaq; SIC 7372; 20-F since 2000-06-28
+  - {symbol: GEN, segment: security, role: core, cik: 849399}  # Gen Digital Inc.; Nasdaq; SIC 7372; 10-K+10-Q since 1995-06-08
+  - {symbol: AKAM, segment: security, role: core, cik: 1086222}  # AKAMAI TECHNOLOGIES INC; Nasdaq; SIC 7389; 10-K+10-Q since 2000-05-15
   # --- data platforms and cloud software
-  - {symbol: SNOW, segment: data_cloud, role: core, cik: 1640147, covered_from: 2026-11-01}  # Snowflake Inc.; NYSE; SIC 7372; 10-K+10-Q since 2020-12-03
-  - {symbol: DDOG, segment: data_cloud, role: core, cik: 1561550, covered_from: 2026-11-01}  # Datadog, Inc.; Nasdaq; SIC 7372; 10-K+10-Q since 2019-11-13
-  - {symbol: MDB, segment: data_cloud, role: core, cik: 1441816, covered_from: 2026-11-01}  # MongoDB, Inc.; Nasdaq; SIC 7372; 10-K+10-Q since 2017-12-15
-  - {symbol: PLTR, segment: data_cloud, role: core, cik: 1321655, covered_from: 2026-11-01}  # Palantir Technologies Inc.; Nasdaq; SIC 7372; 10-K+10-Q since 2020-11-13
-  - {symbol: ESTC, segment: data_cloud, role: core, cik: 1707753, covered_from: 2026-11-01}  # Elastic N.V.; NYSE; SIC 7372; 10-K+10-Q since 2018-12-12
-  - {symbol: DT, segment: data_cloud, role: core, cik: 1773383, covered_from: 2026-11-01}  # Dynatrace, Inc.; NYSE; SIC 7372; 10-K+10-Q since 2019-09-05
-  - {symbol: TWLO, segment: data_cloud, role: core, cik: 1447669, covered_from: 2026-11-01}  # TWILIO INC; NYSE; SIC 7372; 10-K+10-Q since 2016-08-09
-  - {symbol: GTLB, segment: data_cloud, role: core, cik: 1653482, covered_from: 2026-11-01}  # Gitlab Inc.; Nasdaq; SIC 7372; 10-K+10-Q since 2021-12-07
-  - {symbol: NTNX, segment: data_cloud, role: core, cik: 1618732, covered_from: 2026-11-01}  # Nutanix, Inc.; Nasdaq; SIC 7372; 10-K+10-Q since 2016-12-08
-  - {symbol: PATH, segment: data_cloud, role: core, cik: 1734722, covered_from: 2026-11-01}  # UiPath, Inc.; NYSE; SIC 7372; 10-K+10-Q since 2021-06-09
-  - {symbol: FROG, segment: data_cloud, role: core, cik: 1800667, covered_from: 2026-11-01}  # JFrog Ltd; Nasdaq; SIC 7372; 10-K+10-Q since 2020-11-05
-  - {symbol: DOCN, segment: data_cloud, role: core, cik: 1582961, covered_from: 2026-11-01}  # DigitalOcean Holdings, Inc.; NYSE; SIC 7370; 10-K+10-Q since 2021-05-07
-  - {symbol: FSLY, segment: data_cloud, role: core, cik: 1517413, covered_from: 2026-11-01}  # Fastly, Inc.; Nasdaq; SIC 7372; 10-K+10-Q since 2019-08-09
-  - {symbol: IBM, segment: data_cloud, role: core, cik: 51143, covered_from: 2026-11-01}  # INTERNATIONAL BUSINESS MACHINES CORP; NYSE; SIC 3570; 10-K+10-Q since 1994-03-28
-  - {symbol: TDC, segment: data_cloud, role: core, cik: 816761, covered_from: 2026-11-01}  # TERADATA CORP /DE/; NYSE; SIC 7372; 10-K+10-Q since 2007-11-13
-  - {symbol: AI, segment: data_cloud, role: core, cik: 1577526, covered_from: 2026-11-01}  # C3.ai, Inc.; NYSE; SIC 7372; 10-K+10-Q since 2021-03-02
+  - {symbol: SNOW, segment: data_cloud, role: core, cik: 1640147}  # Snowflake Inc.; NYSE; SIC 7372; 10-K+10-Q since 2020-12-03
+  - {symbol: DDOG, segment: data_cloud, role: core, cik: 1561550}  # Datadog, Inc.; Nasdaq; SIC 7372; 10-K+10-Q since 2019-11-13
+  - {symbol: MDB, segment: data_cloud, role: core, cik: 1441816}  # MongoDB, Inc.; Nasdaq; SIC 7372; 10-K+10-Q since 2017-12-15
+  - {symbol: PLTR, segment: data_cloud, role: core, cik: 1321655}  # Palantir Technologies Inc.; Nasdaq; SIC 7372; 10-K+10-Q since 2020-11-13
+  - {symbol: ESTC, segment: data_cloud, role: core, cik: 1707753}  # Elastic N.V.; NYSE; SIC 7372; 10-K+10-Q since 2018-12-12
+  - {symbol: DT, segment: data_cloud, role: core, cik: 1773383}  # Dynatrace, Inc.; NYSE; SIC 7372; 10-K+10-Q since 2019-09-05
+  - {symbol: TWLO, segment: data_cloud, role: core, cik: 1447669}  # TWILIO INC; NYSE; SIC 7372; 10-K+10-Q since 2016-08-09
+  - {symbol: GTLB, segment: data_cloud, role: core, cik: 1653482}  # Gitlab Inc.; Nasdaq; SIC 7372; 10-K+10-Q since 2021-12-07
+  - {symbol: NTNX, segment: data_cloud, role: core, cik: 1618732}  # Nutanix, Inc.; Nasdaq; SIC 7372; 10-K+10-Q since 2016-12-08
+  - {symbol: PATH, segment: data_cloud, role: core, cik: 1734722}  # UiPath, Inc.; NYSE; SIC 7372; 10-K+10-Q since 2021-06-09
+  - {symbol: FROG, segment: data_cloud, role: core, cik: 1800667}  # JFrog Ltd; Nasdaq; SIC 7372; 10-K+10-Q since 2020-11-05
+  - {symbol: DOCN, segment: data_cloud, role: core, cik: 1582961}  # DigitalOcean Holdings, Inc.; NYSE; SIC 7370; 10-K+10-Q since 2021-05-07
+  - {symbol: FSLY, segment: data_cloud, role: core, cik: 1517413}  # Fastly, Inc.; Nasdaq; SIC 7372; 10-K+10-Q since 2019-08-09
+  - {symbol: IBM, segment: data_cloud, role: core, cik: 51143}  # INTERNATIONAL BUSINESS MACHINES CORP; NYSE; SIC 3570; 10-K+10-Q since 1994-03-28
+  - {symbol: TDC, segment: data_cloud, role: core, cik: 816761}  # TERADATA CORP /DE/; NYSE; SIC 7372; 10-K+10-Q since 2007-11-13
+  - {symbol: AI, segment: data_cloud, role: core, cik: 1577526}  # C3.ai, Inc.; NYSE; SIC 7372; 10-K+10-Q since 2021-03-02
