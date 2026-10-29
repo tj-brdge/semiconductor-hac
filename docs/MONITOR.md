@@ -265,6 +265,17 @@ method & data (coverage, freshness, the last refresh's stages, release ID).
   A theme without that much price history shows how much it has instead.
 - Simulated and live returns are labelled everywhere ("Simulated", "Live",
   "Simulated + live"); live days are shaded on charts.
+- **About this theme**: a longer summary built only from recorded data (what the
+  theme's distinctive terms are; who discusses it and which companies carry most of
+  it; how it developed, with each change in status; where the evidence comes from;
+  and, in its own paragraph, how the stocks did). Written titles and summaries stay
+  above it; Claude-written summaries may run to four sentences.
+- **Strengthening and weakening points**: every status change that marks a change of
+  pace (strengthening ▲, recovered ▲, cooling ▼, growth levelled off ▼, went quiet ▼),
+  with the cohort ratio that decided it, on a monthly chart of the theme's share of
+  all monitored text and on the basket chart (at the session after the month-end).
+  Labels are drawn where they fit; every point is also in the readout and the list
+  under the chart.
 - Theme charts mark events with arrows: the first month the emergence rule flagged
   the theme, the month it entered the monitor (when different), and later basket
   versions, each at the session that acted on it. The basket starts when the theme

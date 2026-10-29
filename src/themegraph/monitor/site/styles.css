@@ -212,7 +212,15 @@ main[aria-busy="true"] { opacity: .6; transition: opacity .2s; }
 .chart .event-arrow { fill: var(--navy); }
 .chart .event-label { fill: var(--navy); font: 600 11.5px var(--sans); }
 .tip .e { color: var(--navy); font-weight: 650; margin-bottom: 4px; }
+.chart .event-arrow.up { fill: var(--s-up); } .chart .event-arrow.down { fill: var(--s-cool); }
+.chart .event-label.up, .tip .e.up { fill: var(--s-up); color: var(--s-up); }
+.chart .event-label.down, .tip .e.down { fill: var(--s-cool); color: var(--s-cool); }
+.chart .event-guide.up { stroke: var(--s-up); } .chart .event-guide.down { stroke: var(--s-cool); }
 .event-key { color: var(--navy); font-size: .75rem; margin-right: 6px; }
+.event-key.up { color: var(--s-up); } .event-key.down { color: var(--s-cool); }
+details.about { background: var(--surface); }
+details.about .prose h3 { font-size: .9rem; margin: 0 0 2px; }
+details.about .prose { max-width: 80ch; }
 .tip { position: absolute; pointer-events: none; background: var(--surface); border: 1px solid var(--line-strong);
   border-radius: 8px; padding: 8px 10px; font-size: .82rem; box-shadow: 0 4px 14px rgba(0,0,0,.12); min-width: 170px; z-index: 2; }
 .tip .d { color: var(--muted); margin-bottom: 4px; }

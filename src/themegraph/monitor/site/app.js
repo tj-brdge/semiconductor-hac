@@ -232,7 +232,7 @@ function togetherHTML(tt) {
   if (!tt) return "";
   const names = S.index.benchmark_labels || {};
   const idx = `${tt.index}${names[tt.index] ? ` (${names[tt.index]})` : ""}`;
-  const pctText = (x) => `${Math.round(x.percentile * 100)}%`;
+  const pctText = (x) => (x.percentile >= 0.995 ? "all" : x.percentile <= 0.005 ? "none" : `${Math.round(x.percentile * 100)}%`);
   const line = (x, when) => {
     if (!x) return `<li>${when}: not enough price history.</li>`;
     if (x.percentile == null) return `<li>${when}: ${esc(x.note || "not enough price history")}.</li>`;
@@ -325,6 +325,7 @@ async function themePage(id, token) {
     <header class="hero"><div class="card-top"><h1>${esc(t.title)}</h1>${chip(t.status)}</div>
       <p class="summary">${esc(t.summary)}</p>
       <p class="small muted">${labelNote(t)}</p>
+      ${(t.overview || []).length ? `<details class="about" open><summary>About this theme</summary><div class="body prose">${t.overview.map((p) => `<div><h3>${esc(p.heading)}</h3><p>${esc(p.text)}</p></div>`).join("")}</div></details>` : ""}
       ${t.newly_covered ? `<p class="notice"><span><b>Newly covered.</b> This theme became visible when coverage expanded: ${t.newly_covered.new_companies.length} of its companies were added recently. Their earlier documents show the topic in ${t.newly_covered.backfill_present} of the ${t.newly_covered.of_last} months before ${esc(fmtDate(t.newly_covered.at))}; that is historical analysis, not an earlier discovery. Tracking began when it was published on ${esc(fmtDate(t.published_at))}.</span></p>` : ""}
       <p class="facts"><span>${m.n_issuers ?? "—"} companies</span><span>${esc((m.sectors || []).join(", "))}</span>
         <span>Entered ${esc(fmtDate(t.published_snapshot))} via the ${{ emergence: "emergence rule", established: "established-theme rule", newly_covered: "newly-covered rule" }[t.route] || esc(t.route)}</span></p>
@@ -346,6 +347,9 @@ async function themePage(id, token) {
     </section>
     <section class="panel" aria-labelledby="h-disc"><h2 id="h-disc">Discussion</h2>
         <p class="small muted">How much and how widely companies talk about this theme. Independent of stock prices.</p>
+        <div class="legend"><span><i class="key" style="border-top-color:var(--series-1);border-top-width:3px"></i>Share of all monitored text (%)</span><span><span class="event-key up" aria-hidden="true">▲</span>Strengthening or recovered</span><span><span class="event-key down" aria-hidden="true">▼</span>Cooling, levelling off or going quiet</span></div>
+        <div id="disc-chart"></div><p class="sr" aria-live="polite" id="disc-readout"></p>
+        <p class="small muted">Points mark changes in status. Status compares the last three months with the three before within a fixed group of companies, so adding or removing companies can move this line without a point.</p>
         <dl class="dl cols">
           <dt>Growth</dt><dd>${m.growth_3m == null ? "No 3-month comparison yet" : `${m.growth_3m.toFixed(2)}× its share of comparable companies' text 3 months ago`}</dd>
           <dt>Share of text</dt><dd>${share(m.share, 1)} of passages in the last six months</dd>
@@ -398,6 +402,7 @@ async function themePage(id, token) {
       ${t.label?.note ? `<dt>Label check</dt><dd>${esc(t.label.note)}</dd>` : ""}
     </dl></div></details>`;
   if (p.status === "ok") mountChart(t);
+  mountDiscussion(t);
   window.scrollTo(0, 0);
   $("#main").focus({ preventScroll: true });
 }
@@ -406,6 +411,25 @@ function priceText(c) {
   const h = { converted: "acquired, converted", converted_cash: "acquired for cash", delisted_cash: "delisted, held as cash" }[c.holding];
   const base = { fresh: "Current", lagging: `${c.sessions_since_close} sessions old`, stale: c.sessions_since_close > 10000 ? "No price" : `Stale (${c.sessions_since_close} sessions)`, not_bought: "Never priced: held as cash" }[c.price_status] || c.price_status;
   return h ? `${base} · ${h}` : base;
+}
+
+function mountDiscussion(t) {
+  const rows = t.measures.slice(-36).map((r) => ({ date: r.t.slice(0, 10), present: r.present,
+    v: { share: 100 * (r.share || 0) } }));
+  if (rows.length < 2) return;
+  const pos = Object.fromEntries(rows.map((r, i) => [r.date, i]));
+  const markers = (t.status_points || []).filter((sp) => sp.t.slice(0, 10) in pos).map((sp) => ({
+    index: pos[sp.t.slice(0, 10)], kind: sp.kind,
+    label: `${sp.label}${sp.ratio != null ? ` (${sp.ratio.toFixed(2)}×)` : ""}` }));
+  const hi = Math.max(...rows.map((r) => r.v.share));
+  const dp = hi < 2 ? 2 : 1;
+  S.disc?.destroy();
+  S.disc = lineChart($("#disc-chart"), { rows, markers, base: null,
+    series: [{ key: "share", label: "Share", color: "var(--series-1)", width: 2.5 }],
+    title: "Share of all monitored text discussing this theme, by month-end",
+    format: (v) => `${v.toFixed(dp)}%`, tick: (v) => `${v.toFixed(dp)}%`,
+    describe: (r) => (r.present ? "" : "not found that month"),
+    announce: (x) => { $("#disc-readout").textContent = x; } });
 }
 
 function mountChart(t) {
@@ -417,6 +441,7 @@ function mountChart(t) {
   const firstFlag = t.measures.find((m) => m.flagged_comparable ?? m.flagged);
   const events = [];
   if (firstFlag) events.push({ date: firstFlag.t, label: "First flagged as emerging" });
+  (t.status_points || []).forEach((sp) => events.push({ date: sp.t, label: `Discussion ${sp.label.toLowerCase()}`, kind: sp.kind }));
   if (!firstFlag || t.published_snapshot.slice(0, 10) !== firstFlag.t.slice(0, 10))
     events.push({ date: t.published_snapshot, label: "Entered the monitor" });
   t.basket_versions.slice(1).forEach((v) => events.push({ date: all.find((r) => r.date >= v.entry_after.slice(0, 10))?.date || v.entry_after, label: `Basket v${v.version}`, entry: true }));
@@ -447,8 +472,8 @@ function mountChart(t) {
     if (head.length) basket[0].v.hind = 100;
     const rows = [...head, ...basket];
     const markers = [
-      ...events.filter((e) => e.at >= start).map((e) => ({ index: head.length + e.at - start, label: e.label })),
-      ...(head.length ? events.filter((e) => e.pre >= 0).map((e) => ({ index: e.pre, label: e.label })) : [])];
+      ...events.filter((e) => e.at >= start).map((e) => ({ index: head.length + e.at - start, label: e.label, kind: e.kind })),
+      ...(head.length ? events.filter((e) => e.pre >= 0).map((e) => ({ index: e.pre, label: e.label, kind: e.kind })) : [])];
     S.chart?.destroy();
     S.chart = lineChart($("#chart"), { rows, series: keys.filter((k) => k.key !== "hind" || head.length), format: (v) => v.toFixed(1),
       title: `Basket and benchmarks, ${spec[1]} range${head.length ? " with the six months before (hindsight)" : ""}, index 100 at ${fmtDate(basket[0].date)}`,
@@ -535,6 +560,7 @@ function setNav(name) {
 async function route() {
   const token = ++S.nav;
   S.chart?.destroy(); S.chart = null;
+  S.disc?.destroy(); S.disc = null;
   const h = location.hash || "#/";
   const [path, query] = h.slice(1).split("?");
   const m = path.match(/^\/theme\/(.+)$/);
