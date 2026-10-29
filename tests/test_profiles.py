@@ -194,3 +194,10 @@ def test_full_history_build_counts_every_company_from_the_start(tmp_path):
     new = {f"{p}{i}" for p in ("APP", "SEC", "DAT") for i in range(1, 9)}
     members = {s for r in idx["themes"] for s in r["key_constituents"] for s in [s["symbol"]]}
     assert members & new  # the added companies are in themes and baskets from the start
+    # Tone and families reach the feed; the review report reads the same state.
+    assert all(r["tone"]["direction"] in ("headwind", "tailwind", "mixed", "unknown")
+               for r in idx["themes"] if r["status"] not in ("inactive", "merged"))
+    assert "headwinds" in idx["lists"] and idx["families"]["min_cosine"] == 0.85
+    from themegraph.monitor.review import review_report
+    text = review_report(tmp_path / "state", load_monitor(TECH.monitor))
+    assert "## Most similar pairs" in text and "## Tone" in text

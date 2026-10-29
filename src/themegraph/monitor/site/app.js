@@ -98,7 +98,8 @@ function card(row) {
     <div class="card-top"><h3><a href="#/theme/${esc(row.id)}">${esc(row.title)}</a></h3>${chip(row.status)}</div>
     <p class="summary">${esc(row.summary)}</p>
     ${row.label_source === "keywords" ? `<p class="small muted">Automatic title from key terms</p>` : ""}
-    <div class="meta">${row.route === "newly_covered" ? `<span class="tag" title="Visible because coverage expanded; not counted as emerging">Newly covered</span>` : ""}<span>${st.n_issuers ?? "—"} companies</span><span>${esc((row.sectors || []).join(", "))}</span></div>
+    <div class="meta">${toneTag(row)}${row.route === "newly_covered" ? `<span class="tag" title="Visible because coverage expanded; not counted as emerging">Newly covered</span>` : ""}<span>${st.n_issuers ?? "—"} companies</span><span>${esc((row.sectors || []).join(", "))}</span></div>
+    ${row.tone?.direction === "headwind" && row.tone.headwind_terms?.length ? `<p class="small"><span class="muted">Problems described:</span> ${esc(row.tone.headwind_terms.slice(0, 4).join(" · "))}</p>` : ""}
     <div class="tickers" aria-label="Largest constituents">${keys.map((c) => esc(c.symbol)).join(" · ")}${more > 0 ? ` <span class="muted">+${more}</span>` : ""}</div>
     <div class="split">
       <div class="metric"><div class="k">${long.replace(/^./, (c) => c.toUpperCase())} basket return</div>
@@ -107,8 +108,40 @@ function card(row) {
         <div class="v">${e.growth_3m == null ? "—" : `${e.growth_3m.toFixed(1)}×`}</div>
         <div class="s">${e.growth_3m == null ? "no 3-month comparison yet" : "its share 3 months ago"} · in ${st.persistence_12 ?? "—"} of 12 months</div></div>
     </div>
+    ${familyLine(row)}
     ${spark ? `<div>${spark}<div class="small muted"><span class="key" style="border-top-color:var(--series-1)"></span>Basket <span class="key dash" style="border-top-color:var(--series-2);margin-left:10px"></span>${esc(b)}${sp.live_from ? " · shaded: live" : ""}</div></div>` : ""}
   </article>`;
+}
+
+function toneTag(row) {
+  const d = row.tone?.direction;
+  if (d === "headwind") return `<span class="tag hw" title="Companies are describing problems: much more problem language than usual">Headwind</span>`;
+  if (d === "tailwind") return `<span class="tag tw" title="Companies are describing growth and demand">Tailwind</span>`;
+  return "";
+}
+
+// Theme families (display only): themes that mean nearly the same thing.
+function familyOf(row) {
+  const f = row.family;
+  if (!f || f.size < 2) return [];
+  return S.index.themes.filter((r) => r.family?.id === f.id && r.id !== row.id);
+}
+
+function familyLine(row) {
+  const rel = familyOf(row);
+  if (!rel.length) return "";
+  return `<p class="small family"><span class="muted">Overlaps with ${rel.length === 1 ? "1 similar theme" : `${rel.length} similar themes`}:</span> ${rel.slice(0, 3).map((r) => `<a href="#/theme/${esc(r.id)}">${esc(r.title)}</a>`).join(", ")}${rel.length > 3 ? ` <span class="muted">+${rel.length - 3}</span>` : ""}</p>`;
+}
+
+// One card per family on the overview: a family already shown in an earlier
+// section is not repeated; its card lists the others.
+function onePerFamily(rows, shown) {
+  return rows.filter((r) => {
+    const k = r.family?.id || r.id;
+    if (shown.has(k)) return false;
+    shown.add(k);
+    return true;
+  });
 }
 
 function rowsList(rows, empty) {
@@ -130,13 +163,14 @@ function rowsList(rows, empty) {
 // -- overview ------------------------------------------------------------------------
 function overview() {
   const L = S.index.lists, by = S.byId, b = bench();
-  const emerging = L.emerging.map((id) => by[id]);
-  const seen = new Set(L.emerging);
-  const established = L.established.filter((id) => !seen.has(id)).map((id) => by[id]);
+  const shown = new Set();
+  const emerging = onePerFamily(L.emerging.map((id) => by[id]), shown);
+  const headwinds = onePerFamily((L.headwinds || []).map((id) => by[id]).filter(Boolean), shown);
   const lowList = (ids) => ids.map((id) => by[id]).filter(Boolean);
   const a = S.index.data_as_of || {}, U = S.U;
   const lastChange = [...(U.changes || [])].reverse().find((c) => (c.added || []).length);
-  const newly = (L.newly_covered || []).map((id) => by[id]).filter(Boolean);
+  const newly = onePerFamily((L.newly_covered || []).map((id) => by[id]).filter(Boolean), shown);
+  const established = onePerFamily(L.established.map((id) => by[id]), shown);
   const nSectors = Object.keys(U.sectors || {}).length;
   const render = () => {
     $("#main").innerHTML = `
@@ -152,6 +186,9 @@ function overview() {
       <section class="section" aria-labelledby="h-em"><div class="section-head"><div><h2 id="h-em">Emerging</h2>
         <p class="muted small">Newly prominent in what companies discuss: flagged by the emergence rule in the last three months, or entered that way and still growing. Ordered by growth in discussion.</p></div></div>
         ${emerging.length ? `<div class="cards">${emerging.map(card).join("")}</div>` : `<p class="empty">Nothing is emerging right now. Themes appear here when discussion of a topic grows quickly across several comparable companies.</p>`}</section>
+      <section class="section" aria-labelledby="h-hw"><div class="section-head"><div><h2 id="h-hw">Headwinds</h2>
+        <p class="muted small">Problems companies are describing: themes whose management commentary and filings use much more problem language than usual (weaker demand, inventory corrections, pricing pressure, cancellations). Spreading ones first. A starting point for short ideas, not a recommendation: whether these baskets go on to lag has not been tested, and a falling basket may already reflect the news.</p></div></div>
+        ${headwinds.length ? `<div class="cards">${headwinds.map(card).join("")}</div>` : `<p class="empty">No theme stands out for problem language right now.</p>`}</section>
       ${newly.length ? `<section class="section" aria-labelledby="h-new"><div class="section-head"><div><h2 id="h-new">Newly covered</h2>
         <p class="muted small">Visible because coverage expanded${lastChange ? ` on ${esc(fmtDate(lastChange.date))}` : ""}: long-running discussion among newly added companies, found in their earlier documents. Not counted as emerging, and tracked only from when it was published.</p></div></div>
         <div class="cards">${newly.map(card).join("")}</div></section>` : ""}
@@ -174,7 +211,7 @@ function overview() {
 function allThemes(params) {
   const sectors = [...new Set(S.index.themes.flatMap((r) => r.sectors || []))].sort();
   const q = { q: params.get("q") || "", status: params.get("status") || "", sector: params.get("sector") || "",
-    route: params.get("route") || "", sort: params.get("sort") || "return" };
+    route: params.get("route") || "", tone: params.get("tone") || "", sort: params.get("sort") || "return" };
   const b = bench();
   const opts = (list, cur) => list.map(([v, l]) => `<option value="${esc(v)}"${v === cur ? " selected" : ""}>${esc(l)}</option>`).join("");
   $("#main").innerHTML = `
@@ -185,13 +222,14 @@ function allThemes(params) {
       <label class="field">Status<select id="f-status">${opts([["", "Any status"], ["active", "Active (not inactive)"], ...Object.entries(STATUS)], q.status)}</select></label>
       <label class="field">Sector<select id="f-sector">${opts([["", "Any sector"], ...sectors.map((s) => [s, s])], q.sector)}</select></label>
       <label class="field">How it entered<select id="f-route">${opts([["", "Any"], ["emergence", "Emergence rule"], ["established", "Established (persistent)"], ["newly_covered", "Newly covered"]], q.route)}</select></label>
+      <label class="field">Kind of news<select id="f-tone">${opts([["", "Any"], ["headwind", "Headwind (problems)"], ["tailwind", "Tailwind (growth)"], ["mixed", "Mixed"]], q.tone)}</select></label>
       <label class="field">Sort by<select id="f-sort">${opts([["return", "Basket return"], ["excess", `Return vs ${b}`], ["growth", "Discussion growth"], ["companies", "Companies"], ["persistence", "Months discussed"], ["recent", "Recently published"], ["name", "Name"]], q.sort)}</select></label>
     </form>
     ${periodControl()}
     <p class="count" id="count" aria-live="polite"></p>
     <div id="list"></div>`;
   const read = () => ({ q: $("#f-q").value.trim(), status: $("#f-status").value, sector: $("#f-sector").value,
-    route: $("#f-route").value, sort: $("#f-sort").value });
+    route: $("#f-route").value, tone: $("#f-tone").value, sort: $("#f-sort").value });
   const val = {
     return: (r) => periodReturn(r).theme, excess: (r) => periodReturn(r)[`excess_vs_${b}`],
     growth: (r) => r.emergence.growth_3m, companies: (r) => r.strength.n_issuers,
@@ -204,6 +242,7 @@ function allThemes(params) {
       if (f.status === "active" ? ["inactive", "merged"].includes(r.status) : f.status && r.status !== f.status) return false;
       if (f.sector && !(r.sectors || []).includes(f.sector)) return false;
       if (f.route && r.route !== f.route) return false;
+      if (f.tone && r.tone?.direction !== f.tone) return false;
       const hay = [r.title, r.summary, r.name, r.id, ...(r.sectors || []), ...(r.key_constituents || []).map((c) => c.symbol)].join(" ").toLowerCase();
       return words.every((w) => hay.includes(w));
     });
@@ -220,7 +259,7 @@ function allThemes(params) {
     const p = new URLSearchParams(Object.entries(f).filter(([k, v]) => v && !(k === "sort" && v === "return")));
     history.replaceState(null, "", `#/themes${p.toString() ? "?" + p : ""}`);
   };
-  ["f-q", "f-status", "f-sector", "f-route", "f-sort"].forEach((id) => $("#" + id).addEventListener(id === "f-q" ? "input" : "change", draw));
+  ["f-q", "f-status", "f-sector", "f-route", "f-tone", "f-sort"].forEach((id) => $("#" + id).addEventListener(id === "f-q" ? "input" : "change", draw));
   bindPeriod($("#main"), draw);
   draw();
 }
@@ -323,13 +362,15 @@ async function themePage(id, token) {
   $("#main").innerHTML = `
     <nav class="crumb" aria-label="Breadcrumb"><a href="#/">Overview</a> / <a href="#/themes">All themes</a></nav>
     ${notices()}
-    <header class="hero"><div class="card-top"><h1>${esc(t.title)}</h1>${chip(t.status)}</div>
+    <header class="hero"><div class="card-top"><h1>${esc(t.title)}</h1><span>${toneTag(S.byId[t.id] || {})} ${chip(t.status)}</span></div>
       <p class="summary">${esc(t.summary)}</p>
       <p class="small muted">${labelNote(t)}</p>
       ${(t.overview || []).length ? `<details class="about" open><summary>About this theme</summary><div class="body prose">${t.overview.map((p) => `<div><h3>${esc(p.heading)}</h3><p>${esc(p.text)}</p></div>`).join("")}</div></details>` : ""}
       ${t.newly_covered ? `<p class="notice"><span><b>Newly covered.</b> This theme became visible when coverage expanded: ${t.newly_covered.new_companies.length} of its companies were added recently. Their earlier documents show the topic in ${t.newly_covered.backfill_present} of the ${t.newly_covered.of_last} months before ${esc(fmtDate(t.newly_covered.at))}; that is historical analysis, not an earlier discovery. Tracking began when it was published on ${esc(fmtDate(t.published_at))}.</span></p>` : ""}
       <p class="facts"><span>${m.n_issuers ?? "—"} companies</span><span>${esc((m.sectors || []).join(", "))}</span>
         <span>Entered ${esc(fmtDate(t.published_snapshot))} via the ${{ emergence: "emergence rule", established: "established-theme rule", newly_covered: "newly-covered rule" }[t.route] || esc(t.route)}</span></p>
+      ${t.family && t.family.related.length ? `<div class="family"><h2 class="h3">Overlapping themes</h2><p class="small muted">Close in meaning to this one (cosine of their passages' meaning, ${esc(String(S.index.families?.min_cosine ?? 0.85))} or more). Grouped for display only: each keeps its own basket and history.</p>
+        <ul class="plain">${t.family.related.map((r) => `<li><a href="#/theme/${esc(r.id)}">${esc(S.byId[r.id]?.title || r.id)}</a> <span class="small muted">similarity ${r.cosine.toFixed(2)}${r.shared_companies.length ? `, shared companies ${esc(r.shared_companies.slice(0, 6).join(", "))}${r.shared_companies.length > 6 ? "…" : ""}` : ""}</span></li>`).join("")}</ul></div>` : ""}
       ${t.merged_into ? `<p class="notice warn">Merged into <a href="#/theme/${esc(t.merged_into)}">${esc(S.byId[t.merged_into]?.title || t.merged_into)}</a>. Its history and basket are kept here.</p>` : ""}
     </header>
     <section class="panel" aria-labelledby="h-perf">

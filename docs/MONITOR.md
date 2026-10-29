@@ -218,6 +218,7 @@ themegraph monitor refresh                 # prices + themes (if a month-end pas
 themegraph monitor refresh --documents     # also transcripts and filings (weekly)
 themegraph monitor refresh --no-ingest     # recompute from what is already stored
 themegraph monitor serve                   # http://127.0.0.1:8780/
+themegraph monitor review                  # similar themes, families and tone (Markdown)
 themegraph monitor refresh --fixtures --as-of 2021-06-30   # labelled synthetic data
 ```
 
@@ -254,6 +255,64 @@ the unchanged last good release.
 Here `<sync site/>` is any static upload, for example
 `aws s3 sync site/ s3://bucket/ --delete` or `npx wrangler pages deploy site`.
 
+## Headwinds (`monitor/tone.py`)
+
+Growth in discussion says a subject is getting attention, not whether it is good or
+bad news. For short ideas the monitor also records what kind of news a theme is.
+
+- **Passages.** Each passage is scored with two fixed phrase lists of business
+  language written for this monitor: problem language (weaker demand, inventory
+  correction, destocking, pricing pressure, margin compression, cancellations,
+  push-outs, lowered guidance, impairments, layoffs, budget cuts, churn, ...) and
+  growth language (strong demand, record revenue, raised guidance, share gains,
+  ramp, momentum, ...). A passage is negative when it has more problem phrases than
+  growth phrases, positive for the reverse. Ambiguous words are left out
+  ("uncertainty" is in every safe-harbour statement; "shortage" is often good for
+  pricing).
+- **Themes, per month-end** (`measures[].tone`): over the theme's management and
+  filing passages (analyst questions are attention, not company statements), the
+  share that is negative and positive, compared with the share its mix of genres
+  would give at that window's own rates (filings are compared with filings: risk
+  factors are negative everywhere).
+- **Direction** (`tone` in config/monitor.yaml, declared 2026-10-29 from the text
+  alone, before any return was looked at): `headwind` when at least 20% of its
+  company passages are negative, at least 2x the genre-matched rate and more than
+  the positive share; `tailwind` by the same rule for positive passages; `mixed`
+  otherwise; `unknown` with fewer than 20 company passages.
+- **Overview.** A *Headwinds* section lists active headwind themes, spreading ones
+  first (growth in discussion among comparable companies, then how far above the
+  usual rate). Each theme appears in one section only, so headwinds are not also
+  listed as emerging or established. Cards show the phrases matched most often.
+- **Limits.** Phrase lists do not understand negation or context ("no sign of
+  weakness" counts as problem language); the matched phrases and the quoted
+  passages are on the page so a reader can check. Whether headwind baskets go on to
+  lag their benchmarks has not been tested; that belongs in the forward prediction
+  log, declared before any result, not in tuning these thresholds.
+
+## Theme families (`monitor/families.py`)
+
+Topics are re-clustered every month, so one broad subject can appear as several
+themes. They are grouped for display only: theme IDs, baskets, measures and history
+are unchanged, and nothing is merged.
+
+- **Similarity:** cosine of the themes' latest meaning vectors (genre-centred member
+  centroids, the vectors identity matching uses after a gap).
+- **Grouping:** average-linkage clustering of active published themes, cut at
+  `families.min_cosine` (default 0.85, the identity bar: themes this close would be
+  matched as one theme if they were not present at the same time). Average linkage
+  does not chain two unrelated themes through a third.
+- **Lead:** the most persistent theme in the family, then the one with the most
+  companies, then the oldest.
+- **Overview:** one card per family; a family shown in an earlier section is not
+  repeated, and the card links to the overlapping themes. The theme page lists them
+  with their similarity and shared companies. The all-themes list shows every theme.
+- **Setting the cut:** `themegraph monitor review [--profile P]` writes
+  `<state>/review.md`: how many pairs of active themes are at or above each cosine,
+  the most similar pairs with shared companies and keywords, the families formed,
+  and every theme's tone with its matched phrases. It reads text measures only. The
+  cut is chosen by reading those pairs (are they the same subject?), never from
+  returns, and recorded with its date if changed.
+
 ## Theme labels (`monitor/naming.py`)
 
 Topics are named by keywords ("ethernet · transceivers · enterprise"); readers get a
@@ -282,8 +341,8 @@ per-refresh cap). Fixture runs never call Claude.
 
 Plain HTML, CSS and two small ES modules; no framework, no build step and no
 third-party scripts, so the `site/` directory can be copied to any static host.
-Views: overview (emerging and established themes as cards, relative-performance
-lists, cooling and inactive themes), all themes (search, filters, sorting), a theme
+Views: overview (emerging themes, headwinds and established themes as cards, one per
+family; relative-performance lists; cooling and inactive themes), all themes (search, filters, sorting), a theme
 page (chart with ranges and keyboard/pointer readout, returns by period and basis,
 companies, evidence, disclosures for method, membership, names and diagnostics), and
 method & data (coverage, freshness, the last refresh's stages, release ID).

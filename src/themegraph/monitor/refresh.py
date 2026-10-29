@@ -38,6 +38,7 @@ from .comovement import trading_together
 from .config import MonitorConfig, load_monitor
 from .coverage import Coverage
 from .export import price_date, publish, theme_document, theme_overview, write_status
+from .families import families
 from .profiles import DEFAULT, Profile, effective, load_profile
 from .registry import Registry
 
@@ -202,6 +203,7 @@ def refresh(state_dir: Path, site_dir: Path, *, fixtures: bool = False,
                     "benchmark_rule": {"sector_benchmarks": mcfg.market.sector_benchmarks,
                                        "min_share": mcfg.market.sector_benchmark_min_share},
                     "benchmark_labels": mcfg.market.benchmark_labels,
+                    "families": mcfg.families.model_dump(), "tone": mcfg.tone.model_dump(),
                     "go_live": reg.data.get("go_live"),
                     "themes_processed_through": reg.data.get("last_snapshot"), **run_info}
             release = publish(site_dir, book_box["docs"], meta, mcfg,
@@ -362,8 +364,10 @@ def _value(reg: Registry, d: dict, mcfg: MonitorConfig, box: dict) -> str:
         {k: [x["symbol"] for x in p["constituents"]] for k, p in perfs.items()
          if p.get("status") == "ok"},
         c.window_sessions, c.min_observations_share, c.null_draws, c.index)
+    fam = families(reg.published(), reg.vectors, mcfg.families.min_cosine)
     for th in reg.published():
         doc = theme_document(th, perfs[th["id"]], snaps, mcfg)
+        doc["family"] = fam.get(th["id"])
         doc["trading_together"] = together.get(th["id"])
         doc["overview"] = theme_overview(doc)
         docs.append(doc)

@@ -232,6 +232,15 @@ def cmd_monitor(a):
         print(text)
         print(f"\nwritten to {out}")
         return
+    if a.action == "review":
+        from .monitor.config import load_monitor
+        from .monitor.review import review_report
+        text = review_report(Path(a.state), load_monitor(prof.monitor))
+        out = Path(a.out) if a.out else Path(a.state) / "review.md"
+        out.write_text(text)
+        print(text)
+        print(f"\nwritten to {out}")
+        return
     import functools
     import http.server
     handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=a.site)
@@ -357,7 +366,7 @@ def main(argv=None):
     s.add_argument("--no-browser", action="store_true")
     s.set_defaults(fn=cmd_review)
     s = sub.add_parser("monitor", help="theme monitor: refresh the data feed or serve it")
-    s.add_argument("action", choices=["refresh", "serve", "compare"])
+    s.add_argument("action", choices=["refresh", "serve", "compare", "review"])
     s.add_argument("--profile", default="semis",
                    help="configuration profile in config/profiles (default: semis, the "
                         "semiconductor pilot); sets the files, state and site below")
@@ -367,7 +376,8 @@ def main(argv=None):
                    help="compare: the other profile (default tech-v2)")
     s.add_argument("--against-state", help="compare: the other profile's registry directory")
     s.add_argument("--against-site", help="compare: the other profile's site directory")
-    s.add_argument("--out", help="compare: write the report here (default: <state>/comparison.md)")
+    s.add_argument("--out", help="compare/review: write the report here (default: "
+                   "<state>/comparison.md or <state>/review.md)")
     s.add_argument("--as-of", help="data cutoff date (default: today)")
     s.add_argument("--fixtures", action="store_true",
                    help="synthetic labelled fixture data instead of the store")

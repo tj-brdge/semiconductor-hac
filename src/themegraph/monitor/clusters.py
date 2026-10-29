@@ -23,6 +23,7 @@ import numpy as np
 import pandas as pd
 
 from ..text.keywords import ctfidf_keywords
+from . import tone as T
 from .config import MonitorConfig
 
 QUOTE_CHARS = 500
@@ -45,6 +46,7 @@ class Cluster:
     roles: dict[str, float] = field(default_factory=dict)
     n_documents: int = 0
     flagged: bool = False               # flagged by the research emergence rule at t
+    tone: dict = field(default_factory=dict)  # headwind/tailwind (monitor/tone.py)
 
 
 def passage_roles(p: pd.DataFrame) -> pd.Series:
@@ -83,6 +85,24 @@ class SnapshotReader:
         self.flagged = set(zip(led["track_id"], led["t"], strict=True)) if len(led) else set()
         self.totals = dict(zip(ctx.windows["t"], ctx.windows["n_passages"], strict=True))
         self.first_doc = p.groupby("symbol")["available_at"].min().to_dict()
+        self.text = p["text"].astype(str).to_numpy()
+        self.sign, _ = T.score(self.text)
+        self.company = self.role != "analyst_question"
+
+    def _window(self, t: pd.Timestamp) -> np.ndarray:
+        p = self.p
+        return ((p["available_at"] > t - pd.Timedelta(days=self.ctx.cfg.text.window_days))
+                & (p["available_at"] <= t)).to_numpy()
+
+    def tone_rates(self, t: pd.Timestamp) -> dict[str, tuple[float, float]]:
+        """Each genre's share of negative and positive company passages in the window
+        ending at t: the rates a theme's tone is compared with."""
+        w = self._window(t) & self.company
+        out = {}
+        for g in np.unique(self.genres[w]):
+            s = self.sign[w & (self.genres == g)]
+            out[str(g)] = (float(np.mean(s < 0)), float(np.mean(s > 0)))
+        return out
 
     def window_by_issuer(self, t: pd.Timestamp) -> dict[str, int]:
         """Passages per company in the window ending at t (the share denominator)."""
@@ -102,6 +122,7 @@ class SnapshotReader:
         a = ctx.assignments.loc[ctx.assignments["t"] == t]
         ex = ctx.exposure.loc[ctx.exposure["t"] == t]
         total = self.totals.get(t, 0)
+        rates = self.tone_rates(t)
         out = []
         for tid, g in a.groupby("track_id", sort=True):
             e = ex.loc[ex["track_id"] == tid]
@@ -129,6 +150,9 @@ class SnapshotReader:
                 roles={r: round(float(roles.get(r, 0.0)), 3) for r in ROLES},
                 n_documents=int(self.p["doc_id"].iloc[idx].nunique()),
                 flagged=(tid, t) in self.flagged))
+            co = idx[self.company[idx]]
+            out[-1].tone = T.theme_tone(self.sign[co], self.genres[co], rates, m.tone,
+                                        texts=self.text[co])
             out[-1]._order = idx[np.argsort(-sims, kind="stable")]
         self._describe(t, out)
         return out

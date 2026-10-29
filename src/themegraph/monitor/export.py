@@ -223,6 +223,9 @@ def theme_overview(doc: dict) -> list[dict]:
                 "it had been three months earlier.")
     txt += f" Current status: {doc.get('status')}."
     out.append({"heading": "How it has developed", "text": txt})
+    tone = m.get("tone") or {}
+    if tone.get("direction") in ("headwind", "tailwind", "mixed"):
+        out.append({"heading": "What kind of news", "text": tone_sentence(tone)})
     roles = m.get("evidence_roles") or {}
     if roles:
         mg = roles.get("management_remarks", 0) + roles.get("management_answer", 0)
@@ -248,6 +251,21 @@ def theme_overview(doc: dict) -> list[dict]:
         txt += " Prices only: separate from how much the theme is discussed."
         out.append({"heading": "How its stocks have done", "text": txt})
     return out
+
+
+def tone_sentence(tone: dict) -> str:
+    """What the phrase counts say about a theme's news, and nothing more."""
+    neg, ratio = tone["negative_share"], tone.get("negative_ratio")
+    usual = f", {ratio:.1f}× the usual rate for this kind of text" if ratio else ""
+    terms = tone.get("headwind_terms") or []
+    used = f" (most often: {_list(terms[:4])})" if terms else ""
+    lead = {"headwind": "A headwind: companies are describing problems.",
+            "tailwind": "A tailwind: companies are describing growth and demand.",
+            "mixed": "Mixed: neither problem nor growth language stands out."}[
+                tone["direction"]]
+    return (f"{lead} {neg:.0%} of its management and filing passages use more problem "
+            f"language than growth language{usual}{used}. Counted with fixed phrase "
+            "lists, which miss negation and context; read the quoted passages.")
 
 
 VERDICT_TEXT = {"together": "they are trading together",
@@ -320,6 +338,10 @@ def summary_row(doc: dict, bench: str) -> dict:
                                               for x in doc["measures"][-3:])},
         "sectors": m.get("sectors", []),
         "recently_added": m.get("recently_added", []),
+        "family": {"id": f["family"], "lead": f["lead"], "size": len(f["members"])}
+        if (f := doc.get("family")) else None,
+        "tone": {k: (m.get("tone") or {}).get(k) for k in
+                 ("direction", "negative_share", "negative_ratio", "headwind_terms")},
         "key_constituents": [{"symbol": c["symbol"], "sector": c.get("sector")}
                              for c in cons[:5]],
         "strength": {"coherence": m.get("coherence"), "n_issuers": m.get("n_issuers"),
@@ -345,6 +367,14 @@ def summary_row(doc: dict, bench: str) -> dict:
 def overview_lists(rows: list[dict], mcfg, snapshots: list[str] | None = None) -> dict:
     recent_snaps = set((snapshots or [])[-6:])
     live = [r for r in rows if r["status"] not in ("inactive", "merged")]
+    # Headwinds: what companies describe as problems (monitor/tone.py), listed on
+    # their own and left out of Emerging and Established so each theme shows once.
+    # Growing ones first: a spreading problem is the case for a short idea.
+    head = [r for r in live if (r.get("tone") or {}).get("direction") == "headwind"]
+    headwinds = sorted(head, key=lambda r: (-(r["emergence"]["growth_3m"] or 0),
+                                            -(r["tone"].get("negative_ratio") or 0)))
+    hw = {r["id"] for r in head}
+    live = [r for r in live if r["id"] not in hw]
     emerging = sorted([r for r in live if r["emergence"]["flagged_recently"]
                        or (r["route"] == "emergence" and r["status"] in ("new",
                                                                          "strengthening"))],
@@ -356,6 +386,7 @@ def overview_lists(rows: list[dict], mcfg, snapshots: list[str] | None = None) -
                                                                     or 0)))
     trend = [r for r in rows if r["market"]["trend"].get("trend")]
     return {"emerging": [r["id"] for r in emerging],
+            "headwinds": [r["id"] for r in headwinds],
             "established": [r["id"] for r in established],
             "market_gaining": [r["id"] for r in sorted(
                 (r for r in trend if r["market"]["trend"]["trend"] == "gaining"),
