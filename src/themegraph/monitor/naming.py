@@ -104,7 +104,7 @@ Rules:
 forecasts or company names that the passages do not support.
 - Title: at most {words} words, plain English, no tickers, no hype, no investment \
 view (not "boom", "winners", "bullish").
-- Summary: one or two sentences on what the companies are discussing. Describe \
+- Summary: two to four sentences on what the companies are discussing and how. Describe \
 discussion, not stock performance, and make no prediction.
 - Passages marked analyst_question are questions from analysts, not company \
 statements; never present them as what a company said.

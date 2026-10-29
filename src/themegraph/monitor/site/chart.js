@@ -46,11 +46,21 @@ export function sparkline({ dates, theme, benchmark, liveFrom, label }) {
  * rows:   [{date, basis, v: {key: value}}] already rebased by the caller
  * series: [{key, label, color, dash, width}]
  * format: value -> text for the readout
- * markers: [{index, label}] events drawn as arrows at rows[index] (the caller maps
- *          each event to its session and leaves out events outside the rows)
+ * markers: [{index, label, kind}] events drawn at rows[index] (the caller maps each
+ *          event to its row and leaves out events outside the rows). kind "up"
+ *          draws ▲, "down" ▼ (with their own colours), anything else a navy ▼.
+ * base:    a reference value drawn as a dashed line and kept in range (100 for an
+ *          index; null for none)
+ * tick:    value -> axis and end-label text
+ * describe: row -> what kind of day it is, for the readout
  * Returns {destroy()}.
  */
-export function lineChart(host, { rows, series, format, title, announce, markers = [] }) {
+const GLYPH = { up: "▲", down: "▼" };
+const KIND_TEXT = { live: "live", hindsight: "hindsight, before the basket existed" };
+
+export function lineChart(host, { rows, series, format, title, announce, markers = [],
+  base = 100, tick = (v) => v.toFixed(0),
+  describe = (r) => KIND_TEXT[r.basis] || "simulated" }) {
   host.textContent = "";
   host.classList.add("chart");
   const svg = el("svg", { tabindex: "0", role: "group", "aria-label": `${title}. Use the left and right arrow keys to read values by date.` }, host);
@@ -59,8 +69,8 @@ export function lineChart(host, { rows, series, format, title, announce, markers
   tip.hidden = true;
   host.appendChild(tip);
   let idx = null, geom = null;
-  const at = new Map(); // row index -> event labels (same-session events merge)
-  for (const m of markers) at.set(m.index, [...(at.get(m.index) || []), m.label]);
+  const at = new Map(); // row index -> events (same-row events merge)
+  for (const m of markers) at.set(m.index, [...(at.get(m.index) || []), m]);
 
   function draw() {
     const width = Math.max(host.clientWidth, 280);
@@ -71,7 +81,8 @@ export function lineChart(host, { rows, series, format, title, announce, markers
     svg.setAttribute("height", H);
     svg.textContent = "";
     const vals = rows.flatMap((r) => series.map((s) => r.v[s.key])).filter((v) => v != null);
-    let lo = Math.min(...vals, 100), hi = Math.max(...vals, 100);
+    const ref = base == null ? [] : [base];
+    let lo = Math.min(...vals, ...ref), hi = Math.max(...vals, ...ref);
     const pad = (hi - lo) * 0.06 || 1; lo -= pad; hi += pad;
     const n = rows.length - 1 || 1;
     const X = (i) => M.l + ((width - M.l - M.r) * i) / n;
@@ -99,9 +110,9 @@ export function lineChart(host, { rows, series, format, title, announce, markers
     for (const v of niceTicks(lo, hi, narrow ? 4 : 5)) {
       el("line", { x1: M.l, x2: width - M.r, y1: Y(v), y2: Y(v) }, grid);
       const t = el("text", { x: M.l - 6, y: Y(v) + 4, "text-anchor": "end" }, grid);
-      t.textContent = v.toFixed(0);
+      t.textContent = tick(v);
     }
-    el("line", { class: "base", x1: M.l, x2: width - M.r, y1: Y(100), y2: Y(100) }, svg);
+    if (base != null) el("line", { class: "base", x1: M.l, x2: width - M.r, y1: Y(base), y2: Y(base) }, svg);
     const ax = el("g", { class: "axis" }, svg);
     const k = narrow ? 3 : 5;
     for (let j = 0; j < k; j++) {
@@ -122,23 +133,32 @@ export function lineChart(host, { rows, series, format, title, announce, markers
       const g = el("g", { class: "end" }, svg);
       for (const e of ends) {
         const t = el("text", { x: width - M.r + 8, y: e.y + 4 }, g);
-        t.textContent = `${e.s.label} ${last.v[e.s.key].toFixed(0)}`;
+        t.textContent = `${e.s.label} ${tick(last.v[e.s.key])}`;
       }
     }
     // Event arrows: a downward arrow above the plot, a dashed guide to the axis,
     // and a label (stacked when events are close together).
+    // Labels go on one of two rows only where they fit; an event without room keeps
+    // its arrow and is named in the readout and in the list under the chart.
     const ev = el("g", { class: "events" }, svg);
-    let prevX = -Infinity, level = 0;
-    for (const [i, labels] of [...at.entries()].sort((a, b) => a[0] - b[0])) {
+    const rowEnd = [-Infinity, -Infinity];
+    for (const [i, evs] of [...at.entries()].sort((a, b) => a[0] - b[0])) {
       const x = X(i);
-      level = x - prevX < 120 ? (level + 1) % 2 : 0;
-      prevX = x;
-      el("line", { class: "event-guide", x1: x, x2: x, y1: M.t, y2: H - M.b }, ev);
-      el("path", { class: "event-arrow", d: `M${x - 5},${M.t - 10} L${x + 5},${M.t - 10} L${x},${M.t - 2} Z` }, ev);
-      const right = x < width - M.r - 140;
-      const t = el("text", { class: "event-label", x: right ? x + 8 : x - 8, y: M.t - 14 - level * 13,
+      const kind = evs.length === 1 && GLYPH[evs[0].kind] ? evs[0].kind : "event";
+      el("line", { class: `event-guide ${kind}`, x1: x, x2: x, y1: M.t, y2: H - M.b }, ev);
+      const tri = kind === "up" ? `M${x - 5},${M.t - 2} L${x + 5},${M.t - 2} L${x},${M.t - 10} Z`
+        : `M${x - 5},${M.t - 10} L${x + 5},${M.t - 10} L${x},${M.t - 2} Z`;
+      el("path", { class: `event-arrow ${kind}`, d: tri }, ev);
+      const text = evs.map((e) => e.label).join(" · ");
+      const w = text.length * 6.4 + 4;
+      const right = x + 8 + w < width - 4;
+      const x0 = right ? x - 2 : x - 8 - w, x1 = right ? x + 8 + w : x + 2;
+      const level = rowEnd.findIndex((end) => x0 > end + 6);
+      if (level < 0 || x0 < 0) continue;
+      rowEnd[level] = x1;
+      const t = el("text", { class: `event-label ${kind}`, x: right ? x + 8 : x - 8, y: M.t - 14 - level * 13,
         "text-anchor": right ? "start" : "end" }, ev);
-      t.textContent = labels.join(" · ");
+      t.textContent = text;
     }
     const cross = el("line", { class: "cross", y1: M.t, y2: H - M.b, visibility: "hidden" }, svg);
     const dots = series.map((s) => el("circle", { r: 4, fill: s.color, stroke: "var(--surface)", "stroke-width": 2, visibility: "hidden" }, svg));
@@ -158,16 +178,16 @@ export function lineChart(host, { rows, series, format, title, announce, markers
     tip.textContent = "";
     const d = document.createElement("div");
     d.className = "d";
-    const kind = { live: "live", hindsight: "hindsight, before the basket existed" }[r.basis] || "simulated";
-    d.textContent = `${fmtDate(r.date)} · ${kind}`;
+    const kind = describe(r);
+    d.textContent = kind ? `${fmtDate(r.date)} · ${kind}` : fmtDate(r.date);
     tip.appendChild(d);
     const parts = [];
-    for (const label of at.get(idx) || []) {
+    for (const m of at.get(idx) || []) {
       const e = document.createElement("div");
-      e.className = "e";
-      e.textContent = `▼ ${label}`;
+      e.className = `e ${m.kind || ""}`;
+      e.textContent = `${GLYPH[m.kind] || "▼"} ${m.label}`;
       tip.appendChild(e);
-      parts.push(label);
+      parts.push(m.label);
     }
     for (const s of series) {
       if (r.v[s.key] == null && s.optional) continue;
@@ -190,7 +210,7 @@ export function lineChart(host, { rows, series, format, title, announce, markers
     tip.style.left = `${Math.min(Math.max(x + 12, 0), host.clientWidth - tip.offsetWidth)}px`;
     if (x + 12 + tip.offsetWidth > host.clientWidth) tip.style.left = `${Math.max(x - tip.offsetWidth - 12, 0)}px`;
     tip.style.top = "8px";
-    announce?.(`${fmtDate(r.date)}, ${kind}: ${parts.join(", ")}`);
+    announce?.(`${fmtDate(r.date)}${kind ? `, ${kind}` : ""}: ${parts.join(", ")}`);
   }
 
   function hide() {

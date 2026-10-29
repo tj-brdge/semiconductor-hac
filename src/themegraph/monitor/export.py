@@ -78,6 +78,7 @@ def theme_document(th: dict, perf: dict, snapshots: list[str], mcfg) -> dict:
         "published_at": th["published_at"], "last_seen": th["last_seen"],
         "name_history": th["name_history"], "status_history": th["status_history"],
         "lineage": th["lineage"], "merged_into": th.get("merged_into"),
+        "status_points": status_points(th),
         "evidence": th["evidence"],
         "measures": [{k: v for k, v in r.items()} for r in th["measures"]],
         "basket_versions": th["versions"],
@@ -88,6 +89,150 @@ def theme_document(th: dict, perf: dict, snapshots: list[str], mcfg) -> dict:
         "newly_covered": th.get("newly_covered"),
         "market_trend": _market_trend(hist, bench, mcfg.market.trend_threshold_pp),
     }
+
+
+MONTHS = "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split()
+
+
+def _month(t: str | None) -> str:
+    if not t:
+        return "—"
+    return f"{MONTHS[int(t[5:7]) - 1]} {t[:4]}"
+
+
+def _day(t: str | None) -> str:
+    if not t:
+        return "—"
+    return f"{int(t[8:10])} {MONTHS[int(t[5:7]) - 1]} {t[:4]}"
+
+
+def _list(xs: list[str]) -> str:
+    xs = [x for x in xs if x]
+    return xs[0] if len(xs) == 1 else ", ".join(xs[:-1]) + " and " + xs[-1] if xs else ""
+
+
+def _pct(x: float | None, signed: bool = True) -> str:
+    if x is None:
+        return "n/a"
+    v = x * 100
+    return f"{'+' if signed and v > 0 else '−' if v < 0 else ''}{abs(v):.1f}%"
+
+
+# Status changes as points on the charts: which way discussion moved, and why.
+STATUS_POINTS = {
+    "strengthening": ("up", "Strengthening"),
+    "cooling": ("down", "Cooling"),
+    "inactive": ("down", "Went quiet"),
+}
+
+
+def status_points(th: dict) -> list[dict]:
+    """Every change in discussion status that marks strengthening or weakening:
+    to strengthening (up); to cooling or inactive (down); from cooling or inactive
+    back to stable (up, recovered); from strengthening back to stable (down, growth
+    levelled off). Each carries the cohort ratio that decided it, when recorded."""
+    out = []
+    for h in th.get("status_history", []):
+        a, b = h.get("from"), h.get("to")
+        if b in STATUS_POINTS:
+            kind, label = STATUS_POINTS[b]
+        elif b == "stable" and a in ("cooling", "inactive"):
+            kind, label = "up", "Recovered"
+        elif b == "stable" and a == "strengthening":
+            kind, label = "down", "Growth levelled off"
+        else:
+            continue
+        ratio = (h.get("basis") or {}).get("ratio")
+        out.append({"t": h["t"], "kind": kind, "label": label, "from": a, "to": b,
+                    "ratio": ratio})
+    return out
+
+
+def theme_overview(doc: dict) -> list[dict]:
+    """A longer summary built only from what the monitor recorded: what the theme
+    is, who discusses it, how it developed, where the evidence comes from and,
+    separately, how its stocks did. No claim beyond the data; written labels (the
+    short summary) are shown above it."""
+    m = next((r for r in reversed(doc["measures"]) if r.get("present")), {})
+    out = []
+    kw = doc.get("keywords", [])[:6]
+    if kw:
+        out.append({"heading": "What it is", "text":
+                    f"The passages in this theme share these distinctive terms: {_list(kw)}. "
+                    + ("The title and summary above were written from cited passages."
+                       if (doc.get("label") or {}).get("source") in ("claude", "curated")
+                       else "No written description yet: the title comes from these terms.")})
+    if m:
+        by = m.get("passages_by_issuer") or {}
+        tot = sum(by.values()) or 1
+        top = sorted(by.items(), key=lambda kv: -kv[1])[:3]
+        lead = _list([f"{s} ({n / tot:.0%})" for s, n in top])
+        txt = (f"{m.get('n_issuers', len(m.get('issuers', [])))} companies discuss it, in "
+               f"{_list(m.get('sectors', [])) or 'one sector'}. Most of the discussion comes "
+               f"from {lead}.")
+        if m.get("new_issuers_3m"):
+            txt += f" New in the last three months: {_list(m['new_issuers_3m'])}."
+        if m.get("recently_added"):
+            txt += (f" Recently added to coverage, shown but not yet counted in growth: "
+                    f"{_list(m['recently_added'])}.")
+        out.append({"heading": "Who discusses it", "text": txt})
+    route = {"emergence": "the emergence rule (fast growth across comparable companies)",
+             "established": "the established-theme rule (persistent and broad)",
+             "newly_covered": "the newly-covered rule (long-running among newly added "
+                              "companies)"}.get(doc.get("route"), doc.get("route"))
+    txt = (f"First seen in {_month(doc.get('first_seen'))}; entered the monitor in "
+           f"{_month(doc.get('published_snapshot'))} through {route}.")
+    pts = doc.get("status_points") or status_points(doc)
+    if pts:
+        txt += (" Changes in discussion: " + _list([f"{p['label'].lower()} ({_month(p['t'])})"
+                                                    for p in pts[-4:]])
+                + (f", after {len(pts) - 4} earlier changes" if len(pts) > 4 else "") + ".")
+    pres = [r for r in doc["measures"][-12:] if r.get("present")]
+    if pres:
+        peak = max(pres, key=lambda r: r.get("share", 0))
+        txt += (f" It was discussed in {m.get('persistence_12', len(pres))} of the last 12 "
+                f"months, with its largest share of all monitored text "
+                f"({peak['share']:.1%}) in {_month(peak['t'])}.")
+    if m.get("growth_3m") is not None:
+        when = "" if m["t"] == doc["measures"][-1]["t"] else f" when last seen ({_month(m['t'])})"
+        txt += (f" Among comparable companies its share{when} was {m['growth_3m']:.2f}× what "
+                "it had been three months earlier.")
+    txt += f" Current status: {doc.get('status')}."
+    out.append({"heading": "How it has developed", "text": txt})
+    roles = m.get("evidence_roles") or {}
+    if roles:
+        mg = roles.get("management_remarks", 0) + roles.get("management_answer", 0)
+        txt = (f"{mg:.0%} of its passages are management speaking (prepared remarks and "
+               f"answers), {roles.get('filing', 0):.0%} come from SEC filings and "
+               f"{roles.get('analyst_question', 0):.0%} are analysts' questions.")
+        if roles.get("analyst_question", 0) >= 0.25:
+            txt += (" A large share of questions means investors are asking about it; "
+                    "that is attention, not what companies say they are doing.")
+        out.append({"heading": "Where the evidence comes from", "text": txt})
+    perf = doc.get("performance") or {}
+    if perf.get("status") == "ok":
+        r = (perf.get("returns") or {}).get("full_period") or {}
+        b = (doc.get("benchmarks") or ["SPY"])[0]
+        basis = {"live": "observed", "reconstructed": "simulated",
+                 "mixed": "simulated, then observed"}.get(r.get("basis"), "")
+        txt = (f"An equal-weight basket of its {len(perf.get('constituents', []))} companies "
+               f"returned {_pct(r.get('theme'))} from {_day(r.get('start'))} to "
+               f"{_day(r.get('end'))} ({basis}), against {_pct(r.get(b))} for {b}.")
+        tt = ((doc.get("trading_together") or {}).get("now") or {})
+        if tt.get("percentile") is not None:
+            p = tt["percentile"]
+            verdict = ("they are trading together" if p >= 0.9 else
+                       "they are less connected than usual" if p <= 0.1 else
+                       "that is not unusual")
+            n = tt.get("random_baskets", 0)
+            share = (f"more than all {n}" if p >= 0.995 else f"less than all {n}"
+                     if p <= 0.005 else f"more than {p:.0%} of {n}")
+            txt += (f" Over the last six months, beyond what the market explains, its stocks "
+                    f"moved together {share} random baskets with the same size and segment "
+                    f"mix: {verdict}.")
+        txt += " Prices only: separate from how much the theme is discussed."
+        out.append({"heading": "How its stocks have done", "text": txt})
+    return out
 
 
 def describe(th: dict) -> str:

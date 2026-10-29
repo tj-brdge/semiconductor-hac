@@ -37,7 +37,7 @@ from .clusters import SnapshotReader
 from .comovement import trading_together
 from .config import MonitorConfig, load_monitor
 from .coverage import Coverage
-from .export import price_date, publish, theme_document, write_status
+from .export import price_date, publish, theme_document, theme_overview, write_status
 from .profiles import DEFAULT, Profile, effective, load_profile
 from .registry import Registry
 
@@ -363,6 +363,7 @@ def _value(reg: Registry, d: dict, mcfg: MonitorConfig, box: dict) -> str:
     for th in reg.published():
         doc = theme_document(th, perfs[th["id"]], snaps, mcfg)
         doc["trading_together"] = together.get(th["id"])
+        doc["overview"] = theme_overview(doc)
         docs.append(doc)
     box.update(book=book, docs=docs)
     return f"{len(docs)} themes valued through {price_date(book)}"
