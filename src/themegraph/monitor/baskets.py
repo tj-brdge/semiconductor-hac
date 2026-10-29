@@ -160,6 +160,14 @@ def theme_performance(theme: dict, book: PriceBook, benchmarks: list[str],
                       go_live: str | None) -> dict:
     """Chain-linked index, benchmarks, returns, contributions and coverage."""
     versions = theme["versions"]
+    empty = [v["version"] for v in versions if not v["constituents"]]
+    if empty:
+        # Registries written before baskets were checked could hold a version with no
+        # companies (docs/MONITOR.md, "Repairing state"). It cannot be valued; say so
+        # instead of computing an index from nothing.
+        return {"status": "unavailable", "reason": "empty_basket",
+                "note": f"Basket version {', '.join(map(str, empty))} has no companies, "
+                        "so this theme is not valued. The monitor's state needs repair."}
     entries = [entry_session(book, v["entry_after"]) for v in versions]
     if not versions or entries[0] is None:
         return {"status": "awaiting_entry",
@@ -184,6 +192,9 @@ def theme_performance(theme: dict, book: PriceBook, benchmarks: list[str],
         live_from.append(pd.Series(_live_from(theme, v, go_live), index=idx.index))
         segs.append((v, e, seg))
     series = pd.concat(levels)
+    if not np.isfinite(series.to_numpy(dtype=float)).all():
+        return {"status": "unavailable", "reason": "not_computable",
+                "note": "The basket index could not be computed from the available prices."}
     coverage = pd.concat(cov)
     first = entries[0]
     bench = {}

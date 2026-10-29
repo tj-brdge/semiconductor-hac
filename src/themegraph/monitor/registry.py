@@ -171,6 +171,12 @@ class Registry:
                 route = self._route(th, c, row, snaps, median_coh, m) or \
                     self._newly_covered(th, c, row, snaps, median_coh, m, cov, history)
                 th["route_check"] = self._route_check(th, c, row, snaps, median_coh, m)
+                if route and not self._eligible(c, ts, cov):
+                    # Never publish a theme with nothing to buy (basket invariant).
+                    th["route_check"]["blocked"] = "no company in coverage at this month-end"
+                    self.event(ts, tid, "publication_blocked", route=route,
+                               reason="empty basket")
+                    route = None
                 if route:
                     self._publish(th, c, ts, route, now, m, roles, cov)
                     counts["published"] += 1
@@ -256,7 +262,12 @@ class Registry:
         last12 = set(snaps[-12:])
         persistence = sum(s in last12 for s in th["seen"])
         if c is None:
-            return {"t": ts, "present": False, "share": 0.0, "persistence_12": persistence}
+            # Not found: an observation of zero only if the theme could have been seen
+            # (its companies had documents in the window); otherwise missing evidence,
+            # recorded with no share at all.
+            seen = self._observed(th, {"t": ts}, cov)
+            return {"t": ts, "present": False, "observed": seen,
+                    "share": 0.0 if seen else None, "persistence_12": persistence}
         meta = self.data["snapshot_meta"]
         window = meta[ts]["window_by_issuer"]
         issuers = sorted(c.exposure)
@@ -274,7 +285,7 @@ class Registry:
         growth = round(now_c / old_c, 3) if now_c is not None and old_c else None
         old_issuers = set(old.get("issuers", [])) if old else set()
         return {
-            "t": ts, "present": True,
+            "t": ts, "present": True, "observed": True,
             # emergence (growth, new companies and the routes use comparable companies)
             "share": round(c.share, 5), "n_passages": c.n_passages,
             "share_comparable": round(now_c, 5) if now_c is not None else None,
@@ -342,9 +353,13 @@ class Registry:
             return None
         e = m.established
         base = snaps[-4] if len(snaps) >= 4 else None
-        issuers = row["issuers"]
+        # Only companies in coverage at this month-end count (and can be bought): a
+        # company whose `covered_from` is later has back-filled documents but is not
+        # monitored yet, so it can neither qualify a theme nor enter its basket.
+        issuers = [s for s in row["issuers"] if cov.covered(s, row["t"])]
         new = [s for s in issuers if base is not None and not cov.covered(s, base)]
-        th["newly_covered_check"] = {"new_companies": len(new), "issuers": len(issuers)}
+        th["newly_covered_check"] = {"new_companies": len(new), "issuers": len(issuers),
+                                     "not_yet_covered": len(row["issuers"]) - len(issuers)}
         if not issuers or len(new) * 2 < len(issuers):
             return None  # mostly already-covered companies: the usual routes decide
         if len(issuers) < e.min_issuers or c.coherence < median_coh:
@@ -394,9 +409,29 @@ class Registry:
         th["sector_benchmark"] = {"symbol": bench, "sector": chosen,
                                   "share": round(share, 3), "decided_at": ts}
 
+    def _live_expansion(self, th: dict, cov: Coverage) -> bool:
+        """Whether a newly-covered theme comes from coverage added after the monitor
+        went live (a real expansion), rather than from a coverage date inside the
+        reconstructed history of a build."""
+        go = self.data.get("go_live")
+        if not go:
+            return False
+        day = pd.Timestamp(go).date()
+        return any(cov.issuers[s].covered_from is not None and
+                   cov.issuers[s].covered_from >= day
+                   for s in (th.get("newly_covered") or {}).get("new_companies", [])
+                   if s in cov.issuers)
+
     def _publish(self, th: dict, c: Cluster, ts: str, route: str, now: str,
                  m: MonitorConfig, roles: dict[str, str], cov: Coverage) -> None:
         live = (pd.Timestamp(now) - pd.Timestamp(ts)).days <= m.live_window_days
+        if route == "newly_covered" and self._live_expansion(th, cov):
+            # The route's promise: the basket starts when the theme is published.
+            # Its month-end is evidence of when the backfilled discussion was seen;
+            # the entry is the first close after this refresh, also when the refresh
+            # ran late (live_window_days does not apply).
+            live = True
+            th["newly_covered"]["live_expansion"] = True
         th.update(published=True, published_snapshot=ts, published_at=now, route=route,
                   basis="live" if live else "reconstructed", status="new")
         self._add_version(th, c, ts, now, live, roles, cov, reason="published")
@@ -409,15 +444,23 @@ class Registry:
         return {s: x for s, x in c.exposure.items() if cov.covered(s, ts)}
 
     def _add_version(self, th, c, ts, now, live, roles, cov, reason):
+        members = self._eligible(c, ts, cov)
+        if not members:  # callers check first; never store a basket without companies
+            raise ValueError(f"{th['id']}: basket version with no company in coverage "
+                             f"at {ts}")
+        entry = now if live else ts
+        if th["versions"] and pd.Timestamp(entry) < pd.Timestamp(th["versions"][-1]["entry_after"]):
+            raise ValueError(f"{th['id']}: basket version would be bought ({entry}) before "
+                             f"the basket it replaces ({th['versions'][-1]['entry_after']})")
         th["versions"].append({
             "version": len(th["versions"]) + 1, "snapshot": ts, "reason": reason,
             "created_at": now, "basis": "live" if live else "reconstructed",
             "universe_version": cov.u.version,
             # Executable entry: the first benchmark session after this moment.
-            "entry_after": now if live else ts,
+            "entry_after": entry,
             "constituents": [{"symbol": s, "exposure": x, "role": roles.get(s, "unknown"),
                               "sector": cov.sector.get(s)}
-                             for s, x in sorted(self._eligible(c, ts, cov).items())]})
+                             for s, x in sorted(members.items())]})
         th["pending"] = None
 
     def _version(self, th: dict, c: Cluster, ts: str, now: str, m: MonitorConfig,
@@ -430,6 +473,14 @@ class Registry:
         cur = sorted(x["symbol"] for x in th["versions"][-1]["constituents"])
         new = sorted(self._eligible(c, ts, cov))
         p = th.get("pending")
+        if not new:
+            # None of the theme's companies is in coverage: there is nothing to buy,
+            # so the current basket stays held (as when companies leave coverage).
+            if p:
+                self.event(ts, th["id"], "basket_proposal_reset",
+                           reason="no company in coverage", proposed=p.get("members"))
+            th["pending"] = None
+            return
         if new == cur:
             if p:
                 self.event(ts, th["id"], "basket_proposal_reset", reason="back to current",
@@ -445,24 +496,53 @@ class Registry:
             p = th["pending"] = {"members": new, "since": ts, "count": 1}
         if p["count"] >= m.basket.version_confirm_snapshots:
             live = (pd.Timestamp(now) - pd.Timestamp(ts)).days <= m.live_window_days
-            if pd.Timestamp(th["published_at"]) < pd.Timestamp(now):
-                # The theme was already public before this refresh: a change found
-                # while catching up on old month-ends takes effect when it is decided
-                # (bought after `now`), never backdated over days after publication.
+            last = th["versions"][-1]
+            if pd.Timestamp(th["published_at"]) < pd.Timestamp(now) or \
+                    last["entry_after"] == now:
+                # The theme was already public before this refresh, or its current
+                # basket is bought after this refresh (a live publication while
+                # catching up): a change found on an old month-end takes effect when
+                # it is decided (bought after `now`), never backdated before the
+                # basket it replaces or over days after publication.
                 live = True
-                last = th["versions"][-1]
                 if last["created_at"] == now and last["entry_after"] == now:
-                    th["versions"].pop()  # superseded within this refresh, never held
+                    # Superseded within this refresh, never held.
+                    if len(th["versions"]) > 1:
+                        th["versions"].pop()
+                    else:  # the publication basket itself: revise it before entry
+                        self.event(ts, th["id"], "basket_revised_before_entry",
+                                   was=[x["symbol"] for x in last["constituents"]], now=new)
+                        th["versions"].pop()
+                        self._add_version(th, c, ts, now, True, roles, cov,
+                                          reason="published")
+                        th["versions"][0]["revised_before_entry"] = ts
+                        th["pending"] = None
+                        return
             self._add_version(th, c, ts, now, live, roles, cov, reason="membership changed")
             self.event(ts, th["id"], "basket_version", version=len(th["versions"]),
                        added=sorted(set(new) - set(cur)), removed=sorted(set(cur) - set(new)),
                        confirmed_by=p["count"])
 
-    def _observed(self, th: dict, row: dict, cov: Coverage) -> bool:
+    def annotate_observed(self, cov: Coverage) -> None:
+        """Add `observed` to absent rows written before it was recorded (derived from
+        the stored windows; nothing measured is changed except that a share of zero
+        for a month without evidence becomes no share)."""
+        for th in self.themes.values():
+            for i, r in enumerate(th["measures"]):
+                if not r.get("present") and "observed" not in r:
+                    r["observed"] = self._observed(th, r, cov, before=th["measures"][:i])
+                    if not r["observed"]:
+                        r["share"] = None
+
+    def _observed(self, th: dict, row: dict, cov: Coverage,
+                  before: list[dict] | None = None) -> bool:
         """Whether a month-end could have seen the theme: at least half of the
-        companies that last discussed it had text in that month's window. A month
-        without their documents is missing evidence, not a decline."""
-        last = next((r for r in reversed(th["measures"]) if r.get("present")), None)
+        companies that last discussed it before then had text in that month's
+        window. A month without their documents is missing evidence, not a decline
+        (and not a zero)."""
+        rows = th["measures"] if before is None else before
+        last = next((r for r in reversed(rows) if r.get("present") and r["t"] < row["t"]),
+                    None)
         window = self.data.get("snapshot_meta", {}).get(row["t"], {}).get("window_by_issuer")
         if last is None or window is None:
             return True  # no information to say otherwise (older registries)

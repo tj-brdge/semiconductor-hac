@@ -48,19 +48,33 @@ def single_index_shrinkage(R: pd.DataFrame, m: pd.Series) -> dict:
     configured benchmark rather than the equal-weighted mean of the sample, and
     moments use 1/T as there.
 
-    Returns the shrunk covariance `sigma`, `beta`, `var_index`, `shrinkage`, and
-    `excess_corr`: the correlation of the part of each return the index does not
-    explain, taken from the shrunk covariance. Off the diagonal that is
-    (1 - shrinkage) * (sample covariance - beta_i * beta_j * var(m)), i.e. the
-    sample's co-movement beyond the index, shrunk toward none."""
+    Returns the shrunk covariance `sigma`, `beta`, `var_index`, `shrinkage`,
+    `resid_corr`: the sample correlation of the part of each return the index does
+    not explain, and `excess_corr`: the same taken from the shrunk covariance. Off
+    the diagonal that is (1 - shrinkage) * resid_corr, i.e. the sample's
+    co-movement beyond the index, shrunk toward none.
+
+    Both are computed from the index residuals e = x - beta * m directly, not by
+    subtracting beta_i * beta_j * var(m) from the shrunk covariance: the
+    subtraction cancels two nearly equal numbers and, at full shrinkage, leaves
+    rounding noise (~1e-16) where the answer is exactly zero, which a rank
+    comparison would then read as a signal. Here full shrinkage gives exact zeros.
+
+    Raises ValueError when the index does not vary in the window (no single-index
+    model). A stock the index explains completely (residual variance zero, to
+    rounding) has no beyond-index correlation: its row and column are NaN and it is
+    listed in `degenerate`, for the caller to leave out."""
     X = R.to_numpy(dtype=float)
     x = X - X.mean(axis=0)
     xm = m.to_numpy(dtype=float)
     xm = xm - xm.mean()
     t, n = x.shape
+    varm = float(xm @ xm / t)
+    scale = float(np.mean(m.to_numpy(dtype=float) ** 2)) if len(m) else 0.0
+    if not np.isfinite(varm) or varm <= 1e-14 * scale or varm == 0:
+        raise ValueError("the index does not vary in this window")
     sample = x.T @ x / t
     covm = x.T @ xm / t
-    varm = float(xm @ xm / t)
     prior = np.outer(covm, covm) / varm
     np.fill_diagonal(prior, np.diag(sample))
     c = float(np.linalg.norm(sample - prior, "fro") ** 2)
@@ -77,15 +91,25 @@ def single_index_shrinkage(R: pd.DataFrame, m: pd.Series) -> dict:
     shrink = float(np.clip((p - r) / c / t, 0.0, 1.0)) if c > 0 else 1.0
     sigma = shrink * prior + (1 - shrink) * sample
     beta = covm / varm
-    resid = sigma - varm * np.outer(beta, beta)
-    d = np.sqrt(np.clip(np.diag(resid), 1e-18, None))
-    excess = np.clip(resid / np.outer(d, d), -1, 1)
-    np.fill_diagonal(excess, 1.0)
+    e = x - xm[:, None] * beta
+    e = e - e.mean(axis=0)
+    ecov = e.T @ e / t
+    evar = np.diag(ecov).copy()
+    flat = evar <= 1e-12 * np.maximum(np.diag(sample), 1e-300)
+    d = np.sqrt(np.where(flat, np.nan, evar))
+    resid_corr = np.clip(ecov / np.outer(d, d), -1, 1)
+    np.fill_diagonal(resid_corr, 1.0)
+    resid_corr[flat, :] = np.nan
+    resid_corr[:, flat] = np.nan
+    excess = (1.0 - shrink) * resid_corr
+    np.fill_diagonal(excess, np.where(flat, np.nan, 1.0))
     cols = R.columns
     return {"sigma": pd.DataFrame(sigma, index=cols, columns=cols),
             "beta": pd.Series(beta, index=cols), "var_index": varm,
             "shrinkage": shrink,
-            "excess_corr": pd.DataFrame(excess, index=cols, columns=cols)}
+            "resid_corr": pd.DataFrame(resid_corr, index=cols, columns=cols),
+            "excess_corr": pd.DataFrame(excess, index=cols, columns=cols),
+            "degenerate": [cols[i] for i in np.flatnonzero(flat)]}
 
 
 def correlation_distance(corr: pd.DataFrame) -> np.ndarray:
@@ -133,8 +157,14 @@ def market_snapshot(rets: pd.DataFrame, t: pd.Timestamp, window: int, cfg: Marke
             return empty
         h = np.expm1(hist[eligible + [idx]])
         h = h.loc[h[idx].notna()]
-        est = single_index_shrinkage(h[eligible].fillna(0.0), h[idx])
-        corr = est["excess_corr"]
+        try:
+            est = single_index_shrinkage(h[eligible].fillna(0.0), h[idx])
+        except ValueError:
+            return empty  # the index did not move: no single-index model
+        keep = [s for s in eligible if s not in est["degenerate"]]
+        if len(keep) < 3:
+            return empty
+        corr = est["excess_corr"].loc[keep, keep]
         aff, Z = hac_affinity(corr, cfg.linkage)
         return {"t": t, "window": window, "symbols": list(aff.index), "affinity": aff,
                 "corr": corr, "linkage": Z, "shrinkage": est["shrinkage"]}

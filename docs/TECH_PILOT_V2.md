@@ -6,7 +6,7 @@ published semiconductor monitor (`semis`, the default), which is unchanged.
 
 ```
 themegraph monitor refresh --profile semis                  # the published monitor, as before
-themegraph monitor refresh --profile tech-v2 --documents    # the pilot: first run forks the semis registry
+themegraph monitor refresh --profile tech-v2 --documents    # the pilot: first run builds its own 10-year history
 themegraph monitor compare --profile semis --against tech-v2   # comparison report (Markdown)
 themegraph monitor serve --profile tech-v2                  # http://127.0.0.1:8780/, the pilot's site
 ```
@@ -40,7 +40,9 @@ and each company's filing index). No price or return was looked at.
 3. **Disclosure history.** Periodic SEC reports (10-K/10-Q, or 20-F for SAP, NICE,
    CHKP and MNDY) since at least 2023-10-27: three years give the 12-month minimum
    before a company counts in growth comparisons plus two years of simulated history.
-   (Companies join the 10-year replay when their documents begin.) The filer's
+   (Companies join the 10-year replay when their documents begin: most new
+   companies have documents for only part of those years, so their early months
+   are missing evidence, not absence.) The filer's
    history must be the same business.
 4. **Representation.** At least 12 companies per category.
 
@@ -137,6 +139,11 @@ months of documents) and baskets.
   history uses today's companies for a past that had different ones.
 - The simulated history uses today's company list, so it leaves out companies that
   have since been acquired (see "Known bias"). It is never shown as live.
+- Not every company has ten years of usable history. A company is part of the
+  replay from its first document, counts in growth comparisons 12 months after
+  that, and a month without a theme's companies' documents is shown as a gap
+  (missing evidence), not as zero discussion. How far back a theme's history goes
+  depends on which documents exist.
 - Fork mode (`fork_from: semis` in the profile) is the alternative for a live
   expansion of a published monitor whose theme IDs and basket history must carry on:
   the added companies then get a `covered_from` date, enter through the newly-covered
@@ -150,8 +157,8 @@ also gets one sector reference when at least half of its first basket's companie
 in one sector: SOXX for semiconductors and semiconductor equipment, IGV for
 application software and data and cloud software, CIBR for cybersecurity. The choice
 is fixed when the first basket is decided, from composition only, and recorded with
-the theme (`sector_benchmark`); themes inherited from the semiconductor pilot get it
-when the fork first processes them. Themes with no majority sector (most cross-sector
+the theme (`sector_benchmark`); in fork mode, themes inherited from the semiconductor
+pilot get it when the fork first processes them. Themes with no majority sector (most cross-sector
 themes) are compared with SPY and XLK only.
 
 Why not SOXX for everything: it is the semiconductor pilot's assumption, and it would
@@ -183,7 +190,11 @@ Three labels, three different routes into the inventory:
   identity), 4+ companies, at least median coherence. It is never shown as emerging.
   Its basket starts when it is published; the backfilled presence is recorded as
   evidence (`newly_covered`), not as an earlier discovery, and no measures are
-  written for months before the expansion.
+  written for months before the expansion. Only companies in coverage at the
+  month-end count toward it and can be bought; a refresh that processes an old
+  month-end late still buys after the refresh (MONITOR.md, "Live expansions").
+  This route only matters in fork mode or for a later live expansion: in the
+  default full-history build every company is covered from the start.
 
 Other safeguards that apply to every profile:
 
@@ -197,7 +208,7 @@ Other safeguards that apply to every profile:
   a month without the theme resets the count. New companies that join an existing
   theme enter its basket this way, in a new version decided when it is confirmed;
   earlier versions and returns are unchanged.
-- **The fork**: `tech-v2` starts from a copy of the semiconductor registry (theme
+- **Fork mode** (not the default; `fork_from` in the profile): `tech-v2` starts from a copy of the semiconductor registry (theme
   IDs, basket versions, measures and events kept; `fork` records the source, the
   month-end and the source registry's hash) and then runs independently. Themes it
   creates are named `tech-NNNNN`, so IDs never collide.
@@ -212,8 +223,10 @@ profile's runtime, peak memory, provider requests and cache reuse.
 
 ### Synthetic fixture results (not a real validation)
 
-Semiconductor fixture to 2021-06-30, technology fixture forked there, both run to
-2021-12-31 (`tests/test_profiles.py` runs the same sequence):
+Fork mode, the live-expansion path (the default build is covered by
+`test_full_history_build_counts_every_company_from_the_start`): semiconductor
+fixture to 2021-06-30, technology fixture forked there, both run to 2021-12-31
+(`tests/test_profiles.py` runs the same sequence):
 
 - All 7 published themes retained with the same IDs, statuses and baskets; no
   emergence flags gained; no splits or merges.

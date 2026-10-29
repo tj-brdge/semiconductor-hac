@@ -1,7 +1,7 @@
 """Status points (where discussion strengthens or weakens) and the longer theme
 overview, both built only from what the registry recorded."""
 
-from themegraph.monitor.export import status_points, theme_overview
+from themegraph.monitor.export import status_points, theme_overview, together_sentence
 
 
 def _hist(*moves):
@@ -37,7 +37,11 @@ def _doc(**kw):
                                                        "end": "2021-06-30",
                                                        "basis": "mixed"}}},
            "benchmarks": ["SPY"],
-           "trading_together": {"now": {"percentile": 0.97, "random_baskets": 1000}}}
+           "trading_together": {"now": {"informative": True, "percentile": 0.97,
+                                         "verdict": "together", "random_baskets": 1000,
+                                         "below": 970, "ties": 0, "above": 30,
+                                         "same_segment_share": 1.0,
+                                         "segment_matched": True}}}
     doc.update(kw)
     return doc
 
@@ -54,7 +58,8 @@ def test_overview_states_what_was_recorded_and_keeps_prices_separate():
     assert "investors are asking about it" in ov["Where the evidence comes from"]
     s = ov["How its stocks have done"]
     assert "+12.0%" in s and "+5.0%" in s and "simulated, then observed" in s
-    assert "more than 97% of 1000 random baskets" in s and "trading together" in s
+    assert "more than 970 of 1,000 random baskets with the same size and segment mix" in s
+    assert "trading together" in s
     assert "Prices only" in s
     for k in ("What it is", "Who discusses it", "How it has developed",
               "Where the evidence comes from"):
@@ -67,3 +72,22 @@ def test_overview_without_prices_or_history_says_less_not_more():
     heads = [p["heading"] for p in ov]
     assert "How its stocks have done" not in heads
     assert "Changes in discussion" not in ov[2]["text"]
+
+
+def test_together_wording_claims_only_what_the_counts_show():
+    tt = {"informative": True, "percentile": 0.996, "verdict": "together",
+          "random_baskets": 1000, "below": 993, "ties": 6, "above": 1,
+          "same_segment_share": 0.62, "segment_matched": False}
+    s = together_sentence(tt)
+    # Before: a percentile >= 0.995 was written as "more than all 1000".
+    assert "all" not in s.split(":")[0]
+    assert "more than 993 of 1,000" in s and "equal to 6" in s
+    assert "same segments where possible (62% of places)" in s
+    assert "segment mix" not in s
+    gone = together_sentence({"informative": False, "percentile": None, "verdict": None,
+                              "note": "nothing beyond the market to compare"})
+    assert "cannot be judged" in gone and "trading together" not in gone.replace(
+        "trade together", "")
+    ov = {p["heading"]: p["text"] for p in theme_overview(_doc(trading_together={"now": {
+        "informative": False, "percentile": None, "verdict": None, "note": "x"}}))}
+    assert "they are" not in ov["How its stocks have done"]

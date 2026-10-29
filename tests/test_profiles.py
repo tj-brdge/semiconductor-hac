@@ -179,7 +179,8 @@ def test_semis_profile_output_is_unchanged_by_profiles(tmp_path):
 
 def test_full_history_build_counts_every_company_from_the_start(tmp_path):
     """The pilot as configured: no fork, all companies covered from the start, a
-    24-month replay labelled as reconstructed, its own IDs, nothing 'newly covered'."""
+    replay of every fixture month-end labelled as reconstructed, its own IDs,
+    nothing 'newly covered'."""
     st = M.refresh(tmp_path / "state", tmp_path / "site", fixtures=True,
                    as_of=dt.date(2021, 12, 31), log=lambda *a: None, profile=TECH)
     assert st["ok"], st["errors"]

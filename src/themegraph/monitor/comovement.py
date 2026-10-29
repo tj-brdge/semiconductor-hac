@@ -14,7 +14,18 @@ its current basket, compared with random baskets of the same size and the same
 segment mix drawn from the other companies (eval/comovement.matched_null_sets). The
 headline is that percentile: with a single-index target every beyond-index
 correlation is the sample value times (1 - shrinkage), so the level shrinks heavily
-in short windows while the comparison does not change.
+in short windows while the comparison does not change. Baskets are ranked on the
+sample beyond-index correlation (`resid_corr`), which orders them exactly as the
+shrunk values do whenever shrinkage is below 1, without their rounding error.
+
+No verdict is given when the comparison carries no information:
+- full shrinkage: the estimator puts all co-movement on the index, so every
+  beyond-index correlation is zero and there is nothing to rank;
+- the index did not move in the window (no single-index model);
+- every random basket ties with the theme's basket.
+Those measures have `informative: false`, `percentile: null` and a `note`.
+Companies the index explains completely (no residual variance) are left out of the
+window, like companies with too few closes.
 
 This describes prices only. It never decides which themes are published.
 """
@@ -27,9 +38,11 @@ import numpy as np
 import pandas as pd
 
 from ..eval.comovement import matched_null_sets
-from ..graph.candidates import midrank_pct
 from ..market.hac import single_index_shrinkage
 from .baskets import PriceBook
+
+FULL_SHRINKAGE = 1 - 1e-9  # at or above: no beyond-index co-movement left to compare
+TIE = 1e-9                 # beyond-index correlations closer than this are ties
 
 
 def _window(book: PriceBook, end: int, n: int, symbols: list[str], index: str,
@@ -37,6 +50,7 @@ def _window(book: PriceBook, end: int, n: int, symbols: list[str], index: str,
     if end - n < 0 or index not in book.carry:
         return None
     days = book.cal[end - n:end + 1]
+    span = {"start": str(days[0].date()), "end": str(days[-1].date())}
     pool = []
     for s in symbols:
         if s not in book.carry or s == index:
@@ -51,14 +65,17 @@ def _window(book: PriceBook, end: int, n: int, symbols: list[str], index: str,
         return None
     px = book.carry[pool + [index]].reindex(days)
     R = px.pct_change().iloc[1:]
-    est = single_index_shrinkage(R[pool], R[index])
-    return {"start": str(days[0].date()), "end": str(days[-1].date()), "pool": pool,
-            "corr": est["excess_corr"], "shrinkage": est["shrinkage"]}
-
-
-def _avg(corr: pd.DataFrame, members: list[str]) -> float:
-    sub = corr.loc[members, members].to_numpy()
-    return float(sub[np.triu_indices(len(members), 1)].mean())
+    try:
+        est = single_index_shrinkage(R[pool], R[index])
+    except ValueError:
+        return {**span, "note": f"{index} did not move in this window, so there is no "
+                                "market model to measure against"}
+    flat = set(est["degenerate"])
+    pool = [s for s in pool if s not in flat]
+    if len(pool) < 3:
+        return None
+    return {**span, "pool": pool, "flat": sorted(flat),
+            "corr": est["resid_corr"].loc[pool, pool], "shrinkage": est["shrinkage"]}
 
 
 def _avgs(corr: pd.DataFrame, sets: list[list[str]]) -> np.ndarray:
@@ -70,22 +87,49 @@ def _avgs(corr: pd.DataFrame, sets: list[list[str]]) -> np.ndarray:
     return A[idx[:, iu[0]], idx[:, iu[1]]].mean(axis=1)
 
 
+def _verdict(pct: float) -> str:
+    """Wording bands for the page (presentation only; nothing is selected on them)."""
+    return "together" if pct >= 0.9 else "less" if pct <= 0.1 else "usual"
+
+
 def _measure(w: dict | None, members: list[str], segments: dict[str, str], draws: int,
              seed: int) -> dict | None:
     if w is None:
         return None
+    base = {"start": w["start"], "end": w["end"], "informative": False, "percentile": None,
+            "verdict": None}
+    if "pool" not in w:
+        return {**base, "companies": 0, "note": w["note"]}
     m = [s for s in members if s in w["pool"]]
+    left = sorted(set(members) - set(m))
     if len(m) < 2:
-        return {"start": w["start"], "end": w["end"], "companies": len(m),
+        return {**base, "companies": len(m), "left_out": left,
                 "note": "fewer than two of the basket's companies have enough prices"}
-    now = _avg(w["corr"], m)
+    shrink = w["shrinkage"]
+    base |= {"companies": len(m), "left_out": left, "shrinkage": round(shrink, 3)}
+    if shrink >= FULL_SHRINKAGE:
+        return {**base, "excess_corr": 0.0,
+                "note": "over this window the market model explains all of the co-movement "
+                        "among monitored companies, so there is nothing beyond the market "
+                        "to compare"}
+    now = float(_avgs(w["corr"], [m])[0])
     sets, info = matched_null_sets(m, w["pool"], segments, np.random.default_rng(seed), draws)
-    pct = midrank_pct(_avgs(w["corr"], sets), now) if sets else None
-    return {"start": w["start"], "end": w["end"], "companies": len(m),
-            "left_out": sorted(set(members) - set(m)),
-            "excess_corr": round(now, 4), "percentile": None if pct is None else round(pct, 3),
-            "same_segment_share": None if not sets else round(info["same_segment_share"], 3),
-            "shrinkage": round(w["shrinkage"], 3), "random_baskets": len(sets)}
+    if not sets:
+        return {**base, "excess_corr": round((1 - shrink) * now, 4),
+                "note": "too few other monitored companies to compare with"}
+    null = _avgs(w["corr"], sets)
+    below = int((null < now - TIE).sum())
+    ties = int((np.abs(null - now) <= TIE).sum())
+    n = len(sets)
+    same = float(info["same_segment_share"])
+    out = {**base, "excess_corr": round((1 - shrink) * now, 4), "random_baskets": n,
+           "below": below, "ties": ties, "above": n - below - ties,
+           "same_segment_share": round(same, 3), "segment_matched": same == 1.0}
+    if ties == n:
+        return {**out, "note": "every random basket had the same value, so the comparison "
+                               "says nothing"}
+    pct = (below + 0.5 * ties) / n
+    return {**out, "informative": True, "percentile": round(pct, 3), "verdict": _verdict(pct)}
 
 
 def trading_together(book: PriceBook, universe, baskets: dict[str, list[str]],
