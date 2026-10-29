@@ -155,6 +155,11 @@ main[aria-busy="true"] { opacity: .6; transition: opacity .2s; }
 .tag.live { border-color: var(--teal); color: var(--teal); background: var(--teal-bg); }
 .tag.sim { border-style: dashed; }
 .tag.q { border-color: var(--s-new); color: var(--s-new); }
+.tag.hw { border-color: var(--neg); color: var(--neg); }
+.tag.tw { border-color: var(--pos); color: var(--pos); }
+.family a { font-weight: 600; }
+.hero .family { margin: 12px 0; }
+.hero .family .h3 { font-size: 1rem; margin: 0 0 4px; }
 .pos { color: var(--pos); } .neg { color: var(--neg); }
 
 /* Compact rows */

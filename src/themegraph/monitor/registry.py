@@ -305,6 +305,8 @@ class Registry:
             "persistence_12": persistence, "n_documents": c.n_documents,
             "evidence_roles": c.roles,
             "passages_by_issuer": c.passages_by_issuer,
+            # what kind of news: headwind, tailwind or mixed (monitor/tone.py)
+            "tone": getattr(c, "tone", None) or None,
         }
 
     @staticmethod

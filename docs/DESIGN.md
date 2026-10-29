@@ -958,6 +958,19 @@ variance raises, and the monitor gives no verdict when the comparison carries no
 information (docs/MONITOR.md, "Trading together"). Shrinkage intensities and all
 non-degenerate correlations are unchanged up to rounding.
 
+### Headwind direction and theme families (declared 2026-10-29)
+
+Declared before any result under them was seen, from the text alone. A theme is a
+*headwind* in a month when at least 20% of its management and filing passages use
+more problem language than growth language (fixed phrase lists in
+`monitor/tone.py`), at least 2x the rate its genre mix gives in the same window, and
+more than its positive share; *tailwind* symmetrically. Themes are grouped into
+display families by average-linkage clustering of their meaning vectors cut at a
+cosine of 0.85, the identity-matching bar. Neither changes which themes are
+published, their baskets or their history. Hypothesis for the forward prediction
+log, not yet registered: headwind themes' equal-weight baskets lag their benchmarks
+over the following 3 and 6 months. No threshold here is to be adjusted using returns.
+
 ## 12. Open questions
 
 1. Include the adjacency ring (§4.2) in v1? Recommended: yes, for text only.

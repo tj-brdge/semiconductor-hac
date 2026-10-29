@@ -82,6 +82,22 @@ class Labels(_S):
     max_per_refresh: int = 40
 
 
+class Tone(_S):
+    """Headwind/tailwind direction from business language (monitor/tone.py).
+    Declared 2026-10-29 from the text alone, before any return was looked at."""
+    min_passages: int = 20     # company passages needed to judge a theme's tone
+    min_share: float = 0.2     # share of its company passages that are negative
+    min_ratio: float = 2.0     # times the genre-matched rate in the same window
+
+
+class Families(_S):
+    """Display grouping of overlapping themes (monitor/families.py)."""
+    # Same bar as identity matching after a gap (match.min_centroid_cosine): themes
+    # this close in meaning would be treated as one theme if they were not both
+    # present at once.
+    min_cosine: float = 0.85
+
+
 class Comovement(_S):
     """Trading together (monitor/comovement.py): single-index shrinkage on `index`."""
     window_sessions: int = 126
@@ -104,6 +120,8 @@ class MonitorConfig(_S):
     freshness: Freshness = Freshness()
     labels: Labels = Labels()
     comovement: Comovement = Comovement()
+    tone: Tone = Tone()
+    families: Families = Families()
 
 
 def _merge(base: dict, over: dict) -> dict:
