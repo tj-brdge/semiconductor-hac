@@ -348,6 +348,7 @@ def coverage(d: dict, mcfg: MonitorConfig) -> Coverage:
 
 def _value(reg: Registry, d: dict, mcfg: MonitorConfig, box: dict) -> str:
     book = price_book(d["prices"], d["universe"], mcfg)
+    reg.annotate_observed(coverage(d, mcfg))  # rows from older registries
     snaps = reg.data.get("snapshots", [])
     docs = []
     perfs = {}

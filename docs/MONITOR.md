@@ -44,7 +44,13 @@ are never deleted.
   comparable companies and at least median coherence.
 - **Newly covered:** a topic carried mostly by companies not yet covered at the
   3-month comparison base, meeting the established bar on their backfilled history
-  (docs/TECH_PILOT_V2.md, "Handling new coverage"). Never shown as emerging.
+  (docs/TECH_PILOT_V2.md, "Handling new coverage"). Never shown as emerging. Only
+  companies in coverage at the month-end count: a company whose `covered_from` is
+  later has back-filled documents but cannot qualify a theme or enter its basket.
+
+No route publishes a theme with nothing to buy: when none of its companies is in
+coverage at the month-end, publication is blocked (`route_check.blocked`, event
+`publication_blocked`) and retried at later month-ends.
 
 Each unpublished topic keeps its latest `route_check` (months present, comparable
 companies, coherence against the median, the newly-covered check), so what the
@@ -56,6 +62,11 @@ A theme stays listed after the emergence rule stops firing.
 - **Inactive:** absent for 3 or more month-ends in which it could have been seen. A
   month in which fewer than half of the companies that last discussed it have any
   documents is missing evidence: it neither counts as an absence nor ends the run.
+  Every measure row says which it was: `observed: true` with `share: 0` when the
+  documents were there and the theme was not found, `observed: false` with
+  `share: null` when the evidence is missing. The discussion chart shows the
+  second as a break in the line, never as zero. (Rows from registries written
+  before this field existed are annotated the same way at export.)
 - Otherwise, compare its share of discussion over the last 3 month-ends with the 3
   before, within a fixed company cohort: the companies covered and with documents at
   every one of the 6 month-ends. Theme passages from cohort companies divided by all
@@ -136,9 +147,17 @@ the latest ones. Each passage is labelled with its role:
   theme resets it; each reset is logged. It then starts a new
   version at its own entry close, at the previous index level. The index is
   chain-linked, so a company added later counts only from its own entry, never
-  retroactively. Once a theme is public, a change found while catching up on old
-  month-ends (after a gap in refreshes) takes effect when it is decided, never
-  backdated over days after publication.
+  retroactively. Once a theme is public, or its basket is bought after the current
+  refresh, a change found while catching up on old month-ends (after a gap in
+  refreshes) takes effect when it is decided, never backdated over days after
+  publication or before the basket it replaces. A publication basket superseded
+  within the refresh that published it (never held) is revised in place
+  (`revised_before_entry`).
+- **Invariants.** Every basket version has at least one company in coverage at its
+  month-end, and each version's `entry_after` is no earlier than the one before;
+  the registry refuses to write a version that breaks either. A version without
+  companies left by an older registry is not valued: `performance.status` is
+  `unavailable` with a `reason` and `note` (see "Repairing state").
 - **Basis.** Prices are USD and dividend-adjusted, so all returns are total returns,
   benchmarks included. An index day is `live` when it falls after both the theme's
   recorded publication time (`published_at`) and the decision time of the basket
@@ -186,6 +205,11 @@ site/data/releases/<id>/themes/<th>.json  title, summary, label (source, evidenc
 **Fields.**
 - Fields may be added within version 1. Removing or renaming a field means version 2.
 - Dates are ISO 8601. Returns are fractions (0.05 is 5%).
+- Strict JSON: no NaN or Infinity. A measurement that is unavailable is `null`, with
+  a reason where one exists (`performance.status`/`note`, `trading_together.*.note`,
+  `measures[].observed`). A non-finite number is a calculation error: the export
+  fails, the staging directory is removed, and `latest.json` keeps pointing at the
+  last good release.
 
 ## Refresh and scheduling
 
@@ -210,7 +234,10 @@ and the release goes out with earlier or automatic labels.
 3. **Themes:** only when a month-end has passed that the registry has not
    processed. Then **labels** for themes that need one (see "Theme labels"). Topics come from 180-day windows at month-ends, so recomputing them
    daily would add churn, not information. On the first run the last 120 month-ends (10 years, `bootstrap_snapshots`)
-   are replayed; these are reconstructed, and are marked so.
+   are replayed; these are reconstructed, and are marked so. The replay is only as
+   long as the documents: a company counts from its first document, so in the early
+   years fewer companies are observed, and months without a theme's companies'
+   documents are missing evidence rather than zero discussion.
 4. **Valuation and export:** every run.
 
 A rerun with the same data changes nothing in the registry.
@@ -336,10 +363,25 @@ shown beside the basket's returns and never affects which themes are published.
   single-index model on SPY (Ledoit & Wolf 2003, `market.hac.single_index_shrinkage`,
   the same estimator as the research market layer v2).
 - Measure: the average correlation beyond SPY among the companies in the current
-  basket, and its percentile among 1,000 random baskets of the same size and
-  segment mix (`eval.comovement.matched_null_sets`, seeded per theme so reruns
-  agree). The page reads "Trading together" at the 90th percentile or above, "Less
-  connected than usual" at the 10th or below, "Not unusual" otherwise.
+  basket, compared with 1,000 random baskets of the same size, drawn from the same
+  segments where possible (`eval.comovement.matched_null_sets`, seeded per theme so
+  reruns agree). Stored as counts: `below`, `ties` (within 1e-9), `above`, plus
+  `percentile` = (below + ties / 2) / draws, `same_segment_share` and
+  `segment_matched` (every slot from the member's own segment). The page and the
+  summary state the counts ("more than 993 of 1,000, and the same as 6") and say
+  "same segment mix" only when `segment_matched`. `verdict`: "together" at a
+  percentile of 0.9 or above, "less" at 0.1 or below, "usual" otherwise (wording
+  bands only).
+- No verdict (`informative: false`, `percentile: null`, a `note`) when the
+  comparison carries no information: shrinkage of 1 (the model puts all
+  co-movement on the index, so every beyond-index correlation is exactly zero);
+  the index did not move in the window; or every random basket ties. A company the
+  index explains completely (no residual variance) is left out, like one with too
+  few closes. Beyond-index correlations are computed from the index residuals
+  directly, not by subtracting the market part from the shrunk covariance, which
+  left rounding noise (about 1e-16) that the comparison then ranked; baskets are
+  ranked on the unshrunk residual correlation, which orders them exactly as the
+  shrunk values do whenever shrinkage is below 1.
 - With a single-index target every beyond-index correlation is the sample value
   times (1 - shrinkage), and the shrinkage is high over six months, so the level is
   small and only the comparison is used for the verdict. When most random-basket
@@ -387,6 +429,30 @@ comparable-company growth of at least `coverage.min_growth_ratio` (1.25×) where
 baseline exists. Measures and basket versions written before a change are never
 recomputed, and each measure row and basket version records the universe version
 it was computed under.
+
+**Live expansions.** A newly-covered theme whose new companies' `covered_from` is on
+or after the monitor's go-live date is a live expansion: its basket is bought at
+the first close after the refresh that published it, also when that refresh ran
+late and processed an old month-end (`live_window_days` does not apply), and its
+days are `live`. The month-end stays recorded as `published_snapshot`, the evidence
+date. Coverage dates inside a build's replayed history keep the reconstructed
+month-end entry, like every other replayed theme.
+
+## Repairing state
+
+Registries are append-only and the fixes above apply to what is written from now
+on. Earlier state is not rewritten; the export says what it cannot value:
+- **Empty basket versions** (possible only from the coverage-expansion path before
+  2026-10-29): the theme shows "Not valued" and `performance.reason` is
+  `empty_basket`.
+- **Backdated newly-covered entries** (a live expansion processed more than 35 days
+  late before 2026-10-29): `route` is `newly_covered`, `basis` is `reconstructed` and
+  version 1's `entry_after` is a month-end before `published_at`.
+The default build of both profiles (full history, no `covered_from` after go-live)
+cannot produce either. If a state directory has them, rebuild it: move the state and
+site directories aside (`mv monitor_state-tech-v2 monitor_state-tech-v2.old; mv
+site-tech-v2 site-tech-v2.old`) and run the refresh again; the replay rebuilds the
+history and the previous directories stay available for comparison.
 
 ## Limits and decisions
 

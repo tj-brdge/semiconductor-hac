@@ -111,3 +111,42 @@ def test_membership_change_needs_the_same_set_confirmed(obs, expected, pending, 
     th, versions = _versioned(obs, tmp_path)
     assert versions == expected
     assert (th["pending"] or {}).get("members") == pending
+
+
+# -- missing evidence is not zero discussion -----------------------------------------
+
+def _absent_rows(windows, theme_rows, tmp):
+    """Feed absent months through _measures as process() does; returns the rows."""
+    reg = Registry(tmp)
+    th = _theme(reg, windows[:1], theme_rows[:1])
+    for t, w, tr in zip(SNAPS[1:], windows[1:], theme_rows[1:], strict=False):
+        reg.data["snapshot_meta"][t] = {"window_by_issuer": w}
+        if tr is None:
+            row = reg._measures(th | {"seen": []}, None, t, SNAPS, _cov(), M)
+        else:
+            row = {"t": t, "present": True, "observed": True, "share": 0.1,
+                   "passages_by_issuer": tr, "issuers": sorted(tr)}
+        th["measures"].append(row)
+    return reg, th
+
+
+def test_missing_documents_are_a_gap_and_disappearance_is_zero(tmp_path):
+    other = {"C": 100, "D": 100}
+    # Month 2: the theme's companies have no documents; month 3: they do, theme gone;
+    # month 4: documents resume and the theme is back.
+    windows = [BASE | other, other, BASE | other, BASE | other]
+    rows = [THEME, None, None, THEME]
+    reg, th = _absent_rows(windows, rows, tmp_path)
+    gap, gone, back = th["measures"][1:]
+    assert gap["observed"] is False and gap["share"] is None   # before: share 0.0
+    assert gone["observed"] is True and gone["share"] == 0.0
+    assert back["present"] and back["observed"]
+    # Rows from registries written before `observed` existed get the same reading.
+    for r in th["measures"]:
+        if not r["present"]:
+            r.pop("observed")
+            r["share"] = 0.0
+    reg.themes["th-1"] = th
+    reg.annotate_observed(_cov())
+    assert th["measures"][1]["observed"] is False and th["measures"][1]["share"] is None
+    assert th["measures"][2]["observed"] is True and th["measures"][2]["share"] == 0.0

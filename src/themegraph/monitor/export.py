@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import math
 import os
 import shutil
 from pathlib import Path
@@ -30,9 +31,32 @@ KEEP_RELEASES = 5
 SITE = Path(__file__).with_name("site")
 
 
+def _nonfinite(obj, where: str = "") -> str | None:
+    """Path of the first NaN or infinity in `obj`, or None."""
+    if isinstance(obj, float):
+        return None if math.isfinite(obj) else where or "."
+    if isinstance(obj, dict):
+        items = obj.items()
+    elif isinstance(obj, (list, tuple)):
+        items = enumerate(obj)
+    else:
+        return None
+    for k, v in items:
+        hit = _nonfinite(v, f"{where}/{k}")
+        if hit:
+            return hit
+    return None
+
+
 def _dump(path: Path, obj) -> None:
+    """Strict JSON: browsers cannot parse NaN or Infinity. A measurement that is
+    legitimately unavailable is written as null with a reason; a non-finite number
+    here is a calculation error, so the release fails rather than ship it."""
+    bad = _nonfinite(obj)
+    if bad:
+        raise ValueError(f"{path.name}: non-finite number at {bad}")
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(obj, indent=1, sort_keys=True, default=str))
+    path.write_text(json.dumps(obj, indent=1, sort_keys=True, default=str, allow_nan=False))
 
 
 def _latest_measure(th: dict) -> dict:
@@ -218,21 +242,34 @@ def theme_overview(doc: dict) -> list[dict]:
         txt = (f"An equal-weight basket of its {len(perf.get('constituents', []))} companies "
                f"returned {_pct(r.get('theme'))} from {_day(r.get('start'))} to "
                f"{_day(r.get('end'))} ({basis}), against {_pct(r.get(b))} for {b}.")
-        tt = ((doc.get("trading_together") or {}).get("now") or {})
-        if tt.get("percentile") is not None:
-            p = tt["percentile"]
-            verdict = ("they are trading together" if p >= 0.9 else
-                       "they are less connected than usual" if p <= 0.1 else
-                       "that is not unusual")
-            n = tt.get("random_baskets", 0)
-            share = (f"more than all {n}" if p >= 0.995 else f"less than all {n}"
-                     if p <= 0.005 else f"more than {p:.0%} of {n}")
-            txt += (f" Over the last six months, beyond what the market explains, its stocks "
-                    f"moved together {share} random baskets with the same size and segment "
-                    f"mix: {verdict}.")
+        tt = (doc.get("trading_together") or {}).get("now")
+        if tt:
+            txt += " " + together_sentence(tt)
         txt += " Prices only: separate from how much the theme is discussed."
         out.append({"heading": "How its stocks have done", "text": txt})
     return out
+
+
+VERDICT_TEXT = {"together": "they are trading together",
+                "less": "they are less connected than usual",
+                "usual": "that is not unusual"}
+
+
+def together_sentence(tt: dict) -> str:
+    """One sentence on the last six months' "trading together" measure, claiming no
+    more than the counts: how many random baskets the theme's was above, how many
+    tied, and whether the segment mix was matched exactly."""
+    if not tt.get("informative"):
+        return ("Whether its stocks trade together beyond the market cannot be judged for "
+                f"the last six months: {tt.get('note') or 'not enough price history'}.")
+    n, below, ties = tt["random_baskets"], tt["below"], tt.get("ties", 0)
+    mix = ("the same size and segment mix" if tt.get("segment_matched") else
+           f"the same size, drawn from the same segments where possible "
+           f"({tt['same_segment_share']:.0%} of places)")
+    tied = f", and equal to {ties}" if ties else ""
+    return (f"Over the last six months, beyond what the market explains, its stocks moved "
+            f"together more than {below:,} of {n:,} random baskets with {mix}{tied}: "
+            f"{VERDICT_TEXT[tt['verdict']]}.")
 
 
 def describe(th: dict) -> str:
@@ -299,6 +336,8 @@ def summary_row(doc: dict, bench: str) -> dict:
                    "n_constituents": len(perf.get("constituents", [])),
                    "trading_together_pct": ((doc.get("trading_together") or {}).get("now")
                                             or {}).get("percentile"),
+                   "trading_together_verdict": ((doc.get("trading_together") or {}).get("now")
+                                                or {}).get("verdict"),
                    "spark": spark(perf, bench)},
     }
 
@@ -333,6 +372,10 @@ def overview_lists(rows: list[dict], mcfg, snapshots: list[str] | None = None) -
             "inactive": [r["id"] for r in rows if r["status"] in ("inactive", "merged")]}
 
 
+def _reject(name: str):
+    raise ValueError(f"non-standard JSON constant {name}")
+
+
 def publish(site: Path, docs: list[dict], meta: dict, mcfg,
             snapshots: list[str] | None = None) -> str:
     """Write a release and make it current. Returns the release id."""
@@ -343,12 +386,18 @@ def publish(site: Path, docs: list[dict], meta: dict, mcfg,
     rows = [summary_row(d, mcfg.market.benchmarks[0]) for d in docs]
     index = {"schema_version": SCHEMA_VERSION, "release": rel_id, **meta,
              "themes": rows, "lists": overview_lists(rows, mcfg, snapshots)}
-    _dump(staging / "index.json", index)
-    for d in docs:
-        _dump(staging / "themes" / f"{d['id']}.json", d)
-    # Check before going live: every listed theme has its file and parses.
-    for r in rows:
-        json.loads((staging / "themes" / f"{r['id']}.json").read_text())
+    try:
+        _dump(staging / "index.json", index)
+        for d in docs:
+            _dump(staging / "themes" / f"{d['id']}.json", d)
+        # Check before going live: every listed theme has its file and parses as
+        # strict JSON (a browser's JSON.parse rejects NaN and Infinity).
+        for r in rows:
+            json.loads((staging / "themes" / f"{r['id']}.json").read_text(),
+                       parse_constant=_reject)
+    except Exception:
+        shutil.rmtree(staging, ignore_errors=True)  # the current release stays current
+        raise
     os.replace(staging, rel)
     pointer = site / "data" / "latest.json"
     tmp = pointer.with_suffix(".json.tmp")

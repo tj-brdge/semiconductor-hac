@@ -44,7 +44,9 @@ export function sparkline({ dates, theme, benchmark, liveFrom, label }) {
 /**
  * Interactive line chart.
  * rows:   [{date, basis, v: {key: value}}] already rebased by the caller
- * series: [{key, label, color, dash, width}]
+ * series: [{key, label, color, dash, width, missing}] — a null value is a gap: the
+ *          line breaks there (it is never drawn across it) and the readout shows
+ *          `missing` (default "no price")
  * format: value -> text for the readout
  * markers: [{index, label, kind}] events drawn at rows[index] (the caller maps each
  *          event to its row and leaves out events outside the rows). kind "up"
@@ -122,9 +124,20 @@ export function lineChart(host, { rows, series, format, title, announce, markers
     }
     // benchmarks first, the basket on top
     for (const s of [...series].reverse()) {
-      const pts = rows.map((r, i) => r.v[s.key] == null ? null : `${X(i).toFixed(1)},${Y(r.v[s.key]).toFixed(1)}`).filter(Boolean);
-      el("polyline", { points: pts.join(" "), fill: "none", stroke: s.color, "stroke-width": s.width || 2,
+      // One run of consecutive values per sub-path: a gap breaks the line.
+      let d = "", run = 0;
+      const lone = [];
+      rows.forEach((r, i) => {
+        const v = r.v[s.key];
+        if (v == null) { if (run === 1) lone.push(i - 1); run = 0; return; }
+        d += `${run ? "L" : "M"}${X(i).toFixed(1)},${Y(v).toFixed(1)}`;
+        run += 1;
+      });
+      if (run === 1) lone.push(rows.length - 1);
+      el("path", { d, fill: "none", stroke: s.color, "stroke-width": s.width || 2,
         "stroke-dasharray": s.dash || "none", "stroke-linejoin": "round" }, svg);
+      for (const i of lone) // a value between two gaps would otherwise be invisible
+        el("circle", { cx: X(i), cy: Y(rows[i].v[s.key]), r: (s.width || 2) * 1.2, fill: s.color }, svg);
     }
     if (!narrow) { // end labels, nudged apart
       const last = rows[rows.length - 1];
@@ -199,7 +212,7 @@ export function lineChart(host, { rows, series, format, title, announce, markers
       key.style.borderTopColor = s.color;
       name.append(key, s.label);
       const b = document.createElement("b");
-      b.textContent = r.v[s.key] == null ? "no price" : format(r.v[s.key]);
+      b.textContent = r.v[s.key] == null ? (s.missing || "no price") : format(r.v[s.key]);
       row.append(name, b);
       tip.appendChild(row);
       parts.push(`${s.label} ${b.textContent}`);

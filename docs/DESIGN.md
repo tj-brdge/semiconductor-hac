@@ -947,6 +947,17 @@ confirmations and the adjudications) were produced with v1 and stand as recorded
 they are not recomputed. Runs record the estimator in their configuration hash.
 `estimator: residual_lw` reproduces v1.
 
+Numerical correction (2026-10-29, not a specification change): the beyond-index
+correlation was computed as the shrunk covariance minus beta_i * beta_j * var(index).
+At full shrinkage that subtraction leaves rounding noise (about 1e-16) where the
+value is exactly zero, and the monitor ranked that noise against random baskets.
+It is now computed from the index residuals directly ((1 - shrinkage) times their
+sample correlation), which is algebraically the same and exactly zero at full
+shrinkage. Companies with no residual variance are left out, an index without
+variance raises, and the monitor gives no verdict when the comparison carries no
+information (docs/MONITOR.md, "Trading together"). Shrinkage intensities and all
+non-degenerate correlations are unchanged up to rounding.
+
 ## 12. Open questions
 
 1. Include the adjacency ring (§4.2) in v1? Recommended: yes, for text only.

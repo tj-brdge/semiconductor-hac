@@ -75,7 +75,7 @@ function bindPeriod(root, rerender) {
 
 function periodReturn(row) {
   const m = row.market;
-  if (m.status !== "ok") return { na: m.status === "awaiting_entry" ? "Not bought yet" : "No prices" };
+  if (m.status !== "ok") return { na: m.status === "awaiting_entry" ? "Not bought yet" : m.status === "unavailable" ? "Not valued" : "No prices" };
   const r = m.returns?.[S.period];
   if (!r) return { na: `${months(m.sessions)} months of prices; not enough for ${PERIODS[S.period][1]}` };
   return r;
@@ -232,23 +232,24 @@ function togetherHTML(tt) {
   if (!tt) return "";
   const names = S.index.benchmark_labels || {};
   const idx = `${tt.index}${names[tt.index] ? ` (${names[tt.index]})` : ""}`;
-  const pctText = (x) => (x.percentile >= 0.995 ? "all" : x.percentile <= 0.005 ? "none" : `${Math.round(x.percentile * 100)}%`);
+  const num = (x) => Number(x).toLocaleString("en-US");
+  const mix = (x) => x.segment_matched ? "the same mix of segments"
+    : `segments matched where possible (${Math.round(x.same_segment_share * 100)}% of places)`;
   const line = (x, when) => {
     if (!x) return `<li>${when}: not enough price history.</li>`;
-    if (x.percentile == null) return `<li>${when}: ${esc(x.note || "not enough price history")}.</li>`;
-    return `<li>${when} (${esc(fmtDate(x.start))} – ${esc(fmtDate(x.end))}): the ${x.companies} companies moved together more than <b>${pctText(x)}</b> of ${x.random_baskets} random baskets with the same mix of segments.</li>`;
+    if (!x.informative) return `<li>${when}: cannot be judged — ${esc(x.note || "not enough price history")}.</li>`;
+    return `<li>${when} (${esc(fmtDate(x.start))} – ${esc(fmtDate(x.end))}): the ${x.companies} companies moved together more than <b>${num(x.below)} of ${num(x.random_baskets)}</b> random baskets with ${mix(x)}${x.ties ? `, and the same as ${num(x.ties)}` : ""}.</li>`;
   };
   const n = tt.now, b = tt.before;
-  const verdict = !n || n.percentile == null ? "" : n.percentile >= 0.9 ? "Trading together"
-    : n.percentile <= 0.1 ? "Less connected than usual" : "Not unusual";
+  const verdict = n && n.informative ? { together: "Trading together", less: "Less connected than usual", usual: "Not unusual" }[n.verdict] : "";
   return `<div class="together"><h3>Trading together, beyond the market</h3>
     <p class="small muted">Whether these stocks move as a group once the part explained by ${esc(idx)} is removed. Prices only: separate from how much the theme is discussed and from the basket's return.</p>
-    ${verdict ? `<p><b>${verdict}</b></p>` : ""}
-    ${n && n.same_segment_share != null && n.same_segment_share < 0.5 ? `<p class="small muted">Few other monitored companies share these segments, so most random baskets come from other segments (${Math.round(n.same_segment_share * 100)}% matched). Part of this may be ordinary sector co-movement rather than the theme.</p>` : ""}
+    ${verdict ? `<p><b>${verdict}</b></p>` : n ? `<p><b>Cannot be judged</b></p>` : ""}
+    ${n && n.informative && !n.segment_matched && n.same_segment_share < 0.5 ? `<p class="small muted">Few other monitored companies share these segments, so most random baskets come from other segments. Part of this may be ordinary sector co-movement rather than the theme.</p>` : ""}
     <ul class="plain">${line(n, "Last 6 months")}${line(b, "6 months before")}</ul>
-    ${n && n.percentile != null ? `<details><summary>How this is measured</summary><div class="body prose small">
+    ${n && n.excess_corr != null ? `<details><summary>How this is measured</summary><div class="body prose small">
       <p>Daily returns of every monitored company with its own close on at least 90% of the sessions, linked across days without a close. Their covariance is shrunk toward a single-index model on ${esc(tt.index)} (Ledoit and Wolf, 2003; shrinkage ${n.shrinkage.toFixed(2)} for the last 6 months), and each pair's correlation beyond what ${esc(tt.index)} explains is averaged over the basket: ${n.excess_corr.toFixed(3)} now${b && b.excess_corr != null ? `, ${b.excess_corr.toFixed(3)} before` : ""}.</p>
-      <p>With this model every pair's level is scaled down by the same factor (one minus the shrinkage), so the comparison with random baskets of the same size and segment mix is the measure, not the level. ${n.left_out?.length ? `Left out for too few closes: ${esc(n.left_out.join(", "))}.` : ""}</p></div></details>` : ""}
+      <p>With this model every pair's level is scaled down by the same factor (one minus the shrinkage), so the comparison with random baskets of the same size and segment mix is the measure, not the level. At a shrinkage of 1 nothing is left beyond the market and no comparison is made. ${n.left_out?.length ? `Left out for too few closes, or no movement apart from the market: ${esc(n.left_out.join(", "))}.` : ""}</p></div></details>` : ""}
   </div>`;
 }
 
@@ -349,7 +350,7 @@ async function themePage(id, token) {
         <p class="small muted">How much and how widely companies talk about this theme. Independent of stock prices.</p>
         <div class="legend"><span><i class="key" style="border-top-color:var(--series-1);border-top-width:3px"></i>Share of all monitored text (%)</span><span><span class="event-key up" aria-hidden="true">▲</span>Strengthening or recovered</span><span><span class="event-key down" aria-hidden="true">▼</span>Cooling, levelling off or going quiet</span></div>
         <div id="disc-chart"></div><p class="sr" aria-live="polite" id="disc-readout"></p>
-        <p class="small muted">Points mark changes in status. Status compares the last three months with the three before within a fixed group of companies, so adding or removing companies can move this line without a point.</p>
+        <p class="small muted">Points mark changes in status. Status compares the last three months with the three before within a fixed group of companies, so adding or removing companies can move this line without a point.${t.measures.slice(-36).some((r) => !r.present && r.observed === false) ? " Breaks in the line are months with missing evidence: too few of the theme's companies had documents to tell whether it was discussed. A value of zero means the documents were there and the theme was not found." : ""}</p>
         <dl class="dl cols">
           <dt>Growth</dt><dd>${m.growth_3m == null ? "No 3-month comparison yet" : `${m.growth_3m.toFixed(2)}× its share of comparable companies' text 3 months ago`}</dd>
           <dt>Share of text</dt><dd>${share(m.share, 1)} of passages in the last six months</dd>
@@ -389,7 +390,7 @@ async function themePage(id, token) {
     <details><summary>Membership history</summary><div class="body table-wrap"><table><thead><tr><th>Version</th><th>Decided at</th><th>Basis</th><th>Why</th><th>Companies</th></tr></thead><tbody>${versions}</tbody></table></div></details>
     <details><summary>Names, status and lineage</summary><div class="body prose"><p class="small">Theme ID <span class="mono">${esc(t.id)}</span> never changes.</p><ul>${nameHist}</ul></div></details>
     <details><summary>Discussion history by month</summary><div class="body table-wrap"><table><thead><tr><th>Month</th><th class="num">Share</th><th class="num">Growth</th><th class="num">Companies</th><th class="num">Coherence</th><th>Emergence flag</th></tr></thead>
-      <tbody>${[...t.measures].reverse().slice(0, 24).map((r) => `<tr><td>${esc(fmtDate(r.t, true))}</td><td class="num">${r.present ? share(r.share, 2) : "absent"}</td><td class="num">${r.growth_3m == null ? "—" : r.growth_3m.toFixed(2) + "×"}</td><td class="num">${r.n_issuers ?? "—"}</td><td class="num">${r.coherence?.toFixed(2) ?? "—"}</td><td>${r.flagged_comparable ? "flagged" : ""}</td></tr>`).join("")}</tbody></table></div></details>
+      <tbody>${[...t.measures].reverse().slice(0, 24).map((r) => `<tr><td>${esc(fmtDate(r.t, true))}</td><td class="num">${r.present ? share(r.share, 2) : r.observed === false ? "no evidence" : "absent"}</td><td class="num">${r.growth_3m == null ? "—" : r.growth_3m.toFixed(2) + "×"}</td><td class="num">${r.n_issuers ?? "—"}</td><td class="num">${r.coherence?.toFixed(2) ?? "—"}</td><td>${r.flagged_comparable ? "flagged" : ""}</td></tr>`).join("")}</tbody></table></div></details>
     <details><summary>Keywords and research diagnostics</summary><div class="body"><dl class="dl">
       <dt>Keywords</dt><dd>${esc((t.keywords || []).join(", "))}</dd>
       <dt>Keyword name</dt><dd>${esc(t.name)}</dd>
@@ -414,8 +415,11 @@ function priceText(c) {
 }
 
 function mountDiscussion(t) {
+  // A month without the theme's companies' documents is missing evidence: a gap,
+  // never a zero. Zero is a month that was observed and the theme was not found.
   const rows = t.measures.slice(-36).map((r) => ({ date: r.t.slice(0, 10), present: r.present,
-    v: { share: 100 * (r.share || 0) } }));
+    observed: r.present || r.observed !== false,
+    v: { share: r.present ? 100 * r.share : r.observed === false ? null : 0 } }));
   if (rows.length < 2) return;
   const pos = Object.fromEntries(rows.map((r, i) => [r.date, i]));
   const markers = (t.status_points || []).filter((sp) => sp.t.slice(0, 10) in pos).map((sp) => ({
@@ -425,10 +429,12 @@ function mountDiscussion(t) {
   const dp = hi < 2 ? 2 : 1;
   S.disc?.destroy();
   S.disc = lineChart($("#disc-chart"), { rows, markers, base: null,
-    series: [{ key: "share", label: "Share", color: "var(--series-1)", width: 2.5 }],
+    series: [{ key: "share", label: "Share", color: "var(--series-1)", width: 2.5,
+      missing: "no evidence" }],
     title: "Share of all monitored text discussing this theme, by month-end",
     format: (v) => `${v.toFixed(dp)}%`, tick: (v) => `${v.toFixed(dp)}%`,
-    describe: (r) => (r.present ? "" : "not found that month"),
+    describe: (r) => (r.present ? "" : r.observed ? "not found that month"
+      : "missing evidence: too few of its companies had documents that month"),
     announce: (x) => { $("#disc-readout").textContent = x; } });
 }
 
