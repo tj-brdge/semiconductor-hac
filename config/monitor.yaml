@@ -2,7 +2,7 @@
 # research specification and its declared results are not changed by the monitor.
 # None of these values were chosen by looking at basket returns.
 
-bootstrap_snapshots: 24        # month-ends replayed on the first refresh (reconstructed)
+bootstrap_snapshots: 120       # month-ends replayed on the first refresh (10 years; simulated, labelled)
 live_window_days: 35           # a theme published within this many days of its snapshot is "live"
 
 pool:                          # clusters tracked internally (not all are published)

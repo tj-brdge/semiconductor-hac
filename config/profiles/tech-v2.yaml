@@ -10,7 +10,9 @@ monitor: config/tech_v2/monitor.yaml
 state: monitor_state-tech-v2
 site: site-tech-v2
 fixture: tech
-# Start from a copy of the semiconductor registry (theme IDs, basket versions and
-# history kept), then run independently. New themes get tech- IDs.
-fork_from: semis
+# Built like the semiconductor pilot: the first refresh replays 120 month-ends (10 years) with
+# all 127 companies (simulated history, labelled), then runs live. Its themes have
+# their own tech- IDs; the semiconductor registry is not copied or changed. (For a
+# live expansion that should keep another profile's theme IDs, set
+# fork_from: <profile> instead; see docs/TECH_PILOT_V2.md.)
 id_prefix: tech

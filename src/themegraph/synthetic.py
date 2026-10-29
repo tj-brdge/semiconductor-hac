@@ -94,7 +94,11 @@ def _segment(seg: str) -> tuple[str, str]:
     return SEGMENTS.get(seg) or TECH_SEGMENTS[seg]
 
 
-def synthetic_universe(per_segment: int = 8, tech: bool = False) -> UniverseConfig:
+def synthetic_universe(per_segment: int = 8, tech: bool = False,
+                       expansion: bool = False) -> UniverseConfig:
+    """`tech`: add the software, security and data segments. `expansion`: add them as a
+    coverage change on TECH_COVERED_FROM (a live expansion of an existing profile);
+    otherwise they are covered from the start, like a profile built with history."""
     prefix = {"memory": "MEM", "compute": "CMP", "analog": "ANA", "equipment": "EQP",
               "networking": "NET", "power": "PWR"}
     issuers = [Issuer(symbol=f"{prefix[s]}{i}", segment=s, role=SEGMENTS[s][0])
@@ -109,7 +113,7 @@ def synthetic_universe(per_segment: int = 8, tech: bool = False) -> UniverseConf
             benchmarks=["SPY", "SOXX"], issuers=issuers, sectors=sectors)
     tp = {"app_software": "APP", "security": "SEC", "data_cloud": "DAT"}
     added = [Issuer(symbol=f"{tp[s]}{i}", segment=s, role="core",
-                    covered_from=TECH_COVERED_FROM)
+                    covered_from=TECH_COVERED_FROM if expansion else None)
              for s in TECH_SEGMENTS for i in range(1, per_segment + 1)]
     return UniverseConfig(
         name="Synthetic technology fixture", version="fixture-2",
@@ -118,7 +122,7 @@ def synthetic_universe(per_segment: int = 8, tech: bool = False) -> UniverseConf
         sectors={**sectors, "app_software": "Application software",
                  "security": "Cybersecurity", "data_cloud": "Data and cloud software"},
         changes=[UniverseChange(version="fixture-2", date=TECH_COVERED_FROM,
-                                added=[i.symbol for i in added],
+                                added=[i.symbol for i in added] if expansion else [],
                                 note="synthetic software, security and data companies")])
 
 

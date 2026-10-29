@@ -66,7 +66,8 @@ def load_inputs(fixtures: bool, as_of: dt.date, log=print,
         from .. import synthetic as S
         from ..text.embed import HashingEmbedder
         cfg = S.demo_config(load_pipeline(profile.pipeline))
-        u = S.synthetic_universe(tech=profile.fixture == "tech")
+        u = S.synthetic_universe(tech=profile.fixture == "tech",
+                                 expansion=profile.fork_from is not None)
         prices, docs = S.synthetic_prices(u), S.synthetic_documents(u)
         cut = _cut(as_of)
         prices = prices.loc[prices["available_at"] <= cut]

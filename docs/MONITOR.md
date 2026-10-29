@@ -209,7 +209,7 @@ and the release goes out with earlier or automatic labels.
    passages); caches are reused.
 3. **Themes:** only when a month-end has passed that the registry has not
    processed. Then **labels** for themes that need one (see "Theme labels"). Topics come from 180-day windows at month-ends, so recomputing them
-   daily would add churn, not information. On the first run the last 24 month-ends
+   daily would add churn, not information. On the first run the last 120 month-ends (10 years, `bootstrap_snapshots`)
    are replayed; these are reconstructed, and are marked so.
 4. **Valuation and export:** every run.
 

@@ -17,8 +17,8 @@ Status on 2026-10-27: implemented and tested on synthetic fixture data only. It 
 ## Universe
 
 `config/tech_v2/universe.yaml` extends `config/universe.yaml`: all 76 semiconductor
-pilot companies stay, with their roles and dates, and 51 companies are added on
-2026-11-01 (universe version 2, `covered_from: 2026-11-01`).
+pilot companies stay, with their roles and dates, and 51 companies are added
+(universe version 2), covered from the start (see "How the pilot is built").
 
 | Category | Companies | Sector benchmark |
 |---|---|---|
@@ -38,9 +38,10 @@ and each company's filing index). No price or return was looked at.
    company (one CIK; the other tickers on a CIK are OTC ordinaries, preferreds or
    rights, not second share classes); not already in the universe.
 3. **Disclosure history.** Periodic SEC reports (10-K/10-Q, or 20-F for SAP, NICE,
-   CHKP and MNDY) since at least 2023-10-27: three years cover the 24-month replay
-   and the 12-month minimum before a company counts in growth comparisons. The
-   filer's history must be the same business.
+   CHKP and MNDY) since at least 2023-10-27: three years give the 12-month minimum
+   before a company counts in growth comparisons plus two years of simulated history.
+   (Companies join the 10-year replay when their documents begin.) The filer's
+   history must be the same business.
 4. **Representation.** At least 12 companies per category.
 
 ### The 51 companies
@@ -117,6 +118,30 @@ companies is right for a forward-looking monitor, but reconstructed (simulated)
 history for these categories therefore leaves out companies that no longer exist.
 For a later version, a rule-based screen (SIC codes plus a point-in-time size rank
 at a fixed date, from the price provider) would remove the judgment from the start.
+
+## How the pilot is built
+
+Like the semiconductor pilot: the first refresh replays the last 120 month-ends (10 years) with
+all 127 companies and builds every theme's history from the companies' earlier
+documents and prices, labelled simulated, then runs live from that refresh. Every
+company counts from the first month, in themes, growth comparisons (after its 12
+months of documents) and baskets.
+
+- The pilot has its own registry and theme IDs (`tech-NNNNN`); the semiconductor
+  registry is not copied or changed. `themegraph monitor compare` matches themes
+  between the two by their companies.
+- Why 10 years: the topic layer already computes every month back to 2010 on each
+  refresh, so a longer replay costs little; 10 years spans a full cycle (the 2018
+  chip downturn, COVID, the 2022 rate shock, the AI build-out). Longer is possible
+  (`bootstrap_snapshots` in config/monitor.yaml), but the further back, the more the
+  history uses today's companies for a past that had different ones.
+- The simulated history uses today's company list, so it leaves out companies that
+  have since been acquired (see "Known bias"). It is never shown as live.
+- Fork mode (`fork_from: semis` in the profile) is the alternative for a live
+  expansion of a published monitor whose theme IDs and basket history must carry on:
+  the added companies then get a `covered_from` date, enter through the newly-covered
+  route, and count in growth only once covered at the comparison base. It is kept and
+  tested, but not used for this pilot, since nothing has been published yet.
 
 ## Benchmarks
 
@@ -206,7 +231,7 @@ Semiconductor fixture to 2021-06-30, technology fixture forked there, both run t
   tech-00012), only because their coherence was below that month's median, the same
   rule that keeps the semiconductor fixture's equipment and memory topics out.
   12 of 24 new companies are in no published theme.
-- Runtime: theme step 18.6 s for the semiconductor fixture (48 companies, 24 month-ends
+- Runtime: theme step 18.6 s for the semiconductor fixture (48 companies, 24 month-ends at the time
   replayed) and 27 s for the technology fixture (72 companies, 6 month-ends after the
   fork; the topic layer rebuilds every window, and the fixture caches are per state
   directory). Peak memory about 0.7–0.8 GB for the test process. These numbers say
@@ -218,7 +243,8 @@ Real-data execution was blocked here: the FMP API is not reachable from this
 environment and no FMP or Voyage key is configured. On a machine with the existing
 credentials (FMP_API_KEY, VOYAGE_API_KEY, the SEC user agent):
 
-1. Refresh the semiconductor profile first (the fork copies its registry).
+1. If you already ran the pilot in fork mode, move its state aside first
+   (`mv monitor_state-tech-v2 monitor_state-tech-v2.fork; mv site-tech-v2 site-tech-v2.fork`).
 2. `themegraph monitor refresh --profile tech-v2 --documents`: downloads prices,
    transcripts and filings for all 127 companies (cached responses are reused for the
    76 already downloaded; roughly 51 × 40–60 transcript calls and the matching filings

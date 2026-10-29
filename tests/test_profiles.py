@@ -18,6 +18,9 @@ from themegraph.monitor.config import load_monitor
 from themegraph.monitor.profiles import effective, load_profile
 
 SEMIS, TECH = load_profile("semis"), load_profile("tech-v2")
+# The same pilot run as a live expansion of the semiconductor registry (fork mode):
+# kept tested for future expansions that must keep another profile's theme IDs.
+FORK = TECH.model_copy(update={"fork_from": "semis"})
 
 
 def test_default_profile_is_the_original_configuration():
@@ -37,8 +40,8 @@ def test_tech_universe_extends_the_pilot_without_changing_it():
                for i in tech.issuers if i.symbol in old)  # roles, dates untouched
     assert len(old) == 76 and 40 <= len(new) <= 60
     assert len({i.cik for i in new}) == len(new)  # one listing per company
-    assert all(i.covered_from == tech.changes[-1].date for i in new)
-    assert sorted(tech.changes[-1].added) == sorted(i.symbol for i in new)
+    assert all(i.covered_from is None for i in new)  # built with full history
+    assert tech.changes[-1].version == tech.version == "2"
     segs = {i.segment for i in new}
     assert segs == {"app_software", "security", "data_cloud"}
     assert all(sum(i.segment == s for i in new) >= 12 for s in segs)
@@ -70,7 +73,7 @@ def runs(tmp_path_factory):
     M.refresh(A / "state", A / "site", as_of=dt.date(2021, 6, 30), profile=SEMIS, **q)
     at_fork = json.loads((A / "state" / "registry.json").read_text())
     sha = hashlib.sha256((A / "state" / "registry.json").read_bytes()).hexdigest()
-    tb = M.refresh(B / "state", B / "site", as_of=dt.date(2021, 12, 31), profile=TECH,
+    tb = M.refresh(B / "state", B / "site", as_of=dt.date(2021, 12, 31), profile=FORK,
                    fork_state=A / "state", **q)
     sha_after = hashlib.sha256((A / "state" / "registry.json").read_bytes()).hexdigest()
     ta = M.refresh(A / "state", A / "site", as_of=dt.date(2021, 12, 31), profile=SEMIS, **q)
@@ -151,7 +154,7 @@ def test_sector_benchmark_is_fixed_from_composition(runs):
 
 def test_comparison_report_covers_the_requested_sections(runs):
     text = compare_profiles(SEMIS, runs["A"] / "state", runs["A"] / "site",
-                            TECH, runs["B"] / "state", runs["B"] / "site")
+                            FORK, runs["B"] / "state", runs["B"] / "site")
     assert "Synthetic fixture data" in text
     for h in ("## Themes", "### Added themes", "Themes among semis", "## Naming and evidence",
               "## Generic or duplicate themes", "## Not published", "## Per-company coverage",
@@ -172,3 +175,21 @@ def test_semis_profile_output_is_unchanged_by_profiles(tmp_path):
     rb = json.loads((tmp_path / "b" / "registry.json").read_text())
     assert ra["themes"] == rb["themes"]
     assert pd.Series([k for k in ra["themes"]]).str.startswith("th-").all()
+
+
+def test_full_history_build_counts_every_company_from_the_start(tmp_path):
+    """The pilot as configured: no fork, all companies covered from the start, a
+    24-month replay labelled as reconstructed, its own IDs, nothing 'newly covered'."""
+    st = M.refresh(tmp_path / "state", tmp_path / "site", fixtures=True,
+                   as_of=dt.date(2021, 12, 31), log=lambda *a: None, profile=TECH)
+    assert st["ok"], st["errors"]
+    reg = json.loads((tmp_path / "state" / "registry.json").read_text())
+    assert "fork" not in reg and len(reg["snapshots"]) == 60  # every fixture month-end (< 120)
+    idx = _index(tmp_path / "site")
+    assert idx["universe"]["n_companies"] == 72 and not idx["universe"]["recently_added"]
+    assert idx["themes"] and all(r["id"].startswith("tech-") for r in idx["themes"])
+    assert all(r["route"] != "newly_covered" for r in idx["themes"])
+    assert {r["basis"] for r in idx["themes"]} == {"reconstructed"}
+    new = {f"{p}{i}" for p in ("APP", "SEC", "DAT") for i in range(1, 9)}
+    members = {s for r in idx["themes"] for s in r["key_constituents"] for s in [s["symbol"]]}
+    assert members & new  # the added companies are in themes and baskets from the start
