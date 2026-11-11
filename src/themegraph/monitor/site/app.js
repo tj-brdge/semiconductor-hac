@@ -3,6 +3,7 @@
 //   #/            overview: emerging and established themes first
 //   #/themes      all themes: search, filters, sorting
 //   #/theme/<id>  one theme: chart, returns, companies, evidence, history
+//   #/clusters    market clusters: the stock-return HAC cut into groups
 //   #/method      method, coverage, freshness, release details
 import { fmtDate, lineChart, sparkline } from "./chart.js";
 
@@ -598,6 +599,103 @@ function method() {
       <p>This is a research tool, not investment advice. Simulated history shows what a rule would have done; it is not a track record.</p></section>`;
 }
 
+// -- market clusters ---------------------------------------------------------------------
+const SVGNS = "http://www.w3.org/2000/svg";
+function svgEl(tag, attrs, parent) {
+  const e = document.createElementNS(SVGNS, tag);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+
+// Horizontal dendrogram: one row per company, groups join further right the lower
+// the correlation at which they join. Branches joined above the cut are drawn in
+// ink; the rest are muted. Clusters are told apart by labelled bands, not colour.
+function drawDendrogram(host, mc) {
+  host.textContent = "";
+  const n = mc.pool.length, rowH = 18, top = 30, bottom = 46;
+  const narrow = host.clientWidth < 560;
+  const W = Math.max(host.clientWidth, 320), H = top + n * rowH + bottom;
+  const labW = narrow ? 64 : 120, bandW = 30, right = 16;
+  const corrs = mc.merges.map((m) => m[2]);
+  const hi = Math.min(1, Math.ceil((Math.max(...corrs) + 0.05) * 10) / 10);
+  const lo = Math.floor(Math.min(...corrs, mc.cut.corr) * 10) / 10;
+  const x0 = bandW + labW, x1 = W - right;
+  const X = (c) => x0 + ((hi - c) / (hi - lo)) * (x1 - x0);
+  const svg = svgEl("svg", { width: W, height: H, viewBox: `0 0 ${W} ${H}`, class: "dendro", role: "img",
+    "aria-label": `Tree of ${n} companies by correlation beyond ${mc.index}; ${mc.clusters.length} clusters joined above ${mc.cut.corr.toFixed(2)}. The cluster list below has the same information as text.` }, host);
+  const row = Object.fromEntries(mc.leaves.map((l, i) => [l.symbol, i]));
+  const yOf = (i) => top + i * rowH + rowH / 2;
+  // cluster bands and labels
+  mc.clusters.forEach((c) => {
+    const rows = c.members.map((s) => row[s]), a = Math.min(...rows), b = Math.max(...rows);
+    svgEl("rect", { x: 0, y: top + a * rowH, width: W, height: (b - a + 1) * rowH, class: c.id % 2 ? "band" : "band alt" }, svg);
+    const t = svgEl("text", { x: 4, y: yOf(a) + 4, class: "band-label" }, svg);
+    t.textContent = `C${c.id}`;
+  });
+  // axis
+  const ax = svgEl("g", { class: "axis" }, svg);
+  for (let v = hi; v >= lo - 1e-9; v -= hi - lo > 0.6 ? 0.2 : 0.1) {
+    svgEl("line", { x1: X(v), x2: X(v), y1: top - 4, y2: H - bottom, class: "grid" }, ax);
+    const t = svgEl("text", { x: X(v), y: top - 10, "text-anchor": "middle" }, ax);
+    t.textContent = v.toFixed(1);
+  }
+  const at = svgEl("text", { x: x1, y: H - 8, "text-anchor": "end", class: "axis-title" }, ax);
+  at.textContent = `Correlation beyond ${mc.index} at which groups join →`;
+  // branches
+  const pos = mc.pool.map((s) => ({ x: x0, y: yOf(row[s]) }));
+  mc.merges.forEach(([a, b, c, size]) => {
+    const A = pos[a], B = pos[b], x = X(c), inside = c >= mc.cut.corr;
+    const g = svgEl("path", { d: `M${A.x},${A.y}H${x}V${B.y}H${B.x}`, class: inside ? "br in" : "br" }, svg);
+    svgEl("title", {}, g).textContent = `${size} companies joined at correlation ${c.toFixed(2)}`;
+    pos.push({ x, y: (A.y + B.y) / 2 });
+  });
+  // cut line
+  svgEl("line", { x1: X(mc.cut.corr), x2: X(mc.cut.corr), y1: top - 4, y2: H - bottom + 4, class: "cut" }, svg);
+  const ct = svgEl("text", { x: X(mc.cut.corr) + 4, y: H - bottom + 16, class: "cut-label" }, svg);
+  ct.textContent = `cut ${mc.cut.corr.toFixed(2)}`;
+  // leaf labels
+  mc.leaves.forEach((l, i) => {
+    const t = svgEl("text", { x: bandW, y: yOf(i) + 4, class: l.cluster ? "leaf in" : "leaf" }, svg);
+    t.textContent = l.symbol;
+    svgEl("title", {}, t).textContent = `${l.symbol}${l.sector ? `, ${l.sector}` : ""}${l.cluster ? `, cluster ${l.cluster}` : ", not in a cluster"}`;
+  });
+}
+
+function clustersPage() {
+  const mc = S.index.market_clusters;
+  const names = S.index.benchmark_labels || {};
+  if (!mc || !mc.available) {
+    $("#main").innerHTML = `<section class="intro"><h1>Market clusters</h1></section>${notices()}<p class="empty">${esc(mc?.note || "Not available in this release.")}</p>`;
+    return;
+  }
+  const idx = `${mc.index}${names[mc.index] ? ` (${names[mc.index]})` : ""}`;
+  const loose = mc.leaves.filter((l) => !l.cluster).map((l) => l.symbol);
+  $("#main").innerHTML = `
+    <section class="intro"><h1>Market clusters</h1>
+      <p class="lede">Which monitored stocks have been trading together, beyond what ${esc(idx)} explains, over the last ${mc.window_sessions} sessions (${esc(fmtDate(mc.start))} – ${esc(fmtDate(mc.end))}).</p>
+      <p class="muted small">Prices only. This is a different question from the themes, which come from what companies say; where a cluster overlaps a theme's basket, it is linked below.</p></section>
+    ${notices()}
+    <section class="section" aria-labelledby="h-cl"><div><h2 id="h-cl">${mc.clusters.length} clusters among ${mc.companies} companies</h2>
+      <p class="muted small">Hierarchical clustering (average linkage) of each pair's correlation beyond ${esc(mc.index)}. The tree is cut at a correlation of ${mc.cut.corr.toFixed(2)}: shuffling each company's returns in time removes any co-movement, and in ${Math.round((1 - mc.cut.alpha) * 100)}% of ${mc.cut.draws} shuffles no pair of companies reached that correlation. A cluster only joins companies whose average correlation beats that. No number of clusters is chosen in advance. ${loose.length} companies are in no cluster.</p></div>
+      <div class="cluster-list">${mc.clusters.map((c) => `<article class="card cluster" id="c${c.id}">
+        <div class="card-top"><h3>Cluster ${c.id}</h3><span class="small muted">${c.size} companies</span></div>
+        <p class="tickers">${c.members.map(esc).join(" · ")}</p>
+        <p class="small">${Object.entries(c.sectors).map(([k, v]) => `${esc(k)} ${v}`).join(", ")}</p>
+        <p class="small muted">Average correlation beyond ${esc(mc.index)}: ${c.avg_corr.toFixed(2)} (${c.avg_corr_shrunk.toFixed(2)} after shrinkage ${mc.shrinkage.toFixed(2)})</p>
+        ${c.themes.length ? `<p class="small">In theme baskets: ${c.themes.map((t) => `<a href="#/theme/${esc(t.id)}">${esc(S.byId[t.id]?.title || t.id)}</a> (${t.shared})`).join(", ")}</p>` : `<p class="small muted">No theme basket holds two or more of these companies.</p>`}
+      </article>`).join("")}</div></section>
+    <section class="panel" aria-labelledby="h-tree"><h2 id="h-tree">The tree</h2>
+      <p class="small muted">Each row is a company. Lines join companies, then groups, at the correlation shown on the axis; joins to the left of the dashed cut are clusters (labelled bands). Hover a join or a ticker for details.</p>
+      <div id="dendro" class="dendro-wrap"></div></section>
+    ${loose.length ? `<section class="section"><h2>Not in a cluster</h2><p class="tickers">${loose.map(esc).join(" · ")}</p></section>` : ""}`;
+  const host = $("#dendro");
+  drawDendrogram(host, mc);
+  let w = host.clientWidth;
+  const onResize = () => { if ($("#dendro") === host && host.clientWidth !== w) { w = host.clientWidth; drawDendrogram(host, mc); } };
+  window.addEventListener("resize", onResize);
+}
+
 // -- shell ---------------------------------------------------------------------------
 function setNav(name) {
   document.querySelectorAll(".nav a").forEach((a) => a.toggleAttribute("aria-current", a.dataset.nav === name));
@@ -615,6 +713,7 @@ async function route() {
   document.title = "Theme Monitor";
   if (path === "/themes") { setNav("themes"); allThemes(new URLSearchParams(query || "")); }
   else if (path === "/method") { setNav("method"); method(); }
+  else if (path === "/clusters") { setNav("clusters"); clustersPage(); }
   else { setNav("overview"); overview(); }
   if (token === S.nav && !location.hash.includes("#coverage") && !location.hash.includes("#freshness")) window.scrollTo(0, 0);
 }

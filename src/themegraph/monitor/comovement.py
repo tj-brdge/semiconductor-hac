@@ -75,7 +75,8 @@ def _window(book: PriceBook, end: int, n: int, symbols: list[str], index: str,
     if len(pool) < 3:
         return None
     return {**span, "pool": pool, "flat": sorted(flat),
-            "corr": est["resid_corr"].loc[pool, pool], "shrinkage": est["shrinkage"]}
+            "corr": est["resid_corr"].loc[pool, pool], "shrinkage": est["shrinkage"],
+            "returns": R[pool], "index_returns": R[index]}
 
 
 def _avgs(corr: pd.DataFrame, sets: list[list[str]]) -> np.ndarray:

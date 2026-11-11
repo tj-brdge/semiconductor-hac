@@ -290,3 +290,22 @@ details > .body { padding: 0 16px 16px; display: grid; gap: 12px; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 @media (forced-colors: active) { .chip, .tag { border: 1px solid; } }
+
+/* Market clusters */
+.cluster-list { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.cluster .tickers { margin: 6px 0; }
+.dendro-wrap { overflow-x: auto; }
+.dendro { display: block; font-size: 11px; }
+.dendro .band { fill: var(--surface-2, rgba(127,127,127,.06)); }
+.dendro .band.alt { fill: var(--surface-3, rgba(127,127,127,.11)); }
+.dendro .band-label { fill: var(--ink-2); font-weight: 650; }
+.dendro .grid { stroke: var(--line); stroke-width: 1; }
+.dendro .axis text { fill: var(--muted); }
+.dendro .axis-title { fill: var(--ink-2); }
+.dendro .br { fill: none; stroke: var(--line-strong); stroke-width: 1.25; }
+.dendro .br.in { stroke: var(--series-1); stroke-width: 2; }
+.dendro .cut { stroke: var(--ink); stroke-width: 1.25; stroke-dasharray: 4 3; }
+.dendro .cut-label { fill: var(--ink); font-weight: 650; }
+.dendro .leaf { fill: var(--ink-2); font-family: var(--mono); }
+.dendro .leaf.in { fill: var(--ink); font-weight: 650; }
+@media (forced-colors: active) { .dendro .br.in { stroke: CanvasText; } .dendro .br { stroke: GrayText; } }

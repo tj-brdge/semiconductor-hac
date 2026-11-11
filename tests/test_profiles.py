@@ -198,6 +198,8 @@ def test_full_history_build_counts_every_company_from_the_start(tmp_path):
     assert all(r["tone"]["direction"] in ("headwind", "tailwind", "mixed", "unknown")
                for r in idx["themes"] if r["status"] not in ("inactive", "merged"))
     assert "headwinds" in idx["lists"] and idx["families"]["min_cosine"] == 0.85
+    mc = idx["market_clusters"]
+    assert mc["available"] and mc["clusters"] and mc["companies"] == len(mc["leaves"])
     from themegraph.monitor.review import review_report
     text = review_report(tmp_path / "state", load_monitor(TECH.monitor))
     assert "## Most similar pairs" in text and "## Tone" in text
