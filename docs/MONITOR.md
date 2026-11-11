@@ -313,6 +313,33 @@ are unchanged, and nothing is merged.
   cut is chosen by reading those pairs (are they the same subject?), never from
   returns, and recorded with its date if changed.
 
+## Market clusters (`monitor/market_clusters.py`)
+
+The market layer's hierarchical agglomerative clustering (HAC) of stock returns is
+used by the research only as a similarity score and never cut. The dashboard's
+*Market clusters* page cuts it, to show which monitored stocks are trading together
+right now. Prices only; it changes nothing in the registry and selects no theme.
+
+- **Window and estimator:** the last 126 sessions, companies with their own close on
+  at least 90% of them, each pair's correlation beyond SPY from the single-index
+  model (the same as "Trading together").
+- **Tree:** average linkage on 1 - correlation. Shrinkage scales every off-diagonal
+  correlation by the same factor, an affine change of distance, so average linkage
+  gives the same tree with or without it; both levels are reported.
+- **Cut, with no number of clusters chosen:** each company's residual returns are
+  shuffled in time (200 times, fixed seed), keeping each company's returns but
+  removing any co-movement, and the highest pairwise correlation of each shuffle is
+  recorded. The cut is the 95th percentile of that maximum: a cluster only joins
+  companies, or groups, whose average correlation beats the strongest pair random
+  data produce in 95% of shuffles, across all pairs at once. Companies joined below
+  it are listed as in no cluster.
+- **Page:** each cluster with its companies, sectors, average correlation and the
+  theme baskets holding two or more of its companies; the full tree with the cut
+  line, clusters as labelled bands (no colour coding, so any number of clusters
+  stays readable), and a tooltip on every join and ticker. Feed: `market_clusters`
+  in `index.json` (`pool`, scipy-style `merges` as [left, right, correlation, size],
+  `leaves` in tree order, `clusters`, `cut`).
+
 ## Theme labels (`monitor/naming.py`)
 
 Topics are named by keywords ("ethernet · transceivers · enterprise"); readers get a
@@ -342,7 +369,8 @@ per-refresh cap). Fixture runs never call Claude.
 Plain HTML, CSS and two small ES modules; no framework, no build step and no
 third-party scripts, so the `site/` directory can be copied to any static host.
 Views: overview (emerging themes, headwinds and established themes as cards, one per
-family; relative-performance lists; cooling and inactive themes), all themes (search, filters, sorting), a theme
+family; relative-performance lists; cooling and inactive themes), market clusters
+(the stock-return HAC cut into groups), all themes (search, filters, sorting), a theme
 page (chart with ranges and keyboard/pointer readout, returns by period and basis,
 companies, evidence, disclosures for method, membership, names and diagnostics), and
 method & data (coverage, freshness, the last refresh's stages, release ID).
