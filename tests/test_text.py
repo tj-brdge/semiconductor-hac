@@ -310,3 +310,38 @@ def test_calibration_subset_has_same_eligibility_as_full_run(cfg, tmp_path):
         days=cfg.text.window_days)) & (p["available_at"] <= hi), "passage_id"])
     assert in_window(sub) == in_window(full)
     assert not full["doc_id"].eq("repeat").any() and not sub["doc_id"].eq("repeat").any()
+
+
+def test_auto_endpoint_follows_the_key_to_its_service():
+    import httpx
+
+    from themegraph.text.embed import VoyageEmbedder
+
+    seen = []
+
+    def handler(request):  # a MongoDB Atlas key: refused by Voyage AI, accepted by Atlas
+        seen.append(request.url.host)
+        if request.url.host == "api.voyageai.com":
+            return httpx.Response(403, json={"detail": "This API key cannot access this "
+                                                       "endpoint."})
+        n = len(__import__("json").loads(request.content)["input"])
+        return httpx.Response(200, json={"data": [{"index": i, "embedding": [1.0, 0.0]}
+                                                  for i in range(n)]})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    emb = VoyageEmbedder("voyage-finance-2", batch_size=2, client=client, endpoint="auto",
+                         concurrency=3, sleep=lambda s: None)
+    out = emb.embed(["a", "b", "c", "d", "e"])
+    assert out.shape == (5, 2) and emb.endpoint == "mongodb"
+    assert seen.count("ai.mongodb.com") == 3 and "api.voyageai.com" in seen
+
+    # A key neither service accepts still fails, after one switch, with the hint.
+    def refuse(request):
+        return httpx.Response(403, json={"detail": "This API key cannot access this endpoint."})
+    emb = VoyageEmbedder("m", client=httpx.Client(transport=httpx.MockTransport(refuse)),
+                         endpoint="auto", sleep=lambda s: None)
+    try:
+        emb.embed(["x"])
+        raise AssertionError("expected failure")
+    except RuntimeError as e:
+        assert "403" in str(e) and "auto" in str(e)

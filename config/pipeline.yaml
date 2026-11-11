@@ -84,8 +84,10 @@ text:
 embedding:
   provider: voyage              # voyage | hashing (hashing is for tests/offline development only)
   # Where Voyage models are served. Keys created at dash.voyageai.com use `voyage`;
-  # keys created in the MongoDB Atlas console use `mongodb`.
-  endpoint: mongodb
+  # keys created in the MongoDB Atlas console use `mongodb`; `auto` tries Voyage AI
+  # and switches once if the key belongs to MongoDB Atlas (same models; the cache is
+  # keyed by model, so switching never re-embeds anything).
+  endpoint: auto
   model: voyage-finance-2
   batch_size: 64
   concurrency: 4                # requests in flight; rate limits are retried with backoff

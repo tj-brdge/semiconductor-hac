@@ -88,7 +88,7 @@ class Text(_Strict):
 
 class Embedding(_Strict):
     provider: Literal["voyage", "hashing"] = "voyage"
-    endpoint: Literal["voyage", "mongodb"] = "voyage"
+    endpoint: Literal["auto", "voyage", "mongodb"] = "auto"
     model: str = "voyage-finance-2"
     batch_size: int = 64
     concurrency: int = 4

@@ -8,6 +8,7 @@ model id, and reports flag any run that did not use the configured research mode
 from __future__ import annotations
 
 import re
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -64,14 +65,22 @@ class VoyageEmbedder:
     limits (429), server errors and network timeouts are retried with exponential
     backoff (honouring Retry-After); other errors stop the run with the API's own
     message. Throughput is set by the account's rate limits: on Voyage's free tier
-    (no payment method) it is a few requests per minute whatever this code does."""
+    (no payment method) it is a few requests per minute whatever this code does.
+
+    `endpoint="auto"` starts at Voyage AI's endpoint and, if the key is refused there
+    as belonging to the other service (a MongoDB Atlas key), switches to that
+    service once for the rest of the run. Both serve the same models, and the cache
+    is keyed by model, so nothing already embedded is paid for again."""
 
     def __init__(self, model: str, batch_size: int = 64, api_key: str | None = None,
                  client: httpx.Client | None = None, endpoint: str = "voyage",
                  concurrency: int = 4, sleep=time.sleep):
         self.model_id = model
-        self.endpoint = endpoint
-        self.url = ENDPOINTS[endpoint]
+        self.auto = endpoint == "auto"
+        self.endpoint = "voyage" if self.auto else endpoint
+        self.url = ENDPOINTS[self.endpoint]
+        self._lock = threading.Lock()
+        self._switched = False
         self.batch_size = batch_size
         self.concurrency = max(1, concurrency)
         self._sleep = sleep
@@ -85,10 +94,13 @@ class VoyageEmbedder:
 
     def _post(self, batch: list[str]) -> np.ndarray:
         last = "no attempt made"
-        for attempt in range(MAX_ATTEMPTS):
+        attempt = 0
+        while attempt < MAX_ATTEMPTS:
             wait = min(MAX_BACKOFF, 2.0 ** (attempt + 1))
+            attempt += 1
+            url = self.url
             try:
-                r = self.client.post(self.url, json={
+                r = self.client.post(url, json={
                     "input": batch, "model": self.model_id, "input_type": "document"})
             except (httpx.TimeoutException, httpx.TransportError) as e:
                 last = f"{type(e).__name__} (network)"
@@ -106,9 +118,25 @@ class VoyageEmbedder:
                     pass
                 self._sleep(min(MAX_BACKOFF, wait))
                 continue
+            if self.auto and _other_service(r) and self._switch(url):
+                attempt -= 1  # the key was sent to the wrong service: not a failed try
+                continue
             raise RuntimeError(_voyage_error(r, self.model_id, self.endpoint))
         raise RuntimeError(f"Voyage embeddings: {MAX_ATTEMPTS} attempts failed, last: {last}. "
                            "Already-embedded passages are cached; re-run to resume.")
+
+    def _switch(self, refused: str) -> bool:
+        """Move to the other service once (thread-safe). True when the next request
+        goes somewhere other than `refused`."""
+        with self._lock:
+            if self.url != refused:
+                return True  # another thread already switched
+            if self._switched:
+                return False
+            self.endpoint = "mongodb" if self.endpoint == "voyage" else "voyage"
+            self.url = ENDPOINTS[self.endpoint]
+            self._switched = True
+            return True
 
     def embed(self, texts: list[str]) -> np.ndarray:
         batches = [texts[i:i + self.batch_size] for i in range(0, len(texts), self.batch_size)]
@@ -122,6 +150,19 @@ class VoyageEmbedder:
         return _normalise(np.vstack(out))
 
 
+def _detail(r: httpx.Response) -> str:
+    try:
+        body = r.json()
+        return str(body.get("detail") or body.get("message") or body.get("error") or body)
+    except ValueError:
+        return r.text
+
+
+def _other_service(r: httpx.Response) -> bool:
+    """A Voyage AI key sent to MongoDB Atlas, or the reverse."""
+    return r.status_code in (401, 403) and "cannot access this endpoint" in _detail(r)
+
+
 def _voyage_error(r: httpx.Response, model: str, endpoint: str = "voyage") -> str:
     """Voyage's own explanation (never contains the key), plus a hint for auth errors."""
     try:
@@ -133,8 +174,8 @@ def _voyage_error(r: httpx.Response, model: str, endpoint: str = "voyage") -> st
            f"{str(detail)[:400]}")
     if "cannot access this endpoint" in str(detail):
         other = "mongodb" if endpoint == "voyage" else "voyage"
-        msg += (f"\nThis key belongs to the other service: set `endpoint: {other}` under "
-                "embedding in config/pipeline.yaml.")
+        msg += (f"\nThis key belongs to the other service: set `endpoint: {other}` (or "
+                "`auto`) under embedding in config/pipeline.yaml.")
     elif r.status_code in (401, 403):
         msg += ("\nCheck that VOYAGE_API_KEY is current, that the account has a payment "
                 "method, and that it can use this model (embedding.model in "
