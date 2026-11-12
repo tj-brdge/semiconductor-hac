@@ -345,3 +345,55 @@ def test_auto_endpoint_follows_the_key_to_its_service():
         raise AssertionError("expected failure")
     except RuntimeError as e:
         assert "403" in str(e) and "auto" in str(e)
+
+
+def test_operator_opening_does_not_start_the_qa():
+    """Before: the operator's standard opening sentence mentions the Q&A session,
+    so every later turn, including the prepared remarks, was labelled Q&A."""
+    from themegraph.text.passages import transcript_turns
+    text = ("Operator: Good day. After the speakers' remarks, there will be a "
+            "question-and-answer session. I will now hand over to Jane.\n"
+            "Jane Doe: Thank you. After our remarks we will take your questions in the Q&A.\n"
+            "John Roe: Revenue grew on strong demand.\n"
+            "Operator: We will now begin the question-and-answer session. First question.\n"
+            "Ann Analyst: What about margins?\n"
+            "John Roe: Margins expanded.\n")
+    assert [p for _, p, _ in transcript_turns(text)] == [
+        "prepared", "prepared", "prepared", "prepared", "qa", "qa"]
+    # No operator turns: the first mention after the first speaker starts it.
+    plain = ("Jane Doe: Welcome.\nJohn Roe: Results were good. Now the first question.\n"
+             "Ann Analyst: Margins?\n")
+    assert [p for _, p, _ in transcript_turns(plain)] == ["prepared", "prepared", "qa"]
+
+
+def test_novelty_rule_matches_the_pairwise_definition():
+    import numpy as np
+    import pandas as pd
+
+    from themegraph.text.novelty import novelty_mask
+    rng = np.random.default_rng(0)
+    n = 300
+    V = rng.normal(size=(n, 16)).astype(np.float32)
+    V[50:80] = V[10:40] + 0.01 * rng.normal(size=(30, 16))  # near-repeats
+    V /= np.linalg.norm(V, axis=1, keepdims=True)
+    t = pd.Timestamp("2020-01-01", tz="UTC") + pd.to_timedelta(rng.integers(0, 1500, n), "D")
+    p = pd.DataFrame({"symbol": rng.choice(["A", "B"], n), "available_at": t})
+    got = novelty_mask(p, V, 0.9, lookback_days=730)
+    want = np.ones(n, bool)
+    for j in range(n):
+        for i in range(n):
+            if p.symbol[i] == p.symbol[j] and t[i] < t[j] and t[i] >= t[j] - pd.Timedelta(
+                    days=730) and float(V[i] @ V[j]) > 0.9:
+                want[j] = False
+    assert (got == want).all() and (~got).sum() >= 10
+
+
+def test_no_passages_is_an_empty_frame_not_a_crash():
+    import pandas as pd
+
+    from themegraph.text.passages import PASSAGE_COLUMNS, passages_from_documents
+    docs = pd.DataFrame([{"symbol": "A", "doc_id": "d", "doc_type": "10-K", "text": "too short",
+                          "published_at": pd.Timestamp("2020-01-01", tz="UTC"),
+                          "available_at": pd.Timestamp("2020-01-01", tz="UTC")}])
+    out = passages_from_documents(docs, 200, 40)
+    assert out.empty and list(out.columns) == PASSAGE_COLUMNS

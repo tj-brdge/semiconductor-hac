@@ -51,11 +51,14 @@ class FMPClient:
         p = {k: str(v) for k, v in params.items() if v is not None}
         if self.api_key:
             p["apikey"] = self.api_key
+        def not_an_error(body: bytes) -> None:  # FMP reports some errors with HTTP 200
+            data = json.loads(body or b"[]")
+            if isinstance(data, dict) and "Error Message" in data:
+                raise RuntimeError(f"FMP {endpoint}: {data['Error Message']}")
+
         resp = self.f.fetch(f"{BASE}/{endpoint}", params=p, endpoint=endpoint,
-                            vintage=self.vintage if mutable else None)
+                            vintage=self.vintage if mutable else None, validate=not_an_error)
         data = json.loads(resp.body or b"[]")
-        if isinstance(data, dict) and "Error Message" in data:
-            raise RuntimeError(f"FMP {endpoint}: {data['Error Message']}")
         return data if isinstance(data, list) else [data]
 
     # --- prices, chunked by calendar year so no response hits a row cap. Adjusted
@@ -139,8 +142,13 @@ def to_usd(prices: pd.DataFrame, fx: pd.DataFrame) -> pd.DataFrame:
     return m.drop(columns="fx").dropna(subset=["close"])
 
 
+MACRO_COLUMNS = ["date", "value", "period", "available_at", "published_at"]
+
+
 def normalise_treasury(rows: list[dict], column: str, rules: Availability) -> pd.DataFrame:
     df = pd.DataFrame(rows)
+    if df.empty or column not in df:
+        return pd.DataFrame(columns=MACRO_COLUMNS)
     out = pd.DataFrame({
         "date": pd.to_datetime(df["date"]).dt.normalize(),
         "value": pd.to_numeric(df[column], errors="coerce"),
@@ -154,6 +162,8 @@ def normalise_treasury(rows: list[dict], column: str, rules: Availability) -> pd
 def normalise_monthly_economic(rows: list[dict], rules: Availability) -> pd.DataFrame:
     """Monthly series keyed by reference month. Gaps stay missing (never zero-filled)."""
     df = pd.DataFrame(rows)
+    if df.empty:
+        return pd.DataFrame(columns=MACRO_COLUMNS)
     ref = pd.to_datetime(df["date"]).dt.to_period("M").dt.to_timestamp()
     out = pd.DataFrame({"date": ref, "value": pd.to_numeric(df["value"], errors="coerce")})
     out = out.dropna().drop_duplicates("date").sort_values("date").reset_index(drop=True)

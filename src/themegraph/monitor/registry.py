@@ -511,6 +511,15 @@ class Registry:
                     # Superseded within this refresh, never held.
                     if len(th["versions"]) > 1:
                         th["versions"].pop()
+                        held = sorted(x["symbol"] for x in th["versions"][-1]["constituents"])
+                        if new == held:
+                            # Back to the basket actually held: nothing to change (a
+                            # new version would rebalance it for no reason).
+                            self.event(ts, th["id"], "basket_proposal_reset",
+                                       reason="back to the held basket", proposed=cur)
+                            th["pending"] = None
+                            return
+                        cur = held
                     else:  # the publication basket itself: revise it before entry
                         self.event(ts, th["id"], "basket_revised_before_entry",
                                    was=[x["symbol"] for x in last["constituents"]], now=new)
@@ -567,6 +576,9 @@ class Registry:
         cohort = sorted(s for s in cohort if all(cov.covered(s, r["t"]) for r in rows))
         shares = []
         for r, w in zip(rows, wins, strict=True):
+            if not r.get("present") and r.get("observed") is False:
+                shares.append(None)  # missing evidence: no share, not a share of zero
+                continue
             den = sum(w[s] for s in cohort)
             num = sum(r.get("passages_by_issuer", {}).get(s, 0) for s in cohort) \
                 if r.get("present") else 0

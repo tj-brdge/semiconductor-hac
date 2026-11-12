@@ -31,7 +31,6 @@ class Established(_S):
     present: int = 6
     of_last: int = 9
     min_issuers: int = 4
-    min_coherence_quantile: float = 0.5
 
 
 class Status(_S):
