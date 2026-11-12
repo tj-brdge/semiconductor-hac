@@ -3,8 +3,8 @@
    validated categorical palette (docs/MONITOR.md, "Dashboard"). */
 :root {
   color-scheme: light;
-  --page: #f5f6f8; --surface: #ffffff; --sunk: #eef1f4; --line: #e0e4ea; --line-strong: #c9d0da;
-  --ink: #14202e; --ink-2: #3b4757; --muted: #5a6676;
+  --page: #f6f4ef; --surface: #fffefb; --sunk: #efece5; --line: #e3dfd5; --line-strong: #cbc5b8;
+  --ink: #16202b; --ink-2: #3c4653; --muted: #5d6570;
   --navy: #1b3358; --teal: #0b6e69; --teal-bg: #e3f2f0; --focus: #0b6e69;
   --pos: #17784a; --neg: #b42318;
   --s-new-bg: #e6edf8; --s-new: #1d3f73; --s-up-bg: #e3f2e9; --s-up: #17633e;
@@ -13,7 +13,8 @@
   --warn-bg: #fdf3dc; --warn-line: #e9c46a; --bad-bg: #fbe9e7; --bad-line: #e8a59c;
   --info-bg: #e9eef6; --info-line: #b9c7dc;
   --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a; --series-4: #6250d6; --live-band: #e3f2f0;
-  --radius: 10px; --shadow: 0 1px 2px rgba(20, 32, 46, .05);
+  --radius: 12px; --shadow: 0 1px 2px rgba(22, 32, 43, .04), 0 6px 20px -12px rgba(22, 32, 43, .18);
+  --display: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
   --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
@@ -327,3 +328,39 @@ details > .body { padding: 0 16px 16px; display: grid; gap: 12px; }
 .metric .trend { font-size: .8rem; font-weight: 600; color: var(--muted); }
 h2[tabindex="-1"]:focus { outline: none; }
 @media (max-width: 560px) { .glance { grid-template-columns: 1fr 1fr; } }
+
+/* Presentation layer: editorial headings, warmer paper, calmer notices. */
+h1, h2, .glance-item .n, .metric .v, .kpi .v { font-family: var(--display); font-weight: 600; letter-spacing: -.012em; }
+h1 { font-size: clamp(1.9rem, 1.3rem + 2.2vw, 2.7rem); line-height: 1.1; }
+h2 { font-size: 1.4rem; }
+.hero h1 { font-size: clamp(1.75rem, 1.3rem + 1.8vw, 2.4rem); }
+.site-header { position: sticky; top: 0; z-index: 5; background: color-mix(in srgb, var(--surface) 88%, transparent);
+  backdrop-filter: saturate(1.4) blur(10px); -webkit-backdrop-filter: saturate(1.4) blur(10px); }
+.brand { font-family: var(--display); font-size: 1.2rem; letter-spacing: -.01em; }
+main { gap: 36px; padding-top: 32px; }
+.intro { gap: 14px; padding: 8px 0 4px; }
+.lede { font-size: 1.18rem; line-height: 1.5; max-width: 58ch; }
+.eyebrow { font-size: .72rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--teal); }
+.facts { padding-top: 12px; border-top: 1px solid var(--line); }
+.section-head, .section > div:first-child { border-top: 2px solid var(--ink); padding-top: 12px; }
+.section .section { gap: 12px; }
+.section-head p, .section > div:first-child p { margin-top: 4px; }
+.notice { font-size: .92rem; padding: 10px 14px; }
+.card { padding: 20px; gap: 14px; transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease; }
+.card:hover { transform: translateY(-2px); box-shadow: 0 2px 4px rgba(22, 32, 43, .05), 0 14px 30px -14px rgba(22, 32, 43, .28); }
+.card h3 { font-family: var(--display); font-size: 1.22rem; font-weight: 600; line-height: 1.2; letter-spacing: -.01em; }
+.metric .v { font-size: 1.6rem; }
+.metric .k { text-transform: uppercase; letter-spacing: .08em; font-size: .68rem; }
+.spark { height: 56px; }
+.glance-item { padding: 16px 18px; box-shadow: var(--shadow); transition: transform .15s ease, border-color .15s ease; }
+.glance-item:hover { transform: translateY(-1px); }
+.glance-item .n { font-size: 2rem; }
+.glance-item .l { text-transform: uppercase; letter-spacing: .08em; font-size: .7rem; color: var(--muted); }
+.panel { padding: 24px; gap: 16px; }
+.rows { box-shadow: var(--shadow); }
+.row-head { text-transform: uppercase; letter-spacing: .08em; font-size: .68rem; }
+.site-footer { border-top: 1px solid var(--line); padding-top: 20px; margin-top: 8px; }
+@media (prefers-reduced-motion: reduce) { .card, .glance-item { transition: none; } .card:hover, .glance-item:hover { transform: none; } }
+@media (max-width: 560px) { .panel { padding: 16px; } .card { padding: 16px; } main { gap: 28px; } }
+.intro h1 { max-width: 24ch; }
+h2, .panel, .section { scroll-margin-top: 80px; }

@@ -7,9 +7,11 @@ model id, and reports flag any run that did not use the configured research mode
 
 from __future__ import annotations
 
+import datetime as dt
 import re
 import threading
 import time
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Protocol
@@ -195,6 +197,10 @@ class EmbeddingCache:
 
     New vectors are written every `save_every` passages, so an interrupted or failed
     run keeps (and does not pay again for) everything embedded before the failure.
+
+    Memory: nothing is held between calls. `get` fills one matrix for exactly the
+    passages asked for, reading shards one at a time; vectors cached for other
+    passages (another profile, filtered-out text) are never loaded.
     """
 
     save_every = 1024
@@ -204,35 +210,68 @@ class EmbeddingCache:
         safe = re.sub(r"[^\w.-]", "_", embedder.model_id)
         self.dir = Path(root) / safe
         self.dir.mkdir(parents=True, exist_ok=True)
-        self._mem: dict[str, np.ndarray] = {}
+
+    def hashes(self) -> set[str]:
+        """Every cached text hash (reads the hash column only)."""
+        out: set[str] = set()
         for shard in sorted(self.dir.glob("*.parquet")):
-            df = pd.read_parquet(shard)
-            for h, v in zip(df["text_hash"], df["vector"], strict=True):
-                self._mem[h] = np.asarray(v, dtype=np.float32)
+            out.update(pd.read_parquet(shard, columns=["text_hash"])["text_hash"])
+        return out
 
     def get(self, hashes: list[str], texts: list[str]) -> np.ndarray:
-        todo = {}
-        for h, t in zip(hashes, texts, strict=True):
-            if h not in self._mem and h not in todo:
-                todo[h] = t
-        USAGE["embeddings_reused"] += len(set(hashes)) - len(todo)
+        if not hashes:
+            return np.zeros((0, 0), dtype=np.float32)
+        rows: dict[str, list[int]] = {}
+        text_of: dict[str, str] = {}
+        for i, (h, t) in enumerate(zip(hashes, texts, strict=True)):
+            rows.setdefault(h, []).append(i)
+            text_of.setdefault(h, t)
+        V: np.ndarray | None = None
+        found: set[str] = set()
+
+        def fill(keys, vecs) -> None:
+            nonlocal V
+            if V is None:
+                V = np.empty((len(hashes), vecs.shape[1]), dtype=np.float32)
+            for h, v in zip(keys, vecs, strict=True):
+                V[rows[h]] = v
+                found.add(h)
+
+        for shard in sorted(self.dir.glob("*.parquet")):
+            df = pd.read_parquet(shard)
+            df = df.loc[df["text_hash"].isin(rows.keys()) & ~df["text_hash"].isin(found)]
+            if len(df):
+                fill(df["text_hash"].tolist(),
+                     np.stack([np.asarray(v, dtype=np.float32) for v in df["vector"]]))
+        todo = [(h, t) for h, t in text_of.items() if h not in found]
+        USAGE["embeddings_reused"] += len(rows) - len(todo)
         USAGE["embeddings_computed"] += len(todo)
         if todo:
-            items = list(todo.items())
-            with tqdm(total=len(items), desc=f"Embedding ({self.embedder.model_id})",
+            with tqdm(total=len(todo), desc=f"Embedding ({self.embedder.model_id})",
                       unit="passage", disable=None, dynamic_ncols=True) as bar:
-                for i in range(0, len(items), self.save_every):
-                    chunk = items[i:i + self.save_every]
+                for i in range(0, len(todo), self.save_every):
+                    chunk = todo[i:i + self.save_every]
                     vecs = self.embedder.embed([t for _, t in chunk])
                     keys = [h for h, _ in chunk]
                     self._write_shard(keys, vecs)
-                    for h, v in zip(keys, vecs, strict=True):
-                        self._mem[h] = v
+                    fill(keys, vecs)
                     bar.update(len(chunk))
-        return np.vstack([self._mem[h] for h in hashes]) if hashes else np.zeros((0, 0))
+        return V
 
     def _write_shard(self, keys: list[str], vecs: np.ndarray) -> None:
-        n = len(list(self.dir.glob("*.parquet")))
-        tmp = self.dir / f"{n:06d}.parquet.tmp"
+        # A unique name: two runs sharing the cache (two profiles) never overwrite
+        # each other's shard, and a deleted shard never causes a name to be reused.
+        name = f"{dt.datetime.now(dt.UTC):%Y%m%dT%H%M%S%f}-{uuid.uuid4().hex[:8]}"
+        tmp = self.dir / f"{name}.parquet.tmp"
         pd.DataFrame({"text_hash": keys, "vector": list(vecs)}).to_parquet(tmp, index=False)
-        tmp.rename(self.dir / f"{n:06d}.parquet")  # atomic: no half-written shards
+        tmp.rename(self.dir / f"{name}.parquet")  # atomic: no half-written shards
+
+
+def compact_rows(V: np.ndarray, keep: np.ndarray) -> np.ndarray:
+    """V[keep] without a second full-size matrix: kept rows are moved to the front
+    in blocks and a view of the front is returned (V itself is overwritten)."""
+    idx = np.flatnonzero(keep)
+    for a in range(0, len(idx), 65536):
+        block = idx[a:a + 65536]
+        V[a:a + len(block)] = V[block]  # sources are at or after their destinations
+    return V[:len(idx)]
