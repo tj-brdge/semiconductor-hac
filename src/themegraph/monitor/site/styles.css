@@ -270,8 +270,8 @@ details > .body { padding: 0 16px 16px; display: grid; gap: 12px; }
   form.controls .field:first-child { grid-column: 1 / -1; }
   .field input, .field select { width: 100%; }
   .theme-toggle { order: 1; }
-  .nav { margin-left: 0; width: 100%; order: 2; padding-bottom: 6px; }
-  .nav a { flex: 1; justify-content: center; padding: 10px 6px; }
+  .nav { margin-left: 0; width: 100%; order: 2; padding-bottom: 6px; flex-wrap: nowrap; overflow-x: auto; }
+  .nav a { flex: 0 0 auto; justify-content: center; padding: 10px 9px; white-space: nowrap; font-size: .92rem; }
   .cards { grid-template-columns: minmax(0, 1fr); }
   .row { grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; }
   .row-head { display: none; }
@@ -309,3 +309,21 @@ details > .body { padding: 0 16px 16px; display: grid; gap: 12px; }
 .dendro .leaf { fill: var(--ink-2); font-family: var(--mono); }
 .dendro .leaf.in { fill: var(--ink); font-weight: 650; }
 @media (forced-colors: active) { .dendro .br.in { stroke: CanvasText; } .dendro .br { stroke: GrayText; } }
+
+/* At-a-glance row and in-page jumps */
+.glance { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.glance-item { display: grid; gap: 2px; text-align: left; font: inherit; color: inherit; text-decoration: none; cursor: pointer;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; }
+.glance-item:hover { border-color: var(--line-strong); }
+.glance-item:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.glance-item .n { font-size: 1.45rem; font-weight: 650; line-height: 1.15; color: var(--ink); }
+.glance-item .l { font-size: .82rem; font-weight: 600; color: var(--ink-2); }
+.glance-item .s { font-size: .8rem; color: var(--muted); }
+.jump { display: flex; flex-wrap: wrap; gap: 6px; }
+.jump button, .link-btn { font: inherit; font-size: .88rem; font-weight: 600; color: var(--ink-2); background: none; cursor: pointer;
+  border: 1px solid var(--line-strong); border-radius: 999px; padding: 5px 12px; }
+.jump button:hover, .link-btn:hover { background: var(--surface); color: var(--ink); }
+.jump button:focus-visible, .link-btn:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.metric .trend { font-size: .8rem; font-weight: 600; color: var(--muted); }
+h2[tabindex="-1"]:focus { outline: none; }
+@media (max-width: 560px) { .glance { grid-template-columns: 1fr 1fr; } }

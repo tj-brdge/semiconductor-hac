@@ -97,21 +97,27 @@ function card(row) {
   }
   return `<article class="card">
     <div class="card-top"><h3><a href="#/theme/${esc(row.id)}">${esc(row.title)}</a></h3>${chip(row.status)}</div>
-    <p class="summary">${esc(row.summary)}</p>
-    ${row.label_source === "keywords" ? `<p class="small muted">Automatic title from key terms</p>` : ""}
-    <div class="meta">${toneTag(row)}${row.route === "newly_covered" ? `<span class="tag" title="Visible because coverage expanded; not counted as emerging">Newly covered</span>` : ""}<span>${st.n_issuers ?? "—"} companies</span><span>${esc((row.sectors || []).join(", "))}</span></div>
+    ${row.label_source === "keywords" ? "" : `<p class="summary">${esc(row.summary)}</p>`}
+    <div class="meta">${toneTag(row)}${row.route === "newly_covered" ? `<span class="tag" title="Visible because coverage expanded; not counted as emerging">Newly covered</span>` : ""}<span>${st.n_issuers ?? "—"} companies</span><span>${esc((row.sectors || []).join(", "))}</span>${row.label_source === "keywords" ? `<span title="No written summary yet: the title is the theme's three most distinctive terms">Automatic title</span>` : ""}</div>
     ${row.tone?.direction === "headwind" && row.tone.headwind_terms?.length ? `<p class="small"><span class="muted">Problems described:</span> ${esc(row.tone.headwind_terms.slice(0, 4).join(" · "))}</p>` : ""}
     <div class="tickers" aria-label="Largest constituents">${keys.map((c) => esc(c.symbol)).join(" · ")}${more > 0 ? ` <span class="muted">+${more}</span>` : ""}</div>
     <div class="split">
       <div class="metric"><div class="k">${long.replace(/^./, (c) => c.toUpperCase())} basket return</div>
         ${r.na ? `<div class="na">${esc(r.na)}</div>` : `<div class="v">${pct(r.theme)}</div><div class="s">vs ${esc(b)} ${pts(r[`excess_vs_${b}`])} ${basisTag(r.basis)}</div>`}</div>
-      <div class="metric"><div class="k">Discussion</div>
-        <div class="v">${e.growth_3m == null ? "—" : `${e.growth_3m.toFixed(1)}×`}</div>
-        <div class="s">${e.growth_3m == null ? "no 3-month comparison yet" : "its share 3 months ago"} · in ${st.persistence_12 ?? "—"} of 12 months</div></div>
+      <div class="metric"><div class="k">Discussion vs 3m ago</div>
+        <div class="v">${e.growth_3m == null ? "—" : `${e.growth_3m.toFixed(1)}×`} <span class="trend">${growthWord(e.growth_3m)}</span></div>
+        <div class="s">discussed in ${st.persistence_12 ?? "—"} of the last 12 months</div></div>
     </div>
     ${familyLine(row)}
     ${spark ? `<div>${spark}<div class="small muted"><span class="key" style="border-top-color:var(--series-1)"></span>Basket <span class="key dash" style="border-top-color:var(--series-2);margin-left:10px"></span>${esc(b)}${sp.live_from ? " · shaded: live" : ""}</div></div>` : ""}
   </article>`;
+}
+
+// Plain reading of the 3-month change in a theme's share of discussion (the same
+// bands as the status rule: 1.25x and 0.8x).
+function growthWord(g) {
+  if (g == null) return "";
+  return g >= 1.25 ? "growing" : g <= 0.8 ? "shrinking" : "steady";
 }
 
 function toneTag(row) {
@@ -173,6 +179,8 @@ function overview() {
   const newly = onePerFamily((L.newly_covered || []).map((id) => by[id]).filter(Boolean), shown);
   const established = onePerFamily(L.established.map((id) => by[id]), shown);
   const nSectors = Object.keys(U.sectors || {}).length;
+  const active = S.index.themes.filter((r) => !["inactive", "merged"].includes(r.status));
+  const mc = S.index.market_clusters;
   const render = () => {
     $("#main").innerHTML = `
       <section class="intro"><h1>Theme Monitor</h1>
@@ -183,19 +191,27 @@ function overview() {
           <span>Prices through <b>${esc(fmtDate(a.prices))}</b></span><span>Calls and filings through <b>${esc(fmtDate(a.documents))}</b></span>
           <a href="#/method#coverage">What is covered</a></p></section>
       ${notices()}
+      <nav class="glance" aria-label="At a glance">
+        ${glance(active.length, "active themes", "#/themes?status=active")}
+        ${glance(emerging.length, "emerging", "#h-em", "new and growing")}
+        ${glance(headwinds.length, "headwinds", "#h-hw", "problems described")}
+        ${glance(established.length, "established", "#h-es", "long-running")}
+        ${mc?.available ? glance(mc.clusters.length, "market clusters", "#/clusters", "stocks trading together") : ""}
+      </nav>
       ${periodControl()}
       <section class="section" aria-labelledby="h-em"><div class="section-head"><div><h2 id="h-em">Emerging</h2>
-        <p class="muted small">Newly prominent in what companies discuss: flagged by the emergence rule in the last three months, or entered that way and still growing. Ordered by growth in discussion.</p></div></div>
+        <p class="muted small">Topics whose share of company discussion grew quickly across several companies. Fastest-growing first.</p></div></div>
         ${emerging.length ? `<div class="cards">${emerging.map(card).join("")}</div>` : `<p class="empty">Nothing is emerging right now. Themes appear here when discussion of a topic grows quickly across several comparable companies.</p>`}</section>
       <section class="section" aria-labelledby="h-hw"><div class="section-head"><div><h2 id="h-hw">Headwinds</h2>
-        <p class="muted small">Problems companies are describing: themes whose management commentary and filings use much more problem language than usual (weaker demand, inventory corrections, pricing pressure, cancellations). Spreading ones first. A starting point for short ideas, not a recommendation: whether these baskets go on to lag has not been tested, and a falling basket may already reflect the news.</p></div></div>
+        <p class="muted small">Themes where companies describe problems (weaker demand, inventory corrections, pricing pressure) far more than usual. Spreading ones first. A starting point for short ideas, not a recommendation: whether these baskets go on to lag is untested.</p></div></div>
         ${headwinds.length ? `<div class="cards">${headwinds.map(card).join("")}</div>` : `<p class="empty">No theme stands out for problem language right now.</p>`}</section>
       ${newly.length ? `<section class="section" aria-labelledby="h-new"><div class="section-head"><div><h2 id="h-new">Newly covered</h2>
         <p class="muted small">Visible because coverage expanded${lastChange ? ` on ${esc(fmtDate(lastChange.date))}` : ""}: long-running discussion among newly added companies, found in their earlier documents. Not counted as emerging, and tracked only from when it was published.</p></div></div>
         <div class="cards">${newly.map(card).join("")}</div></section>` : ""}
       <section class="section" aria-labelledby="h-es"><div class="section-head"><div><h2 id="h-es">Strong established themes</h2>
-        <p class="muted small">Discussed in at least 6 of the last 12 months by four or more companies. “Strong” is within the monitored companies only, and describes discussion, not stock performance.</p></div></div>
-        ${established.length ? `<div class="cards">${established.map(card).join("")}</div>` : `<p class="empty">No established themes yet.</p>`}</section>
+        <p class="muted small">Discussed in at least 6 of the last 12 months by four or more companies. About discussion, not stock performance.</p></div></div>
+        ${established.length ? `<div class="cards">${established.slice(0, S.allEstablished ? undefined : 6).map(card).join("")}</div>
+          ${established.length > 6 ? `<p><button type="button" class="link-btn" id="more-es" aria-expanded="${!!S.allEstablished}">${S.allEstablished ? "Show fewer" : `Show all ${established.length} established themes`}</button></p>` : ""}` : `<p class="empty">No established themes yet.</p>`}</section>
       <section class="section" aria-label="Relative performance">
         <div class="section"><div><h2>Relative performance improving</h2><p class="muted small">The basket's 3-month return minus ${esc(b)}'s rose by at least 5 points since the previous month-end. This is about stock prices only.</p></div>${rowsList(lowList(L.market_gaining), "No theme's relative performance improved that much this month.")}</div>
         <div class="section"><div><h2>Relative performance weakening</h2><p class="muted small">The same measure fell by at least 5 points. A strong theme in discussion can still have a falling basket.</p></div>${rowsList(lowList(L.market_losing), "No theme's relative performance weakened that much this month.")}</div>
@@ -204,8 +220,14 @@ function overview() {
         ${rowsList(lowList([...(L.cooling || []), ...L.inactive]), "No cooling or inactive themes.")}</section>
       <p><a href="#/themes">See all ${S.index.themes.length} themes →</a></p>`;
     bindPeriod($("#main"), render);
+    $("#more-es")?.addEventListener("click", () => { S.allEstablished = !S.allEstablished; render(); $("#more-es")?.focus(); });
   };
   render();
+}
+
+function glance(n, label, href, sub) {
+  if (href.startsWith("#h-")) return `<button type="button" class="glance-item" data-jump="${href.slice(1)}"><span class="n">${n}</span><span class="l">${esc(label)}</span>${sub ? `<span class="s">${esc(sub)}</span>` : ""}</button>`;
+  return `<a class="glance-item" href="${href}"><span class="n">${n}</span><span class="l">${esc(label)}</span>${sub ? `<span class="s">${esc(sub)}</span>` : ""}</a>`;
 }
 
 // -- all themes ----------------------------------------------------------------------
@@ -293,6 +315,21 @@ function togetherHTML(tt) {
   </div>`;
 }
 
+// The four things most readers want first, each a link to its section.
+function themeGlance(t, m, B) {
+  const row = S.byId[t.id] || {}, r = (t.performance.returns || {})["12m"] || (t.performance.returns || {}).full_period;
+  const b = B[0], tt = t.trading_together?.now;
+  const news = { headwind: "Headwind", tailwind: "Tailwind", mixed: "Mixed" }[row.tone?.direction] || "Not enough text";
+  const g = m.growth_3m;
+  const item = (id, k, v, sub) => `<button type="button" class="glance-item" data-jump="${id}"><span class="l">${k}</span><span class="n">${v}</span><span class="s">${sub}</span></button>`;
+  return `<nav class="glance" aria-label="At a glance">
+    ${item("h-disc", "Discussion", g == null ? "—" : `${g.toFixed(1)}×`, g == null ? "no 3-month comparison yet" : `vs 3 months ago · ${growthWord(g)}`)}
+    ${item("h-disc", "Kind of news", news, row.tone?.direction === "headwind" ? "companies describe problems" : row.tone?.direction === "tailwind" ? "companies describe growth" : "no clear lean")}
+    ${item("h-mkt", r ? `Basket, ${r === (t.performance.returns || {})["12m"] ? "12 months" : "since entry"}` : "Basket", r ? pct(r.theme) : "—", r ? `${esc(b)} ${esc(plainPct(r[b]))} · ${{ live: "live", reconstructed: "simulated", mixed: "simulated + live" }[r.basis] || ""}` : esc(t.performance.note || "not valued yet"))}
+    ${item("h-mkt", "Trading together", tt?.informative ? { together: "Yes", less: "Less than usual", usual: "Not unusual" }[tt.verdict] : "—", tt?.informative ? `beyond ${esc(t.trading_together.index)}, last 6 months` : "cannot be judged")}
+  </nav>`;
+}
+
 function benchText(t, B) {
   const names = S.index.benchmark_labels || {};
   const sb = t.sector_benchmark || {};
@@ -366,7 +403,6 @@ async function themePage(id, token) {
     <header class="hero"><div class="card-top"><h1>${esc(t.title)}</h1><span>${toneTag(S.byId[t.id] || {})} ${chip(t.status)}</span></div>
       <p class="summary">${esc(t.summary)}</p>
       <p class="small muted">${labelNote(t)}</p>
-      ${(t.overview || []).length ? `<details class="about" open><summary>About this theme</summary><div class="body prose">${t.overview.map((p) => `<div><h3>${esc(p.heading)}</h3><p>${esc(p.text)}</p></div>`).join("")}</div></details>` : ""}
       ${t.newly_covered ? `<p class="notice"><span><b>Newly covered.</b> This theme became visible when coverage expanded: ${t.newly_covered.new_companies.length} of its companies were added recently. Their earlier documents show the topic in ${t.newly_covered.backfill_present} of the ${t.newly_covered.of_last} months before ${esc(fmtDate(t.newly_covered.at))}; that is historical analysis, not an earlier discovery. Tracking began when it was published on ${esc(fmtDate(t.published_at))}.</span></p>` : ""}
       <p class="facts"><span>${m.n_issuers ?? "—"} companies</span><span>${esc((m.sectors || []).join(", "))}</span>
         <span>Entered ${esc(fmtDate(t.published_snapshot))} via the ${{ emergence: "emergence rule", established: "established-theme rule", newly_covered: "newly-covered rule" }[t.route] || esc(t.route)}</span></p>
@@ -374,6 +410,9 @@ async function themePage(id, token) {
         <ul class="plain">${t.family.related.map((r) => `<li><a href="#/theme/${esc(r.id)}">${esc(S.byId[r.id]?.title || r.id)}</a> <span class="small muted">similarity ${r.cosine.toFixed(2)}${r.shared_companies.length ? `, shared companies ${esc(r.shared_companies.slice(0, 6).join(", "))}${r.shared_companies.length > 6 ? "…" : ""}` : ""}</span></li>`).join("")}</ul></div>` : ""}
       ${t.merged_into ? `<p class="notice warn">Merged into <a href="#/theme/${esc(t.merged_into)}">${esc(S.byId[t.merged_into]?.title || t.merged_into)}</a>. Its history and basket are kept here.</p>` : ""}
     </header>
+    ${themeGlance(t, m, B)}
+    <nav class="jump" aria-label="On this page">${[["h-perf", "Performance"], ["h-disc", "Discussion"], ...(p.status === "ok" ? [["h-mkt", "Returns"], ["h-cons", "Companies"]] : []), ["h-ev", "Evidence"]].map(([id, l]) => `<button type="button" data-jump="${id}">${l}</button>`).join("")}</nav>
+    ${(t.overview || []).length ? `<details class="about"${matchMedia("(min-width: 700px)").matches ? " open" : ""}><summary>About this theme</summary><div class="body prose">${t.overview.map((p) => `<div><h3>${esc(p.heading)}</h3><p>${esc(p.text)}</p></div>`).join("")}</div></details>` : ""}
     <section class="panel" aria-labelledby="h-perf">
       <div class="section-head"><h2 id="h-perf">Equal-weight basket vs benchmarks</h2>
         ${p.status === "ok" ? `<div class="seg" role="group" aria-label="Chart range">${RANGES.map(([k, l]) => `<button type="button" data-range="${k}">${l}</button>`).join("")}</div>` : ""}</div>
@@ -695,6 +734,17 @@ function clustersPage() {
   const onResize = () => { if ($("#dendro") === host && host.clientWidth !== w) { w = host.clientWidth; drawDendrogram(host, mc); } };
   window.addEventListener("resize", onResize);
 }
+
+// In-page jumps (the URL hash is the route, so sections are reached by scrolling).
+document.addEventListener("click", (e) => {
+  const b = e.target.closest?.("[data-jump]");
+  if (!b) return;
+  const el = document.getElementById(b.dataset.jump);
+  if (!el) return;
+  el.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+  el.setAttribute("tabindex", "-1");
+  el.focus({ preventScroll: true });
+});
 
 // -- shell ---------------------------------------------------------------------------
 function setNav(name) {
