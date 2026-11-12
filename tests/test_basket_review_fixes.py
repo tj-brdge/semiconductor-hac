@@ -56,7 +56,8 @@ def test_benchmark_that_starts_later_still_has_returns():
 
 
 def test_missing_evidence_month_does_not_cool_a_theme(tmp_path):
-    from tests.test_registry_rules import SNAPS, _cov, _theme as reg_theme
+    from test_registry_rules import SNAPS, _cov
+    from test_registry_rules import _theme as reg_theme
     reg = Registry(tmp_path)
     full = {s: 100 for s in "ABCD"}
     theme = {s: 10 for s in "ABC"}
@@ -67,7 +68,7 @@ def test_missing_evidence_month_does_not_cool_a_theme(tmp_path):
 
 
 def test_catch_up_back_to_the_held_basket_adds_no_version(tmp_path):
-    from tests.test_registry_rules import SNAPS, _cov
+    from test_registry_rules import SNAPS, _cov
     reg = Registry(tmp_path)
     now = "2021-12-31T23:59:59+00:00"
     th = {"id": "th-1", "published": True, "published_at": "2021-01-01T00:00:00+00:00",
