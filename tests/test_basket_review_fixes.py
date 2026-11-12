@@ -81,3 +81,52 @@ def test_catch_up_back_to_the_held_basket_adds_no_version(tmp_path):
                      _cov())
     # Before: a second version equal to the first, which rebalanced the held basket.
     assert len(th["versions"]) == 1 and th["pending"] is None
+
+
+def _cluster(members, passages, vec, headwind=False):
+    from themegraph.monitor.clusters import Cluster
+    c = Cluster(t=None, track_id=1, members=list(passages),
+                exposure={s: 0.3 for s in members},
+                passages_by_issuer={s: 10 for s in members}, n_passages=len(passages),
+                share=0.1, centroid=np.asarray(vec, dtype=np.float32), coherence=0.9,
+                keywords=["inventory", "correction", "demand"], flagged=True)
+    c.tone = {"direction": "headwind" if headwind else "mixed", "negative_share": 0.4,
+              "negative_ratio": 3.0}
+    return c
+
+
+def _run(tmp_path, months, now_of):
+    """Process month-ends; months[i] is the cluster list for that month."""
+    from themegraph.config import Issuer, UniverseConfig
+    from themegraph.monitor.coverage import Coverage
+    u = UniverseConfig(issuers=[Issuer(symbol=s, segment="x", role="core") for s in "ABCDEFG"],
+                       benchmarks=["SPY"], sectors={"x": "X"})
+    cov = Coverage(u, {s: pd.Timestamp("2015-01-01", tz="UTC") for s in "ABCDEFG"}, 12)
+    reg = Registry(tmp_path)
+    ends = pd.date_range("2021-01-31", periods=len(months), freq="ME", tz="UTC") + \
+        pd.Timedelta(hours=23, minutes=59, seconds=59)
+    for t, cl in zip(ends, months, strict=True):
+        reg.process(t, cl, M, cov, {}, now_of(t), {s: 100 for s in "ABCDEFG"})
+    return reg
+
+
+def test_theme_absent_six_months_keeps_its_id(tmp_path):
+    """Before: matching stopped at five absences although the rule says six."""
+    c = [_cluster("ABCD", ["p1", "p2", "p3"], [1, 0, 0])]
+    reg = _run(tmp_path, [c] + [[]] * 6 + [c], lambda t: str(t + pd.Timedelta(days=1)))
+    assert set(reg.themes) == {"th-00001"}
+    again = _run(tmp_path / "seven", [c] + [[]] * 7 + [c],
+                 lambda t: str(t + pd.Timedelta(days=1)))
+    assert "th-00001" in again.themes and "th-00002" in again.themes  # seven: a new theme
+
+
+def test_headwind_is_logged_once_per_spell_and_only_when_live(tmp_path):
+    calm = [_cluster("ABCD", ["p1", "p2", "p3"], [1, 0, 0])]
+    bad = [_cluster("ABCD", ["p1", "p2", "p3"], [1, 0, 0], headwind=True)]
+    live = _run(tmp_path / "live", [calm, bad, bad, calm, bad],
+                lambda t: str(t + pd.Timedelta(days=1)))
+    log = live.data["headwind_log"]
+    assert [x["snapshot"][:7] for x in log] == ["2021-02", "2021-05"]  # one per spell
+    assert log[0]["basket"] == list("ABCD") and log[0]["entry_after"] == log[0]["recorded_at"]
+    replay = _run(tmp_path / "replay", [calm, bad, bad], lambda t: "2026-01-01T00:00:00+00:00")
+    assert "headwind_log" not in replay.data  # replayed history is hindsight: not logged

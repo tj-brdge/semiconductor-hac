@@ -30,8 +30,10 @@ month-end's topics are matched one-to-one to existing themes by either:
 - meaning, after a gap: a cosine of at least 0.85 between genre-centred member
   centroids.
 
-A theme absent for up to 5 month-ends can still be matched (`match.lookback_snapshots`
-is 6 month-ends back, counting the current one).
+A theme absent for up to 6 month-ends can still be matched (`match.lookback_snapshots`).
+Until 2026-11-12 the code stopped at 5 (an off-by-one against this rule); themes
+that returned after exactly 6 months before then were given a new ID and are not
+re-joined.
 
 **Lineage.** A second topic sharing text with a matched theme becomes a new theme
 recorded as `split_from` it. A theme whose text went to another theme's topic is
@@ -164,6 +166,13 @@ the latest ones. Each passage is labelled with its role:
   the registry refuses to write a version that breaks either. A version without
   companies left by an older registry is not valued: `performance.status` is
   `unavailable` with a `reason` and `note` (see "Repairing state").
+- **Corporate actions.** Every price refresh downloads each symbol's full
+  dividend- and split-adjusted history again (the provider restates it after each
+  action), and the monitor values every basket from each symbol's latest download
+  only. A symbol's history is never stitched from two downloads, so a split or
+  dividend cannot leave a false jump; index levels of past days can move slightly
+  when the provider restates a history. Mergers and delistings are recorded by hand
+  in the universe file (`delisted`, `successor`).
 - **Basis.** Prices are USD and dividend-adjusted, so all returns are total returns,
   benchmarks included. An index day is `live` when it falls after both the theme's
   recorded publication time (`published_at`) and the decision time of the basket
@@ -289,6 +298,10 @@ bad news. For short ideas the monitor also records what kind of news a theme is.
   first (growth in discussion among comparable companies, then how far above the
   usual rate). Each theme appears in one section only, so headwinds are not also
   listed as emerging or established. Cards show the phrases matched most often.
+- **Forward test.** Each time a published theme turns headwind at a month-end
+  processed live, the registry appends one record to `headwind_log` (theme, basket
+  held, decision time, benchmarks). The test that will be read from it is fixed in
+  DESIGN.md, "Headwind forward test".
 - **Limits.** Phrase lists do not understand negation or context ("no sign of
   weakness" counts as problem language); the matched phrases and the quoted
   passages are on the page so a reader can check. Whether headwind baskets go on to
@@ -363,6 +376,11 @@ the first source that applies:
 3. **Automatic:** a title from the top three keywords and a factual summary (how
    many companies, which sectors, which kind of text). It claims no thesis, and the
    page says it is automatic.
+
+To turn written labels on: `pip install -e '.[review]'` and set `ANTHROPIC_API_KEY`
+in the environment of the machine that runs the refresh. `labels.writer: claude`
+(the configured value) reports a missing key or package as a warning in
+`status.json`, and titles fall back to keywords until it is fixed.
 
 A label is written once per theme and keyword name, so reruns make no calls; a
 theme whose keywords drift (the registry renames it) gets a new one. Every label is

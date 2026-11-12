@@ -120,7 +120,7 @@ def test_embedding_cache_keeps_progress_when_a_later_chunk_fails(tmp_path):
     except RuntimeError:
         pass
     reloaded = EmbeddingCache(tmp_path, HashingEmbedder(32))
-    assert set(reloaded._mem) == {"a", "b"}
+    assert reloaded.hashes() == {"a", "b"}
 
 
 def test_voyage_error_includes_api_detail_not_key():
@@ -397,3 +397,18 @@ def test_no_passages_is_an_empty_frame_not_a_crash():
                           "available_at": pd.Timestamp("2020-01-01", tz="UTC")}])
     out = passages_from_documents(docs, 200, 40)
     assert out.empty and list(out.columns) == PASSAGE_COLUMNS
+
+
+def test_cache_fills_one_matrix_for_repeats_and_ignores_other_passages(tmp_path):
+    from themegraph.text.embed import compact_rows
+    c = EmbeddingCache(tmp_path, HashingEmbedder(16))
+    c.get(["x", "y", "z"], ["one two", "three four", "five six"])  # y, z: another run's
+    v = EmbeddingCache(tmp_path, HashingEmbedder(16)).get(
+        ["x", "n", "x"], ["one two", "seven eight", "one two"])
+    ref = HashingEmbedder(16).embed(["one two", "seven eight"])
+    assert v.dtype == np.float32 and np.allclose(v, ref[[0, 1, 0]])
+    assert EmbeddingCache(tmp_path, HashingEmbedder(16)).get([], []).shape == (0, 0)
+    V = np.arange(40, dtype=np.float32).reshape(10, 4)
+    keep = np.array([0, 1, 0, 1, 1, 0, 0, 1, 0, 1], dtype=bool)
+    want = V[keep].copy()
+    assert np.array_equal(compact_rows(V, keep), want)

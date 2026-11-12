@@ -36,7 +36,7 @@ from .market.returns import calendar_returns, price_panel
 from .provenance import run_provenance
 from .text.anchored import anchored_windows
 from .text.cluster import ClusterCache, cluster_subset, cluster_window, window_mask
-from .text.embed import Embedder, EmbeddingCache
+from .text.embed import Embedder, EmbeddingCache, compact_rows
 from .text.keywords import ctfidf_keywords
 from .text.novelty import novelty_mask
 from .text.passages import drop_exact_duplicates, passages_from_documents, substantive_mask
@@ -286,7 +286,7 @@ def prepare_passages(docs: pd.DataFrame, cfg: PipelineConfig, embedder: Embedder
     keep = novelty_mask(p, V, cfg.text.novelty_max_similarity)
     log(f"  {int(keep.sum())} passages ({int((~sub).sum())} tables/boilerplate and "
         f"{int((~keep).sum())} near-duplicates dropped)")
-    return p.loc[keep].reset_index(drop=True), V[keep]
+    return p.loc[keep].reset_index(drop=True), compact_rows(V, keep)
 
 
 def describe_window(p: pd.DataFrame, V: np.ndarray, t: pd.Timestamp, cfg: PipelineConfig,

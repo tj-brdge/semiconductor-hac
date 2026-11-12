@@ -991,6 +991,37 @@ declared before this date were produced with the old rule and stand as recorded.
 A monitor state built before it should be rebuilt (docs/MONITOR.md, "Repairing
 state"); the share of real transcripts affected has not been measured here.
 
+### Headwind forward test (registered 2026-11-12, before any outcome exists)
+
+**Hypothesis.** After a published theme turns *headwind* (rule as declared on
+2026-10-29, unchanged), an equal-weight basket of its companies earns less than
+the market over the next 3 and 6 months.
+
+**Events.** Recorded by the monitor itself, append-only, in the registry's
+`headwind_log`: one event each time a published theme's direction becomes headwind
+at a month-end processed live (within `live_window_days`); a theme that stays
+headwind gives one event per spell. Replayed history is never logged. Each event
+stores the basket held at that moment, the decision time and the benchmarks, so
+nothing about the event can be chosen later.
+
+**Outcome.** The event's basket, equal starting capital, bought at the first
+session on a later UTC date than the decision and held for 63 and for 126
+sessions, total return in USD, minus SPY over the same sessions (primary). Minus
+the theme's sector benchmark where it has one (secondary). A constituent without a
+price at entry stays in cash, as in the monitor's baskets.
+
+**Test.** Primary: the median 126-session excess return over SPY is below zero
+(one-sided sign test at 5%). Events whose windows overlap in time and share
+companies are not independent: when two events share half or more of their
+companies and start within 126 sessions of each other, only the earlier counts.
+Read once, when at least 20 counted events have a completed 126-session window,
+and not before; the 63-session result and the sector-benchmark result are reported
+beside it as secondary, whatever they show.
+
+**Not allowed.** Changing the phrase lists, the headwind thresholds or this test
+after seeing any outcome; a change starts a new, separately dated test. Until the
+read, the dashboard's Headwinds section stays labelled as untested.
+
 ## 12. Open questions
 
 1. Include the adjacency ring (§4.2) in v1? Recommended: yes, for text only.

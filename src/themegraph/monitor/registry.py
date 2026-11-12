@@ -123,7 +123,9 @@ class Registry:
         snaps.append(ts)
         self.data.setdefault("snapshot_meta", {})[ts] = {
             "universe_version": cov.u.version, "window_by_issuer": window}
-        recent = set(snaps[-(m.match.lookback_snapshots + 1):])
+        # `snaps` already holds this month-end: a theme absent for
+        # `lookback_snapshots` month-ends was last seen that many + 1 back.
+        recent = set(snaps[-(m.match.lookback_snapshots + 2):])
         cands = [k for k, th in self.themes.items()
                  if th["last_seen"] in recent and th.get("merged_into") is None]
         match, splits, merges = self._match(cands, clusters, m)
@@ -185,6 +187,7 @@ class Registry:
                 self._status(th, ts, snaps, m, cov)
                 if c is not None:
                     self._version(th, c, ts, now, m, roles, cov)
+                    self._headwind_event(th, row, ts, now, m)
                 elif th.get("pending"):
                     # Absent this month: the proposal was not observed again, so the
                     # consecutive count restarts when the theme returns.
@@ -194,6 +197,30 @@ class Registry:
         self._prune(snaps, m)
         self.data["last_snapshot"] = ts
         return counts
+
+    def _headwind_event(self, th: dict, row: dict, ts: str, now: str,
+                        m: MonitorConfig) -> None:
+        """Forward test of headwinds (DESIGN.md, "Headwind forward test"): when a
+        published theme turns headwind at a month-end processed live, record it
+        once, with the basket held at that moment, before any later price exists.
+        Replayed history is never logged (it would be hindsight)."""
+        if (row.get("tone") or {}).get("direction") != "headwind":
+            return
+        if (pd.Timestamp(now) - pd.Timestamp(ts)).days > m.live_window_days:
+            return
+        prev = next((r for r in reversed(th["measures"][:-1]) if r.get("present")), {})
+        if (prev.get("tone") or {}).get("direction") == "headwind":
+            return  # still a headwind: one event per spell
+        log = self.data.setdefault("headwind_log", [])
+        log.append({"theme": th["id"], "snapshot": ts, "recorded_at": now,
+                    "entry_after": now,
+                    "basket": sorted(x["symbol"] for x in th["versions"][-1]["constituents"]),
+                    "basket_version": th["versions"][-1]["version"],
+                    "benchmark": m.market.benchmarks[0],
+                    "sector_benchmark": (th.get("sector_benchmark") or {}).get("symbol"),
+                    "negative_share": row["tone"].get("negative_share"),
+                    "negative_ratio": row["tone"].get("negative_ratio")})
+        self.event(ts, th["id"], "headwind_logged", n=len(log))
 
     def _match(self, cands: list[str], clusters: list[Cluster], m: MonitorConfig):
         if not cands or not clusters:
@@ -631,7 +658,8 @@ class Registry:
             th["status"] = status
 
     def _prune(self, snaps: list[str], m: MonitorConfig) -> None:
-        keep = set(snaps[-m.pool.prune_after_snapshots:])
+        # Kept while it could still be matched next month (see `recent` in process).
+        keep = set(snaps[-(m.pool.prune_after_snapshots + 1):])
         for tid in [k for k, th in self.themes.items()
                     if not th["published"] and th["last_seen"] not in keep]:
             del self.themes[tid]

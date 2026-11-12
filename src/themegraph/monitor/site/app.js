@@ -183,8 +183,9 @@ function overview() {
   const mc = S.index.market_clusters;
   const render = () => {
     $("#main").innerHTML = `
-      <section class="intro"><h1>Theme Monitor</h1>
-        <p class="lede">Investment themes that companies are discussing in their earnings calls and SEC filings, and how an equal-weight basket of those companies' stocks has performed.</p>
+      <section class="intro"><p class="eyebrow">${esc(U.name || "Theme Monitor")} · ${esc(fmtDate(a.prices))}</p>
+        <h1>What companies are talking about, and how those stocks have done</h1>
+        <p class="lede">Themes found in earnings calls and SEC filings, each tracked with an equal-weight basket of the companies involved. Discussion and prices are measured separately.</p>
         <p class="facts"><span>Coverage <b>${esc(U.name || "—")}</b> (version ${esc(U.version)}): ${U.n_companies ?? "—"} companies, ${nSectors} sectors</span>
           ${lastChange ? `<span>Expanded ${esc(fmtDate(lastChange.date))}: ${lastChange.added.length} companies added</span>` : ""}
           <span>Compared with <b>${esc(S.B.join(" and "))}</b>${S.index.benchmark_rule && Object.keys(S.index.benchmark_rule.sector_benchmarks || {}).length ? " and a sector reference where one fits" : ""}</span>

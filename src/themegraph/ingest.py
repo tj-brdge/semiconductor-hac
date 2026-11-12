@@ -168,26 +168,22 @@ def load_prices(store: Store, upto: str | None = None,
     """Prices from the shared store; with `universe`, only its companies, their
     recorded acquirers and its benchmarks (profiles share one store, docs/MONITOR.md
     "Profiles", and must not see each other's companies)."""
-    df = store.read("prices", upto=upto)
-    return df.loc[df["symbol"].isin(universe_symbols(universe))].reset_index(drop=True) \
-        if universe is not None else df
+    return store.read("prices", upto=upto,
+                      symbols=universe_symbols(universe) if universe is not None else None)
 
 
 def load_documents(store: Store, upto: str | None = None,
                    universe: UniverseConfig | None = None) -> pd.DataFrame:
     """Transcripts and filings; with `universe`, only its companies' documents."""
     frames = []
+    want = universe_symbols(universe, benchmarks=False) if universe is not None else None
     for table in ("documents_transcripts", "documents_edgar"):
         if store.vintages(table):
-            frames.append(store.read(table, upto=upto))
+            frames.append(store.read(table, upto=upto, symbols=want))
     if not frames:
         return pd.DataFrame(columns=["symbol", "doc_id", "doc_type", "published_at",
                                      "available_at", "text"])
-    df = pd.concat(frames, ignore_index=True)
-    if universe is not None:
-        df = df.loc[df["symbol"].isin(universe_symbols(universe, benchmarks=False))]
-        df = df.reset_index(drop=True)
-    return df
+    return pd.concat(frames, ignore_index=True)
 
 
 def load_factors(store: Store, cfg: PipelineConfig,
