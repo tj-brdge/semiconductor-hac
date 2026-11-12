@@ -181,6 +181,7 @@ class Registry:
                     route = None
                 if route:
                     self._publish(th, c, ts, route, now, m, roles, cov)
+                    self._emergence_event(th, row, ts, now, m)
                     counts["published"] += 1
             if th["published"]:
                 self._sector_benchmark(th, ts, m, cov)
@@ -198,29 +199,58 @@ class Registry:
         self.data["last_snapshot"] = ts
         return counts
 
+    def _forward_record(self, th: dict, row: dict, ts: str, now: str,
+                        m: MonitorConfig) -> dict:
+        """What a forward-test event fixes at the moment it is logged: the basket
+        held, the decision time, the benchmarks, and the measures known then."""
+        tone = row.get("tone") or {}
+        return {"theme": th["id"], "snapshot": ts, "recorded_at": now, "entry_after": now,
+                "basket": sorted(x["symbol"] for x in th["versions"][-1]["constituents"]),
+                "basket_version": th["versions"][-1]["version"],
+                "benchmark": m.market.benchmarks[0],
+                "sector_benchmark": (th.get("sector_benchmark") or {}).get("symbol"),
+                "negative_share": tone.get("negative_share"),
+                "negative_ratio": tone.get("negative_ratio"),
+                # recorded for the declared exploratory splits only
+                "route": th.get("route"), "growth_3m": row.get("growth_3m"),
+                "n_issuers": row.get("n_issuers"), "n_segments": row.get("n_segments"),
+                "persistence_12": row.get("persistence_12"),
+                "direction": tone.get("direction")}
+
     def _headwind_event(self, th: dict, row: dict, ts: str, now: str,
                         m: MonitorConfig) -> None:
-        """Forward test of headwinds (DESIGN.md, "Headwind forward test"): when a
-        published theme turns headwind at a month-end processed live, record it
-        once, with the basket held at that moment, before any later price exists.
-        Replayed history is never logged (it would be hindsight)."""
-        if (row.get("tone") or {}).get("direction") != "headwind":
+        """Forward tests of what a theme's language says (DESIGN.md, "Headwind
+        forward test" and "Forward tests, second set"): when a published theme turns
+        headwind, or tailwind, at a month-end processed live, record it once per
+        spell, before any later price exists. Replayed history is never logged (it
+        would be hindsight). Headwinds go to `headwind_log` (as registered on
+        2026-11-12), tailwinds to `forward_log`."""
+        direction = (row.get("tone") or {}).get("direction")
+        if direction not in ("headwind", "tailwind"):
             return
         if (pd.Timestamp(now) - pd.Timestamp(ts)).days > m.live_window_days:
             return
         prev = next((r for r in reversed(th["measures"][:-1]) if r.get("present")), {})
-        if (prev.get("tone") or {}).get("direction") == "headwind":
-            return  # still a headwind: one event per spell
-        log = self.data.setdefault("headwind_log", [])
-        log.append({"theme": th["id"], "snapshot": ts, "recorded_at": now,
-                    "entry_after": now,
-                    "basket": sorted(x["symbol"] for x in th["versions"][-1]["constituents"]),
-                    "basket_version": th["versions"][-1]["version"],
-                    "benchmark": m.market.benchmarks[0],
-                    "sector_benchmark": (th.get("sector_benchmark") or {}).get("symbol"),
-                    "negative_share": row["tone"].get("negative_share"),
-                    "negative_ratio": row["tone"].get("negative_ratio")})
-        self.event(ts, th["id"], "headwind_logged", n=len(log))
+        if (prev.get("tone") or {}).get("direction") == direction:
+            return  # still the same direction: one event per spell
+        rec = self._forward_record(th, row, ts, now, m)
+        if direction == "headwind":
+            log = self.data.setdefault("headwind_log", [])
+            log.append(rec)
+        else:
+            log = self.data.setdefault("forward_log", [])
+            log.append({"test": "tailwind", **rec})
+        self.event(ts, th["id"], f"{direction}_logged", n=len(log))
+
+    def _emergence_event(self, th: dict, row: dict, ts: str, now: str,
+                         m: MonitorConfig) -> None:
+        """Forward test of the emergence rule: a theme published live through the
+        emergence route, with its first basket (bought after this refresh)."""
+        if th.get("route") != "emergence" or th.get("basis") != "live":
+            return
+        log = self.data.setdefault("forward_log", [])
+        log.append({"test": "emergence", **self._forward_record(th, row, ts, now, m)})
+        self.event(ts, th["id"], "emergence_logged", n=len(log))
 
     def _match(self, cands: list[str], clusters: list[Cluster], m: MonitorConfig):
         if not cands or not clusters:
