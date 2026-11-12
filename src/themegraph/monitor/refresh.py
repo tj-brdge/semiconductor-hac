@@ -32,6 +32,7 @@ from .. import pipeline as P
 from .. import usage
 from ..config import file_sha256, load_pipeline, load_universe
 from ..market.returns import price_panel
+from . import forward_tests
 from .baskets import PriceBook, theme_performance
 from .clusters import SnapshotReader
 from .comovement import trading_together
@@ -206,6 +207,7 @@ def refresh(state_dir: Path, site_dir: Path, *, fixtures: bool = False,
                     "benchmark_labels": mcfg.market.benchmark_labels,
                     "families": mcfg.families.model_dump(), "tone": mcfg.tone.model_dump(),
                     "market_clusters": book_box.get("market_clusters"),
+                    "forward_tests": book_box.get("forward_tests"),
                     "go_live": reg.data.get("go_live"),
                     "themes_processed_through": reg.data.get("last_snapshot"), **run_info}
             release = publish(site_dir, book_box["docs"], meta, mcfg,
@@ -371,6 +373,7 @@ def _value(reg: Registry, d: dict, mcfg: MonitorConfig, box: dict) -> str:
         {k: [x["symbol"] for x in p["constituents"]] for k, p in perfs.items()
          if p.get("status") == "ok"},
         c.window_sessions, c.min_observations_share, c.index)
+    box["forward_tests"] = forward_tests.progress(reg.data, book, reg.root)
     fam = families(reg.published(), reg.vectors, mcfg.families.min_cosine)
     for th in reg.published():
         doc = theme_document(th, perfs[th["id"]], snaps, mcfg)

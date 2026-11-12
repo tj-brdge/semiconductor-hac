@@ -130,3 +130,17 @@ def test_headwind_is_logged_once_per_spell_and_only_when_live(tmp_path):
     assert log[0]["basket"] == list("ABCD") and log[0]["entry_after"] == log[0]["recorded_at"]
     replay = _run(tmp_path / "replay", [calm, bad, bad], lambda t: "2026-01-01T00:00:00+00:00")
     assert "headwind_log" not in replay.data  # replayed history is hindsight: not logged
+    # The emergence publication is logged too (live only), with its first basket.
+    em = [e for e in live.data["forward_log"] if e["test"] == "emergence"]
+    assert len(em) == 1 and em[0]["snapshot"][:7] == "2021-01" and em[0]["basket"] == list("ABCD")
+    assert "forward_log" not in replay.data
+
+
+def test_tailwind_is_logged_like_headwind(tmp_path):
+    calm = [_cluster("ABCD", ["p1", "p2", "p3"], [1, 0, 0])]
+    good = [_cluster("ABCD", ["p1", "p2", "p3"], [1, 0, 0])]
+    good[0].tone = {"direction": "tailwind", "negative_share": 0.02, "negative_ratio": 0.2}
+    reg = _run(tmp_path, [calm, good, good], lambda t: str(t + pd.Timedelta(days=1)))
+    tw = [e for e in reg.data["forward_log"] if e["test"] == "tailwind"]
+    assert len(tw) == 1 and tw[0]["snapshot"][:7] == "2021-02" and tw[0]["direction"] == "tailwind"
+    assert "headwind_log" not in reg.data

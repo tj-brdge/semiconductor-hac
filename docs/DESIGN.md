@@ -1022,6 +1022,45 @@ beside it as secondary, whatever they show.
 after seeing any outcome; a change starts a new, separately dated test. Until the
 read, the dashboard's Headwinds section stays labelled as untested.
 
+### Forward tests, second set (registered 2026-11-12, before any outcome exists)
+
+Two more claims, logged and scored exactly like the headwind test
+(`monitor/forward_tests.py`): events recorded live by the registry (`forward_log`)
+with the basket held at that moment; the same outcome (equal starting capital,
+bought at the first session on a later UTC date, held 126 sessions, total USD
+return minus SPY; 63 sessions and the sector benchmark as secondary); the same
+single read at 20 counted events with a completed 126-session window.
+
+| Test | Event | Claim (primary, one-sided sign test at 5%) |
+|---|---|---|
+| `headwind` (registered above) | a published theme turns headwind | median excess over SPY below zero |
+| `emergence` | a theme is published live through the emergence route (its first basket) | median excess over SPY above zero |
+| `tailwind` | a published theme turns tailwind (one event per spell) | median excess over SPY above zero |
+
+**Overlap rule, stated exactly** (it applies to all three, and clarifies the
+headwind registration before any outcome exists): within a test, events are taken
+in order of decision time; an event is left out when an earlier counted event
+began within 126 sessions before it and holds at least half of this event's
+companies.
+
+**Three claims.** Each is read on its own at 5%. Any statement that "the method
+predicts returns" uses the three primary p-values with Holm's correction; a test
+that passes alone but not after correction is reported as such.
+
+**Exploratory, declared now so they cannot be chosen later:** each event stores
+the theme's 3-month discussion growth, number of companies, number of sectors,
+months present and route. After a test is read, its events may be split at the
+median of each of these; those splits are descriptive and are never reported as
+confirmed. Whether a basket was already "trading together" is not recorded at the
+event and is not part of any test.
+
+**Reading.** `themegraph monitor forward` shows progress as counts only (no
+returns), so it can be looked at freely. `themegraph monitor forward --read TEST`
+is refused until the test is ready, stores the result in
+`<state>/forward_reads.json`, and returns that stored result ever after. The same
+discipline as above applies: no change to rules, thresholds or tests after an
+outcome is seen; a change starts a new, separately dated test.
+
 ## 12. Open questions
 
 1. Include the adjacency ring (§4.2) in v1? Recommended: yes, for text only.

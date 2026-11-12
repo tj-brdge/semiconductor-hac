@@ -332,6 +332,24 @@ are unchanged, and nothing is merged.
   cut is chosen by reading those pairs (are they the same subject?), never from
   returns, and recorded with its date if changed.
 
+## Forward tests (`monitor/forward_tests.py`)
+
+The only clean evidence that anything here predicts returns. Three claims are
+registered in DESIGN.md (headwind baskets lag SPY; emergence baskets beat it;
+tailwind baskets beat it). The registry logs an event, with the basket held, each
+time the condition is met at a month-end processed live (`headwind_log`,
+`forward_log`); replayed history is never logged.
+
+```
+themegraph monitor forward [--profile P]             # progress: counts only, no returns
+themegraph monitor forward --read headwind           # the one read, when 20 events are complete
+```
+
+The Method page shows the same progress table (`forward_tests` in `index.json`) and,
+once a test is read, its stored result. A rebuild from scratch starts new, empty
+logs: events are only ever logged by live refreshes, so keep the state directory
+once the monitor is live (a rebuilt registry cannot recover them).
+
 ## Market clusters (`monitor/market_clusters.py`)
 
 The market layer's hierarchical agglomerative clustering (HAC) of stock returns is

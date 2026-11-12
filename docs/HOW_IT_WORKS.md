@@ -53,8 +53,10 @@ separately and never mixed into one score.
 - The research design reserved 2022–2026 as an untouched test period; the monitor
   reads through today, so that period now counts as inspected. Clean evidence can
   only come from the forward log of themes published from now on.
-- Not yet shown: that emerging themes' baskets beat benchmarks, or that headwind
-  baskets lag. Both are hypotheses.
+- Not yet shown: that emerging or tailwind themes' baskets beat the market, or
+  that headwind baskets lag. Each is a registered forward test: the monitor logs
+  events live and each test is read once, after 20 events have six months of
+  prices behind them (Method page, "Forward tests").
 
 ## Rules we keep
 

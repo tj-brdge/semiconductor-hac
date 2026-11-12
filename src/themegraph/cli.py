@@ -232,6 +232,24 @@ def cmd_monitor(a):
         print(text)
         print(f"\nwritten to {out}")
         return
+    if a.action == "forward":
+        from .monitor import forward_tests as FT
+        from .monitor.config import load_monitor
+        from .monitor.registry import Registry
+        as_of = dt.date.fromisoformat(a.as_of) if a.as_of else dt.date.today()
+        d = M.load_inputs(a.fixtures, as_of, profile=prof)
+        book = M.price_book(d["prices"], d["universe"], load_monitor(prof.monitor))
+        reg = Registry(Path(a.state), id_prefix=prof.id_prefix).data
+        if a.read:
+            now = dt.datetime.now(dt.UTC).isoformat(timespec="seconds")
+            try:
+                FT.read(a.read, reg, book, Path(a.state), now)
+            except RuntimeError as e:
+                sys.exit(str(e))
+        text = FT.report(FT.progress(reg, book, Path(a.state)))
+        (Path(a.state) / "forward_tests.md").write_text(text)
+        print(text)
+        return
     if a.action == "review":
         from .monitor.config import load_monitor
         from .monitor.review import review_report
@@ -366,7 +384,10 @@ def main(argv=None):
     s.add_argument("--no-browser", action="store_true")
     s.set_defaults(fn=cmd_review)
     s = sub.add_parser("monitor", help="theme monitor: refresh the data feed or serve it")
-    s.add_argument("action", choices=["refresh", "serve", "compare", "review"])
+    s.add_argument("action", choices=["refresh", "serve", "compare", "review", "forward"])
+    s.add_argument("--read", choices=["headwind", "emergence", "tailwind"],
+                   help="forward: read this test's result (once; refused until 20 events "
+                        "have a completed 126-session window)")
     s.add_argument("--profile", default="semis",
                    help="configuration profile in config/profiles (default: semis, the "
                         "semiconductor pilot); sets the files, state and site below")
