@@ -11,6 +11,7 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -46,8 +47,8 @@ class RawCache:
 
     def get(self, key: str) -> CachedResponse | None:
         body_path, meta_path = self._paths(key)
-        if not body_path.exists():
-            return None
+        if not body_path.exists() or not meta_path.exists():
+            return None  # absent, or a write that was interrupted: fetch again
         body = body_path.read_bytes()
         meta = json.loads(meta_path.read_text())
         digest = hashlib.sha256(body).hexdigest()
@@ -71,9 +72,20 @@ class RawCache:
         full["params"] = {
             k: v for k, v in (meta.get("params") or {}).items() if k.lower() not in SECRET_PARAMS
         }
-        body_path.write_bytes(body)
-        meta_path.write_text(json.dumps(full, sort_keys=True, default=str, indent=1))
+        # Body first, metadata last, each by rename: an entry exists only when both do.
+        for path, data in ((body_path, body),
+                           (meta_path, json.dumps(full, sort_keys=True, default=str,
+                                                  indent=1).encode())):
+            tmp = path.with_name(path.name + ".tmp")
+            tmp.write_bytes(data)
+            os.replace(tmp, path)
         return CachedResponse(key, body, fetched_at, digest, full)
+
+    def discard(self, key: str) -> None:
+        """Remove an entry that must not be kept (see CachedFetcher.fetch)."""
+        body_path, meta_path = self._paths(key)
+        meta_path.unlink(missing_ok=True)
+        body_path.unlink(missing_ok=True)
 
     def manifest(self) -> list[dict]:
         out = []

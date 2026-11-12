@@ -13,13 +13,12 @@ pool:                          # clusters tracked internally (not all are publis
 match:                         # identity across months and refreshes
   min_jaccard: 0.15            # shared member passages (consecutive windows overlap)
   min_centroid_cosine: 0.85    # or same meaning (genre-centred member centroid)
-  lookback_snapshots: 6        # how long a theme can be absent and still be matched
+  lookback_snapshots: 6        # month-ends looked back for a match (absent for up to 5)
 
 established:                   # the second route into the inventory
   present: 6                   # present in at least this many ...
   of_last: 9                   # ... of the last month-ends
   min_issuers: 4
-  min_coherence_quantile: 0.5  # tightness at least the snapshot's median cluster
 
 status:
   inactive_after_snapshots: 3  # absent this many month-ends in a row

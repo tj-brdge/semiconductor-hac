@@ -38,14 +38,25 @@ class CachedFetcher:
         self._last = 0.0
 
     def fetch(self, url: str, params: dict | None = None, endpoint: str | None = None,
-              retries: int = 3, vintage: str | None = None) -> CachedResponse:
+              retries: int = 3, vintage: str | None = None, validate=None) -> CachedResponse:
         """Fetch through the cache. `vintage` (a date string) is for responses that
         change over time: it becomes part of the cache key but is not sent, so each
-        vintage is its own immutable snapshot and a new vintage fetches afresh."""
+        vintage is its own immutable snapshot and a new vintage fetches afresh.
+        `validate(body)` raises for a response that must not be kept (a provider's
+        error message sent with HTTP 200): it is not cached, and one cached before
+        this check existed is discarded and fetched again."""
         endpoint = endpoint or url
         key_params = {**(params or {}), "_vintage": vintage} if vintage else params
         key = cache_key(self.source, endpoint, key_params)
         hit = self.cache.get(key)
+        if hit is not None and validate is not None:
+            try:
+                validate(hit.body)
+            except Exception:  # noqa: BLE001 - a kept error response: fetch it again
+                if self.offline:
+                    raise
+                self.cache.discard(key)
+                hit = None
         if hit is not None:
             USAGE[f"{self.source}_cache_hits"] += 1
             return hit
@@ -78,6 +89,8 @@ class CachedFetcher:
                 "params": dict(params or {}),
                 "content_type": resp.headers.get("content-type"),
             }
+            if validate is not None:
+                validate(resp.content)
             return self.cache.put(key, resp.content, meta)
         raise FetchError(f"{self.source} {endpoint} {_redact(params)} failed: {last_err}")
 

@@ -14,6 +14,9 @@ Every candidate is written to a hashed ledger before any outcome is computed.
 Semiconductors are the first test case; the design is in
 [docs/DESIGN.md](docs/DESIGN.md).
 
+New here? Start with [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md): the whole
+process in one page, in plain language.
+
 ## Status
 
 Evidence levels: **implemented** (code exists), **tested** (offline tests on

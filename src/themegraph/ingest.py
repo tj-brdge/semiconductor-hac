@@ -55,12 +55,15 @@ def ingest_fmp_prices(client: F.FMPClient, cfg: PipelineConfig, universe: Univer
         bar.set_postfix_str(sym)
         try:
             df = F.normalise_prices(client.prices(sym, start, end), sym, cfg.availability)
+            cur = currency.get(sym, "USD")
+            if cur != "USD" and len(df):
+                df = F.to_usd(df, fx[cur])
         except Exception as e:  # keep going; coverage report shows the gap
-            log(f"  {sym}: {e}")
+            log(f"  {sym}: {type(e).__name__}: {e}")
             continue
-        cur = currency.get(sym, "USD")
-        if cur != "USD":
-            df = F.to_usd(df, fx[cur])
+        if not len(df):
+            log(f"  {sym}: no prices returned")
+            continue
         frames.append(df)
         log(f"  {sym}: {len(df)} sessions")
     return store.write("prices", _stamp(_combine(frames, "prices")), vintage_id())

@@ -12,6 +12,10 @@ QA_START = re.compile(r"question[- ]and[- ]answer|questions and answers|\bQ&A\b|
                       re.I)
 
 
+PASSAGE_COLUMNS = ["passage_id", "doc_id", "symbol", "doc_type", "unit", "published_at",
+                   "available_at", "text", "text_hash", "genre", "url"]
+
+
 def text_hash(text: str) -> str:
     return hashlib.sha256(" ".join(text.split()).lower().encode()).hexdigest()
 
@@ -28,19 +32,31 @@ def chunk_words(text: str, size: int, min_words: int) -> list[str]:
 
 
 def transcript_turns(text: str) -> list[tuple[str, str, str]]:
-    """(speaker, part, text) per speaker turn; part is 'prepared' or 'qa'."""
+    """(speaker, part, text) per speaker turn; part is 'prepared' or 'qa'.
+
+    Q&A starts after the turn that opens it: an operator turn mentioning the Q&A
+    session once a company speaker has spoken. The operator's opening words ("after
+    the speakers' remarks there will be a question-and-answer session") come before
+    anyone from the company speaks and do not start it, nor does an executive who
+    mentions the Q&A to come. A transcript without operator turns falls back to the
+    first such mention by anyone after the first speaker."""
     marks = list(SPEAKER.finditer(text))
     if not marks:
         return [("unknown", "prepared", text)]
-    turns, part = [], "prepared"
+    speakers = [m.group(1).strip() for m in marks]
+    has_operator = any("operator" in s.lower() for s in speakers)
+    turns, part, company_spoke = [], "prepared", False
     for i, m in enumerate(marks):
         end = marks[i + 1].start() if i + 1 < len(marks) else len(text)
         body = text[m.end():end].strip()
-        if part == "prepared" and QA_START.search(body):
+        operator = "operator" in speakers[i].lower()
+        opens = (operator if has_operator else i > 0) and company_spoke
+        if part == "prepared" and opens and QA_START.search(body):
             part = "qa_next"
-        turns.append((m.group(1).strip(), "qa" if part == "qa" else "prepared", body))
+        turns.append((speakers[i], "qa" if part == "qa" else "prepared", body))
         if part == "qa_next":
             part = "qa"
+        company_spoke = company_spoke or not operator
     return turns
 
 
@@ -70,7 +86,7 @@ def passages_from_documents(docs: pd.DataFrame, size: int, min_words: int) -> pd
                     "url": getattr(d, "url", None),
                 })
                 n += 1
-    return pd.DataFrame(recs)
+    return pd.DataFrame(recs, columns=PASSAGE_COLUMNS)
 
 
 def genre_of(doc_type: str, unit: str) -> str:

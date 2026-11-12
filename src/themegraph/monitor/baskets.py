@@ -88,11 +88,12 @@ def _segment(book: PriceBook, members: list[str], entry: pd.Timestamp,
     fresh = pd.DataFrame(False, index=cal, columns=members)
     status, info = {}, {}
     for s in members:
-        px = book.closes[s].dropna() if s in book.closes else pd.Series(dtype=float)
-        later = px.loc[px.index >= entry]
-        miss_at_entry = book.missing_sessions(s) if s in book.closes else None
-        if not len(later) or (miss_at_entry is not None and len(cal) and
-                              (later.index[0] > cal[min(book.stale, len(cal) - 1)])):
+        # A company with no price rows at all (failed ingest, wrong ticker) is "not
+        # bought", like one with no close in time: its capital stays as cash.
+        px = book.closes[s].dropna() if s in book.closes else None
+        later = px.loc[px.index >= entry] if px is not None else []
+        if not len(later) or (len(cal) and
+                              later.index[0] > cal[min(book.stale, len(cal) - 1)]):
             status[s] = "not_bought"
             value[s] = 1.0 / n
             info[s] = {"entry_date": None, "entry_price": None}
@@ -150,9 +151,15 @@ def _segment(book: PriceBook, members: list[str], entry: pd.Timestamp,
 
 
 def entry_session(book: PriceBook, after: str) -> pd.Timestamp | None:
+    """The first benchmark session on a later UTC date than `after`.
+
+    Closes carry a nominal 22:00 UTC stamp, but markets close earlier (New York at
+    20:00 or 21:00 UTC, Asian venues in the UTC morning). A decision made at any
+    time on a session day therefore buys at the next day's closes, never at a close
+    that may already have happened."""
     t = pd.Timestamp(after)
-    t = t.tz_localize("UTC") if t.tzinfo is None else t
-    later = book.cal[book.cal > t]
+    t = t.tz_localize("UTC") if t.tzinfo is None else t.tz_convert("UTC")
+    later = book.cal[book.cal.normalize() > t.normalize()]
     return later[0] if len(later) else None
 
 
@@ -200,8 +207,12 @@ def theme_performance(theme: dict, book: PriceBook, benchmarks: list[str],
     bench = {}
     for b in benchmarks:
         if b in book.carry:
+            # Rebased on its first close in the series (the entry close when it has
+            # one), so a benchmark that starts trading later still has returns for
+            # the windows it covers.
             px = book.carry[b].loc[series.index]
-            bench[b] = 100.0 * px / book.carry[b].loc[first]
+            if px.notna().any():
+                bench[b] = 100.0 * px / px.dropna().iloc[0]
     lf = pd.concat(live_from)
     basis = pd.Series(["live" if pd.notna(x) and d > x else "reconstructed"
                        for d, x in lf.items()], index=series.index)
@@ -344,8 +355,8 @@ def _participation(book: PriceBook, members: list[str], benchmarks: list[str]) -
             r[s] = book.carry[s][b] / book.carry[s][a] - 1
     spy = benchmarks[0] if benchmarks else None
     rb = (book.carry[spy][b] / book.carry[spy][a] - 1) if spy in book.carry else None
-    return {"eligible": len(r), "positive": sum(x > 0 for x in r.values()),
-            f"beat_{spy}": sum(x > rb for x in r.values()) if rb is not None else None}
+    return {"eligible": len(r), "positive": int(sum(x > 0 for x in r.values())),
+            f"beat_{spy}": int(sum(x > rb for x in r.values())) if rb is not None else None}
 
 
 def market_history(perf: dict, snapshots: list[str]) -> list[dict]:

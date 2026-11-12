@@ -971,6 +971,26 @@ published, their baskets or their history. Hypothesis for the forward prediction
 log, not yet registered: headwind themes' equal-weight baskets lag their benchmarks
 over the following 3 and 6 months. No threshold here is to be adjusted using returns.
 
+### Transcript Q&A boundary (correction, 2026-11-12)
+
+Found in a code review, before any result under the corrected rule was seen. A
+transcript's Q&A was taken to start after the first turn mentioning a
+question-and-answer session. The operator's standard opening ("after the speakers'
+remarks there will be a question-and-answer session") is such a turn, so in
+transcripts with that opening the prepared remarks were labelled Q&A. Effects on
+earlier real-data runs: the `transcript:prepared` genre was nearly empty, so genre
+centring did not separate remarks from Q&A; and executives' turns were counted as
+analyst questions in the evidence mix (and left out of the headwind measure),
+because "analyst" means a Q&A speaker who gave no prepared remarks.
+
+Corrected rule (`text/passages.transcript_turns`): Q&A starts after an operator
+turn that mentions the Q&A once a company speaker has spoken; transcripts without
+operator turns fall back to the first mention after the first speaker. Passage
+text and embeddings are unchanged; genres, and therefore topics, change. Results
+declared before this date were produced with the old rule and stand as recorded.
+A monitor state built before it should be rebuilt (docs/MONITOR.md, "Repairing
+state"); the share of real transcripts affected has not been measured here.
+
 ## 12. Open questions
 
 1. Include the adjacency ring (§4.2) in v1? Recommended: yes, for text only.

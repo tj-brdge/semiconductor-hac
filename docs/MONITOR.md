@@ -30,7 +30,8 @@ month-end's topics are matched one-to-one to existing themes by either:
 - meaning, after a gap: a cosine of at least 0.85 between genre-centred member
   centroids.
 
-A theme absent for up to 6 month-ends can still be matched.
+A theme absent for up to 5 month-ends can still be matched (`match.lookback_snapshots`
+is 6 month-ends back, counting the current one).
 
 **Lineage.** A second topic sharing text with a matched theme becomes a new theme
 recorded as `split_from` it. A theme whose text went to another theme's topic is
@@ -121,9 +122,14 @@ the latest ones. Each passage is labelled with its role:
 - **Constituents.** Every company whose exposure to the theme is at least 5% of its
   window text, core and adjacent alike. The basket shown is the basket valued, and
   the export refuses to publish otherwise.
-- **Entry.** At the close of the first US session after the version's `entry_after`:
+- **Entry.** At the close of the first US session on a later UTC date than the
+  version's `entry_after`:
   - for a live publication, the time of publication;
   - for a reconstructed one, the month-end.
+  - "A later date", not "a later time": closes are stored with a nominal 22:00 UTC
+    stamp but markets close earlier, so a refresh run during a session day buys at
+    the next day's closes, never at one that may already have happened.
+  - A company with no price rows at all is "not bought" too.
   - A company whose market was closed that day is bought at its next close. If it
     has no close within 5 sessions it is "not bought": its capital stays in cash and
     it is shown, never dropped.
