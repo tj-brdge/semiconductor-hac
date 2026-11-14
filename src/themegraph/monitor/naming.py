@@ -30,7 +30,10 @@ import yaml
 LABELS = Path(__file__).resolve().parents[3] / "config" / "theme_labels.yaml"
 DEFAULT_MODEL = "claude-opus-5-5"
 MAX_QUOTES = 10
-TITLE_WORDS = 8
+TITLE_WORDS = 9
+# Bumped when the instructions change: themes labelled by Claude under an earlier
+# version are labelled again once (kept in label_history), others are left alone.
+PROMPT_VERSION = 2
 
 
 def _now() -> str:
@@ -102,10 +105,16 @@ general reader understands.
 Rules:
 - Use only the passages below. Do not use outside knowledge to add claims, numbers, \
 forecasts or company names that the passages do not support.
-- Title: at most {words} words, plain English, no tickers, no hype, no investment \
-view (not "boom", "winners", "bullish").
-- Summary: two to four sentences on what the companies are discussing and how. Describe \
-discussion, not stock performance, and make no prediction.
+- Title: four to {words} words, plain English, that say what the subject is and what is \
+happening to it, so a reader who sees only the title knows what the theme is about \
+(for example "Data-centre operators running short of power", "Customers working down \
+excess chip inventory"). Not a list of keywords, not a bare noun ("Optical \
+networking"), no tickers, no hype, no investment view (not "boom", "winners", \
+"bullish").
+- Summary: two to four sentences. The first says in one plain sentence what the \
+companies are discussing; the rest say how (who is saying it, what they report \
+doing or seeing), using only what the passages say. Describe discussion, not stock \
+performance, and make no prediction.
 - Passages marked analyst_question are questions from analysts, not company \
 statements; never present them as what a company said.
 - evidence: the passage IDs that support the title and summary (at least two, from \
@@ -183,7 +192,8 @@ def checked(th: dict, answer: dict, model: str) -> dict:
                    rejected={"title": title, "summary": answer.get("summary")})
         return lab
     return {"title": title, "summary": " ".join(str(answer["summary"]).split()),
-            "source": "claude", "status": "ok", "evidence": cited, "model": model}
+            "source": "claude", "status": "ok", "evidence": cited, "model": model,
+            "prompt_version": PROMPT_VERSION}
 
 
 def needs_label(th: dict, writer_available: bool = False) -> bool:
@@ -191,7 +201,8 @@ def needs_label(th: dict, writer_available: bool = False) -> bool:
     while a writer is available (an ambiguous verdict is not retried)."""
     lab = th.get("label")
     return lab is None or lab.get("for_name") != th["name"] or (
-        writer_available and lab.get("status") == "automatic")
+        writer_available and (lab.get("status") == "automatic" or (
+            lab.get("source") == "claude" and lab.get("prompt_version") != PROMPT_VERSION)))
 
 
 def apply_labels(themes: list[dict], sectors: dict[str, str], namer=None,
@@ -229,7 +240,8 @@ def apply_labels(themes: list[dict], sectors: dict[str, str], namer=None,
             # earlier keywords would describe a topic that has since drifted.
             lab = keyword_label(th)
         old = th.get("label") or {}
-        if all(old.get(k) == lab.get(k) for k in ("title", "summary", "source", "status")) \
+        if all(old.get(k) == lab.get(k) for k in ("title", "summary", "source", "status",
+                                                    "prompt_version")) \
                 and old.get("for_name") == th["name"]:
             continue  # nothing new (keeps reruns idempotent)
         lab = {**lab, "for_name": th["name"], "at": now}

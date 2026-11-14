@@ -235,6 +235,8 @@ def refresh(state_dir: Path, site_dir: Path, *, fixtures: bool = False,
                     "data_as_of": _as_of(ctxd, reg, book_box["book"]),
                     "evaluation_note": EVALUATION_NOTE,
                     "universe": coverage(ctxd, mcfg).summary(now),
+                    "company_sectors": {s: sec for s, sec in coverage(ctxd, mcfg).sector.items()
+                                        if coverage(ctxd, mcfg).covered(s, now)},
                     "benchmarks": mcfg.market.benchmarks,
                     "benchmark_rule": {"sector_benchmarks": mcfg.market.sector_benchmarks,
                                        "min_share": mcfg.market.sector_benchmark_min_share},

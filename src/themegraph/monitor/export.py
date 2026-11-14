@@ -318,6 +318,50 @@ def spark(perf: dict, bench: str, sessions: int = 252, step: int = 5) -> dict | 
             "live_from": next((r["date"] for r in rows if r["basis"] == "live"), None)}
 
 
+def representative_quote(doc: dict, limit: int = 220) -> dict | None:
+    """One passage in the companies' own words for a theme's card: the passage
+    closest to the theme's centre, a company statement where there is one (an
+    analyst's question is attention, not what a company said), cut at a sentence
+    end. Extracted, never rewritten."""
+    quotes = (doc.get("evidence") or {}).get("latest") or []
+    q = next((x for x in quotes if x.get("role") != "analyst_question"), None) or (
+        quotes[0] if quotes else None)
+    if not q or not q.get("text"):
+        return None
+    text = " ".join(q["text"].split())
+    if len(text) > limit:
+        cut = text[:limit]
+        end = max(cut.rfind(". "), cut.rfind("? "), cut.rfind("! "))
+        text = cut[:end + 1] if end > limit // 2 else cut.rsplit(" ", 1)[0] + "…"
+    return {"text": text, "symbol": q.get("symbol"), "date": q.get("date"),
+            "role": q.get("role")}
+
+
+def company_index(docs: list[dict], sector: dict[str, str]) -> list[dict]:
+    """Every monitored company with the active themes it belongs to: in the basket
+    (held), or discussing the theme this month without being in the basket yet."""
+    out = {s: {"symbol": s, "sector": sec, "themes": []} for s, sec in sector.items()}
+    for d in docs:
+        if d["status"] in ("inactive", "merged"):
+            continue
+        m = next((r for r in reversed(d["measures"]) if r.get("present")), {})
+        held = {c["symbol"]: c for c in (d.get("performance") or {}).get("constituents", [])}
+        if not held and d.get("basket_versions"):
+            held = {c["symbol"]: c for c in d["basket_versions"][-1]["constituents"]}
+        by = m.get("passages_by_issuer") or {}
+        total = sum(by.values()) or 1
+        for s in sorted(set(held) | set(m.get("issuers", []))):
+            if s not in out:
+                continue
+            out[s]["themes"].append({
+                "id": d["id"], "in_basket": s in held,
+                "share_of_theme": round(by.get(s, 0) / total, 4),
+                "weight_now": (held.get(s) or {}).get("weight_now")})
+    for row in out.values():
+        row["themes"].sort(key=lambda t: (-t["in_basket"], -t["share_of_theme"]))
+    return sorted(out.values(), key=lambda r: (r["sector"] or "", r["symbol"]))
+
+
 def summary_row(doc: dict, bench: str) -> dict:
     m = next((r for r in reversed(doc["measures"]) if r.get("present")), {})
     perf = doc["performance"]
@@ -326,6 +370,7 @@ def summary_row(doc: dict, bench: str) -> dict:
     return {
         "id": doc["id"], "name": doc["name"], "title": doc["title"],
         "summary": doc["summary"], "label_source": doc["label"].get("source"),
+        "quote": representative_quote(doc),
         "label_status": doc["label"].get("status"), "status": doc["status"],
         "route": doc["route"], "basis": doc["basis"],
         "published_snapshot": doc["published_snapshot"], "last_seen": doc["last_seen"],
@@ -416,7 +461,9 @@ def publish(site: Path, docs: list[dict], meta: dict, mcfg,
     staging = site / "data" / "releases" / f".staging-{rel_id}"
     rows = [summary_row(d, mcfg.market.benchmarks[0]) for d in docs]
     index = {"schema_version": SCHEMA_VERSION, "release": rel_id, **meta,
-             "themes": rows, "lists": overview_lists(rows, mcfg, snapshots)}
+             "themes": rows, "lists": overview_lists(rows, mcfg, snapshots),
+             "companies": company_index(docs, meta.get("company_sectors") or {})}
+    index.pop("company_sectors", None)
     try:
         _dump(staging / "index.json", index)
         for d in docs:

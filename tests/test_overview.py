@@ -91,3 +91,37 @@ def test_together_wording_claims_only_what_the_counts_show():
     ov = {p["heading"]: p["text"] for p in theme_overview(_doc(trading_together={"now": {
         "informative": False, "percentile": None, "verdict": None, "note": "x"}}))}
     assert "they are" not in ov["How its stocks have done"]
+
+
+def test_card_quote_is_extracted_from_a_company_statement():
+    from themegraph.monitor.export import representative_quote
+    long = ("We are seeing lead times extend as customers pull in orders. " * 6).strip()
+    doc = {"evidence": {"latest": [
+        {"role": "analyst_question", "symbol": "X", "date": "2021-06-01",
+         "text": "Can you talk about lead times?"},
+        {"role": "management_answer", "symbol": "A", "date": "2021-06-02", "text": long}]}}
+    q = representative_quote(doc)
+    assert q["symbol"] == "A" and q["role"] == "management_answer"  # not the analyst
+    assert len(q["text"]) <= 220 and q["text"].endswith(".") and q["text"] in long
+    only = {"evidence": {"latest": [{"role": "analyst_question", "symbol": "X",
+                                      "date": "2021-06-01", "text": "Lead times?"}]}}
+    assert representative_quote(only)["role"] == "analyst_question"  # labelled as such
+    assert representative_quote({"evidence": {"latest": []}}) is None
+
+
+def test_company_index_lists_basket_and_discussion_membership():
+    from themegraph.monitor.export import company_index
+    docs = [{"id": "th-1", "status": "stable",
+             "measures": [{"present": True, "issuers": ["A", "B", "C"],
+                           "passages_by_issuer": {"A": 6, "B": 3, "C": 1}}],
+             "performance": {"constituents": [{"symbol": "A", "weight_now": 0.6},
+                                              {"symbol": "B", "weight_now": 0.4}]}},
+            {"id": "th-2", "status": "inactive",
+             "measures": [{"present": True, "issuers": ["A"], "passages_by_issuer": {"A": 1}}],
+             "performance": {"constituents": [{"symbol": "A", "weight_now": 1.0}]}}]
+    rows = {r["symbol"]: r for r in company_index(docs, {"A": "S1", "B": "S1", "C": "S2",
+                                                          "D": "S2"})}
+    assert rows["A"]["themes"] == [{"id": "th-1", "in_basket": True, "share_of_theme": 0.6,
+                                    "weight_now": 0.6}]  # the inactive theme is left out
+    assert rows["C"]["themes"][0]["in_basket"] is False   # discusses it, not held
+    assert rows["D"]["themes"] == [] and rows["D"]["sector"] == "S2"

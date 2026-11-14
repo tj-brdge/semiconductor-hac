@@ -446,6 +446,11 @@ in the environment of the machine that runs the refresh. `labels.writer: claude`
 (the configured value) reports a missing key or package as a warning in
 `status.json`, and titles fall back to keywords until it is fixed.
 
+Titles are asked to say what the subject is and what is happening to it in four to
+nine words, and the summary's first sentence to say what the companies are
+discussing (`PROMPT_VERSION` 2, 2026-11-14). Themes labelled by Claude under an
+earlier version are labelled again once; curated labels are never replaced.
+
 A label is written once per theme and keyword name, so reruns make no calls; a
 theme whose keywords drift (the registry renames it) gets a new one. Every label is
 kept in `label_history` with its source and time. IDs never change. Settings:
@@ -463,6 +468,14 @@ page (chart with ranges and keyboard/pointer readout, returns by period and basi
 companies, evidence, disclosures for method, membership, names and diagnostics), and
 method & data (coverage, freshness, the last refresh's stages, release ID).
 
+- **Companies** (`#/companies`, `companies` in `index.json`): every covered company
+  with the active themes it belongs to, searchable by ticker, sector or theme. A
+  filled tag is a basket holding; an outlined tag is a company that discusses the
+  theme this month without being in the basket (a change needs two month-ends).
+- **In their own words**: each card and theme page shows one passage extracted from
+  the evidence (`quote` in a theme's summary row): the passage closest to the
+  theme's centre, a company statement where there is one, cut at a sentence end and
+  attributed. It is never rewritten, so it is available without written labels.
 - One return period (3, 6 or 12 months) is used across the overview and the list.
   A theme without that much price history shows how much it has instead.
 - Simulated and live returns are labelled everywhere ("Simulated", "Live",
