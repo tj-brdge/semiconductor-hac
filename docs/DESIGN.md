@@ -1061,6 +1061,32 @@ is refused until the test is ready, stores the result in
 discipline as above applies: no change to rules, thresholds or tests after an
 outcome is seen; a change starts a new, separately dated test.
 
+### Forward tests: reporting clarifications (2026-11-14, before any outcome exists)
+
+No event has a completed window and no test has been read. Nothing registered
+above changes: hypotheses, events, the 126-session primary horizon, the 63-session
+and sector secondary results, the 5% level, the 20-event minimum, the overlap
+rule and the single read. Three points the registrations left open are fixed:
+
+1. **Ready to read** requires 20 counted events with a completed window *and a
+   primary excess return that can be computed*. A completed window without one
+   (for instance no benchmark price at either end) is reported with its reason and
+   does not count toward the 20. A basket whose companies could not be bought is
+   held in cash as registered and is a valid outcome.
+2. **Ties.** An excess return of exactly zero is a valid outcome and has no sign;
+   the sign test uses the non-tied outcomes. Reports give the valid outcomes, the
+   ties, the non-tied denominator and the wins among those.
+3. **Holm.** A read stores the raw result and its nominal p-value and never changes.
+   The family result (Holm's step-down across the three primary p-values) is derived
+   only when all three tests have been read; before that every p-value is labelled
+   nominal and unadjusted and no claim is called supported or not supported.
+
+**Remaining assumption.** The sign test treats counted events as independent. The
+overlap rule limits the most direct dependence (shared companies in overlapping
+windows); events in the same sector or the same market months are still related,
+so p-values are likely somewhat too small. This is disclosed with every result
+and is not corrected by a new filter or test, which would change the protocol.
+
 ## 12. Open questions
 
 1. Include the adjacency ring (§4.2) in v1? Recommended: yes, for text only.

@@ -47,6 +47,10 @@ freshness:
   price_stale_sessions: 3      # status turns stale when the newest close is older
   documents_stale_days: 21
 
+completeness:                  # when a month-end may be processed (docs/MONITOR.md, "Month-end completeness")
+  settle_days: 5               # wait this long after the month-end, then need a document download made after it
+  min_symbol_share: 0.9        # a download counts only if it covers this share of the companies with documents
+
 labels:                        # readable titles and summaries (docs/MONITOR.md, "Theme labels")
   writer: claude               # auto | claude | keywords. claude: a missing key or package is a
                                # warning in status.json and titles fall back to keywords

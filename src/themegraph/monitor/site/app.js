@@ -52,6 +52,14 @@ function notices() {
     const failed = Object.entries(st.errors || {}).filter(([, v]) => v).map(([k]) => k);
     out.push(`<div class="notice bad" role="alert"><span class="icon" aria-hidden="true">×</span><div><b>The latest update failed</b> (${esc(failed.join(", ") || "incomplete")}, ${esc(fmtDate(st.checked_at))}). You are seeing the last complete release, from ${esc(fmtDate(S.index?.generated_at))}. <a href="#/method#freshness">Details</a></div></div>`);
   }
+  const pend = S.index?.pending_snapshots || [];
+  if (pend.length) {
+    out.push(`<div class="notice" role="note"><span class="icon" aria-hidden="true">i</span><div><b>${pend.length === 1 ? "One month-end is" : `${pend.length} month-ends are`} waiting for documents.</b> Themes are shown through ${esc(fmtDate(S.index.themes_processed_through))}; ${esc(fmtDate(pend[0].t))} is not processed yet: ${esc(pend[0].reason)}. <a href="#/method#freshness">Details</a></div></div>`);
+  }
+  const late = S.index?.late_documents;
+  if (late?.total) {
+    out.push(`<div class="notice" role="note"><span class="icon" aria-hidden="true">i</span><div><b>${late.total} documents arrived late.</b> They were eligible for month-ends already processed and are not added to those; they count in later months. <a href="#/method#freshness">Details</a></div></div>`);
+  }
   const stale = Object.entries(st?.stale || {}).filter(([, v]) => v).map(([k]) => (k === "documents" ? "earnings calls and filings" : k));
   if (stale.length) {
     const a = S.index?.data_as_of || {};
@@ -599,6 +607,28 @@ function mountChart(t) {
 }
 
 // -- method and data -----------------------------------------------------------------
+// Forward tests: counts until a test is read; a read shows its nominal result; a
+// claim is called supported only from the family (Holm) result over all three.
+function forwardHTML() {
+  const rows = S.index.forward_tests || [];
+  if (!rows.length) return "";
+  const allRead = rows.every((r) => r.adjusted);
+  const status = (r) => {
+    if (!r.result) return r.status === "ready to read" ? "Ready to read" : "Collecting events";
+    const p = r.result.primary;
+    const nominal = `median ${num(p.median_excess * 100)} pts vs SPY over six months; ${p.wins} of ${p.n_sign} non-tied outcomes as claimed (${p.n_valid} valid${p.n_ties ? `, ${p.n_ties} exact ties` : ""}); nominal p = ${p.p_value}`;
+    return r.adjusted ? `<b>${r.adjusted.supported ? "Supported" : "Not supported"}</b> after correction for three tests (adjusted p = ${r.adjusted.p_adjusted}). ${nominal}.`
+      : `Read ${esc(fmtDate(r.result.read_at))}: ${nominal}. <b>Unadjusted</b>: no conclusion until all three tests are read.`;
+  };
+  const unusable = rows.filter((r) => Object.keys(r.unusable || {}).length);
+  return `<section class="panel" id="forward"><h2>Does it predict anything? Forward tests</h2>
+      <p class="small muted">Nothing on this site has yet been shown to predict returns. Each claim below was written down before any outcome existed. The monitor logs an event, with the basket held at that moment, whenever the condition is met in a live update; history rebuilt after the fact never counts. A test is read once, when 20 events have a completed six-month window and a usable outcome. Until then only counts are shown, so progress can be watched without seeing results.</p>
+      <div class="table-wrap"><table class="stack"><thead><tr><th>Claim</th><th>Registered</th><th class="num">Events logged</th><th class="num">Usable six-month outcomes</th><th>Status</th></tr></thead>
+      <tbody>${rows.map((r) => `<tr><td>${esc(r.hypothesis)}</td><td>${esc(fmtDate(r.registered))}</td><td class="num">${r.logged}</td><td class="num">${r.usable ?? r.complete} of ${r.needed}</td><td>${status(r)}</td></tr>`).join("")}</tbody></table></div>
+      ${unusable.length ? `<p class="small muted">Completed windows without a usable outcome: ${unusable.map((r) => `${esc(r.test)}: ${Object.entries(r.unusable).map(([k, v]) => `${esc(k)} (${v})`).join(", ")}`).join("; ")}.</p>` : ""}
+      <p class="small muted">${allRead ? "All three tests are read; “supported” uses Holm's correction across them." : "Three claims are tested, so one result at the 5% level is weaker evidence than it looks. A claim is called supported only after all three are read and corrected together (Holm)."} The test treats events as independent: events sharing half their companies within six months are counted once, but baskets that share fewer companies, a sector or the same market months are still related, and the correction does not remove that.</p></section>`;
+}
+
 function method() {
   const U = S.U, st = S.status || {}, a = S.index.data_as_of || {};
   const stages = Object.entries(st.last_attempt || {});
@@ -622,11 +652,7 @@ function method() {
     <section class="panel prose"><h2>Benchmarks</h2>
       <p>Every theme is compared with ${esc(S.B.map((b) => `${b}${(S.index.benchmark_labels || {})[b] ? ` (${S.index.benchmark_labels[b]})` : ""}`).join(" and "))}.${Object.keys(S.index.benchmark_rule?.sector_benchmarks || {}).length ? ` A theme also gets one sector reference when at least ${Math.round(S.index.benchmark_rule.min_share * 100)}% of its first basket's companies are in one sector: ${esc(Object.entries(S.index.benchmark_rule.sector_benchmarks).map(([k, v]) => `${k}: ${v}`).join("; "))}. The choice is fixed when the first basket is decided, from its composition only, never from returns.` : ""}</p>
       <p>Benchmarks are capitalisation-weighted, while theme baskets give each company the same starting amount, so part of any difference reflects company size.</p></section>
-    ${(S.index.forward_tests || []).length ? `<section class="panel" id="forward"><h2>Does it predict anything? Forward tests</h2>
-      <p class="small muted">Nothing on this site has yet been shown to predict returns. Each claim below was written down before any outcome existed. The monitor logs an event, with the basket held at that moment, whenever the condition is met in a live update; history rebuilt after the fact never counts. A test is read once, when 20 events have a completed six-month window. Until then only counts are shown, so progress can be watched without seeing results.</p>
-      <div class="table-wrap"><table class="stack"><thead><tr><th>Claim</th><th>Registered</th><th class="num">Events logged</th><th class="num">Six-month windows complete</th><th>Status</th></tr></thead>
-      <tbody>${S.index.forward_tests.map((r) => `<tr><td>${esc(r.hypothesis)}</td><td>${esc(fmtDate(r.registered))}</td><td class="num">${r.logged}</td><td class="num">${r.complete} of ${r.needed}</td><td>${r.result ? `<b>${r.result.supported ? "Supported" : "Not supported"}</b>: median ${num(r.result.primary.median_excess * 100)} pts vs SPY over six months, ${r.result.primary.in_expected_direction} of ${r.result.primary.n} as claimed (p = ${r.result.primary.p_value}); read ${esc(fmtDate(r.result.read_at))}` : r.status === "ready to read" ? "Ready to read" : "Collecting events"}</td></tr>`).join("")}</tbody></table></div>
-      <p class="small muted">Three claims are tested, so a single result at the 5% level is weaker evidence than it looks; the method records which results survive a correction for that.</p></section>` : ""}
+    ${forwardHTML()}
     <section class="panel prose" id="coverage"><h2>Coverage</h2>
       <p><b>${esc(U.name)}</b> (version ${esc(U.version)}): ${esc(U.description)}</p>
       <p>${U.n_companies} companies: ${Object.entries(U.sectors || {}).map(([k, v]) => `${esc(k)} (${v})`).join(", ")}. A theme can span several sectors. “Strongest” always means strongest among these companies.</p>
@@ -635,6 +661,9 @@ function method() {
     <section class="panel" id="freshness"><h2>Freshness and the last update</h2>
       <dl class="dl"><dt>Prices through</dt><dd>${esc(fmtDate(a.prices))}</dd><dt>Calls and filings through</dt><dd>${esc(fmtDate(a.documents))}</dd>
         <dt>Themes processed through</dt><dd>${esc(fmtDate(a.themes))}</dd><dt>This release</dt><dd class="mono">${esc(S.index.release)}</dd>
+        ${S.index.completeness?.doc_watermark ? `<dt>Documents last downloaded</dt><dd>${S.index.completeness.doc_watermark.at ? esc(fmtDate(S.index.completeness.doc_watermark.at)) : "no complete download yet"}. A month-end is processed only after a download made at least ${S.index.completeness.settle_days} days after it; this shows a download was made, not that providers had published everything.</dd>` : ""}
+        ${(S.index.pending_snapshots || []).map((p) => `<dt>Waiting</dt><dd>${esc(fmtDate(p.t))}: ${esc(p.reason)}.</dd>`).join("")}
+        ${S.index.late_documents ? `<dt>Late documents</dt><dd>${S.index.late_documents.total} eligible for month-ends already processed (${Object.entries(S.index.late_documents.by_snapshot).map(([t, v]) => `${esc(fmtDate(t))}: ${v.documents}`).join(", ")}). Not added to those month-ends; used in later ones.</dd>` : ""}
         <dt>Generated</dt><dd>${esc(S.index.generated_at)}</dd>
         ${S.index.effective ? `<dt>Configuration</dt><dd>${esc(S.index.effective.title)} (profile ${esc(S.index.effective.profile)}), universe version ${esc(S.index.effective.universe_version)}: ${esc(Object.values(S.index.effective.files).flat().map((x) => `${x.path} ${x.sha256.slice(0, 8)}`).join(", "))}</dd>` : ""}
         ${S.index.fork ? `<dt>Started from</dt><dd>a copy of the ${esc(S.index.fork.from_profile)} registry at ${esc(fmtDate(S.index.fork.at_snapshot))} (${S.index.fork.inherited_themes.length} published themes kept with their IDs, baskets and history)</dd>` : ""}<dt>Last update attempt</dt><dd>${esc(st.checked_at || "—")} · ${st.ok ? "succeeded" : "did not complete"}</dd></dl>

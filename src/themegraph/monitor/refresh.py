@@ -82,10 +82,44 @@ def load_inputs(fixtures: bool, as_of: dt.date, log=print,
     from ..text.embed import make_embedder
     cfg, u = load_pipeline(profile.pipeline), load_universe(profile.universe)
     store = _store()
+    mcfg = load_monitor(profile.monitor)
     # The store is shared by profiles: read only this universe's companies.
     return {"cfg": cfg, "universe": u, "prices": load_prices(store, universe=u),
             "docs": load_documents(store, universe=u), "embedder": make_embedder(cfg.embedding),
-            "cache": DATA / "cache", "fixture": False}
+            "cache": DATA / "cache", "fixture": False,
+            "doc_watermark": document_watermark(store, u, mcfg.completeness.min_symbol_share)}
+
+
+DOC_TABLES = ("documents_transcripts", "documents_edgar")
+
+
+def document_watermark(store, universe, min_share: float) -> dict:
+    """When each document source was last downloaded for (nearly) the whole universe.
+
+    A table's watermark is the time of its latest vintage that holds documents for
+    at least `min_share` of this universe's companies that have any documents in the
+    table; a partial batch (a few symbols, or another profile's smaller universe)
+    does not move it. The overall watermark is the earlier of the sources', so both
+    must have been downloaded. This says a download was made, not that the provider
+    had published everything: see `completeness.settle_days`."""
+    from ..data.store import vintage_time
+    from ..ingest import universe_symbols
+    want = universe_symbols(universe, benchmarks=False)
+    out: dict = {"sources": {}, "at": None}
+    times = []
+    for table in DOC_TABLES:
+        vs = store.vintages(table)
+        if not vs:
+            continue
+        per = {v: set(store._index(table, v)["symbol"]) & want for v in vs}
+        every = set().union(*per.values())
+        full = [v for v in vs if every and len(per[v]) >= min_share * len(every)]
+        t = vintage_time(full[-1]) if full else None
+        out["sources"][table] = str(t) if t is not None else None
+        times.append(t)
+    if times and all(t is not None for t in times):
+        out["at"] = str(min(times))
+    return out
 
 
 def ingest_step(kind: str, as_of: dt.date, log=print, profile: Profile | None = None) -> str:
@@ -208,6 +242,10 @@ def refresh(state_dir: Path, site_dir: Path, *, fixtures: bool = False,
                     "families": mcfg.families.model_dump(), "tone": mcfg.tone.model_dump(),
                     "market_clusters": book_box.get("market_clusters"),
                     "forward_tests": book_box.get("forward_tests"),
+                    "pending_snapshots": getattr(reg, "pending", []),
+                    "late_documents": late_documents(reg, ctxd["docs"]),
+                    "completeness": {**mcfg.completeness.model_dump(),
+                                     "doc_watermark": ctxd.get("doc_watermark")},
                     "go_live": reg.data.get("go_live"),
                     "themes_processed_through": reg.data.get("last_snapshot"), **run_info}
             release = publish(site_dir, book_box["docs"], meta, mcfg,
@@ -219,6 +257,9 @@ def refresh(state_dir: Path, site_dir: Path, *, fixtures: bool = False,
     status = _status(site_dir, steps, now, ctxd, reg, book_box, mcfg, themes_ok)
     status["skipped"] = skipped
     status["warnings"] = warnings
+    status["pending_snapshots"] = getattr(reg, "pending", [])
+    status["doc_watermark"] = ctxd.get("doc_watermark")
+    status["late_documents"] = late_documents(reg, ctxd["docs"]) if "docs" in ctxd else None
     status["ok"] = status["ok"] and not skipped
     status.update(run_info)
     status["metrics"] = {"seconds": round(time.perf_counter() - started, 1),
@@ -295,8 +336,11 @@ def _themes(reg: Registry, d: dict, as_of: dt.date, now: str, mcfg: MonitorConfi
     todo = [t for t in ends if last is None or t > pd.Timestamp(last)]
     if last is None:
         todo = todo[-mcfg.bootstrap_snapshots:]
+    todo, pending = _complete(todo, d.get("doc_watermark"), mcfg)
+    reg.pending = pending  # reported in status.json and the release; never saved
     if not todo:
-        return "no new month-end to process"
+        return "no new month-end to process" + (
+            f"; {len(pending)} pending: {pending[0]['reason']}" if pending else "")
     ctx = P.build(d["prices"], d["docs"], cfg, u, d["embedder"],
                   d.get("cache", state_dir / "cache"), "forward", log=log, end=todo[-1].date())
     if ctx.vectors is None:
@@ -317,8 +361,65 @@ def _themes(reg: Registry, d: dict, as_of: dt.date, now: str, mcfg: MonitorConfi
         counts.append({"t": str(t.date()), **reg.process(
             t, reader.clusters(t), mcfg, cov, roles, now, reader.window_by_issuer(t),
             history=history)})
+        # What this month-end was built from: when, and the documents' watermark.
+        reg.data["snapshot_meta"][str(t)].update(
+            processed_at=now, doc_watermark=(d.get("doc_watermark") or {}).get("at"))
     reg.save()
     return counts
+
+
+def _complete(todo: list, watermark: dict | None, mcfg: MonitorConfig) -> tuple[list, list]:
+    """Month-ends that may be processed now, and those that must wait.
+
+    A month-end t is processed only when the documents were downloaded (the
+    watermark) at or after t + `completeness.settle_days`. Otherwise it stays
+    pending, with every later one: history is append-only, so processing it early
+    would freeze an incomplete month. `watermark` None means the inputs carry no
+    download record (fixture data, complete by construction)."""
+    if watermark is None:
+        return todo, []
+    settle = pd.Timedelta(days=mcfg.completeness.settle_days)
+    at = pd.Timestamp(watermark["at"]) if watermark.get("at") else None
+    ready = [t for t in todo if at is not None and at >= t + settle]
+    ready = todo[:len(ready)]  # month-ends are in order: stop at the first that waits
+    pending = []
+    for t in todo[len(ready):]:
+        need = t + settle
+        if at is None:
+            missing = [k for k, v in watermark.get("sources", {}).items() if v is None]
+            why = ("no complete document download yet" +
+                   (f" for {', '.join(missing)}" if missing else ""))
+        else:
+            why = (f"documents were last downloaded on {at.date()}; this month-end needs a "
+                   f"download on or after {need.date()} "
+                   f"({mcfg.completeness.settle_days} days after it)")
+        pending.append({"t": str(t), "needs_download_after": str(need), "reason": why})
+    return ready, pending
+
+
+def late_documents(reg: Registry, docs: pd.DataFrame) -> dict | None:
+    """Documents that were eligible for a month-end already processed but were first
+    downloaded after it was processed. History is append-only, so those month-ends
+    are not rebuilt; the documents are used by every later month-end whose 180-day
+    window still contains them. Reported so the loss is never silent."""
+    if "first_seen_at" not in docs or not len(docs):
+        return None
+    meta = reg.data.get("snapshot_meta", {})
+    seen = pd.to_datetime(docs["first_seen_at"], utc=True)
+    avail = pd.to_datetime(docs["available_at"], utc=True)
+    by = {}
+    for ts in reg.data.get("snapshots", [])[-12:]:
+        done = meta.get(ts, {}).get("processed_at")
+        if not done:
+            continue
+        late = docs.loc[(avail <= pd.Timestamp(ts)) & (seen > pd.Timestamp(done))
+                        & (avail > pd.Timestamp(ts) - pd.Timedelta(days=180))]
+        if len(late):
+            by[ts] = {"documents": int(len(late)), "symbols": sorted(set(late["symbol"]))[:20]}
+    return {"total": int(sum(v["documents"] for v in by.values())), "by_snapshot": by,
+            "note": "eligible for these month-ends but downloaded after they were processed; "
+                    "not added to them (history is append-only), included in later "
+                    "month-ends while inside the 180-day window"} if by else None
 
 
 def _labels(reg: Registry, d: dict, mcfg: MonitorConfig, now: str, namer, log) -> dict:

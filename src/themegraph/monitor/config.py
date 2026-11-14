@@ -97,6 +97,19 @@ class Families(_S):
     min_cosine: float = 0.85
 
 
+class Completeness(_S):
+    """When a month-end may be processed (monitor/refresh.py, "document watermark").
+    History is append-only, so a month-end processed before its documents were
+    downloaded stays incomplete for good."""
+    # Days after the month-end before it is processed, and the download of the
+    # documents must have been made after them. An assumption about how quickly
+    # providers publish, not a guarantee: no provider reports "this month is complete".
+    settle_days: int = 5
+    # A download counts when it covers at least this share of the universe's
+    # companies that have documents at all (a partial batch does not).
+    min_symbol_share: float = 0.9
+
+
 class Comovement(_S):
     """Trading together (monitor/comovement.py): single-index shrinkage on `index`."""
     window_sessions: int = 126
@@ -121,6 +134,7 @@ class MonitorConfig(_S):
     comovement: Comovement = Comovement()
     tone: Tone = Tone()
     families: Families = Families()
+    completeness: Completeness = Completeness()
 
 
 def _merge(base: dict, over: dict) -> dict:
