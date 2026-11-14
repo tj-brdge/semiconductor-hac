@@ -11,3 +11,4 @@ __pycache__/
 /site/
 /monitor_state-*/
 /site-*/
+/logs/

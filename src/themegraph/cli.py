@@ -234,7 +234,7 @@ def cmd_monitor(a):
         if a.fixtures and as_of is None:
             sys.exit("--fixtures needs --as-of (fixture data ends 2021-12-31)")
         st = M.refresh(Path(a.state), Path(a.site), fixtures=a.fixtures, as_of=as_of,
-                       ingest_prices=not a.no_ingest,
+                       ingest_prices=not a.no_ingest, full_prices=a.full_prices,
                        # --documents forces a download, --prices-only (or --no-ingest)
                        # prevents one; otherwise it happens when it is due.
                        ingest_documents=True if a.documents else
@@ -451,6 +451,9 @@ def main(argv=None):
                         "has settled)")
     s.add_argument("--prices-only", action="store_true",
                    help="download prices only, never documents")
+    s.add_argument("--full-prices", action="store_true",
+                   help="download every symbol's full price history again (by default "
+                        "stored history is reused unless the provider restated it)")
     s.add_argument("--port", type=int, default=8780)
     s.set_defaults(fn=cmd_monitor)
     s = sub.add_parser("questions", help="share of analyst questions in a run's text")
