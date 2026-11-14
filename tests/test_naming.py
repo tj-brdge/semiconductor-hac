@@ -109,3 +109,17 @@ def test_refresh_labels_themes_and_a_writer_failure_never_blocks_a_release(tmp_p
     reg = json.loads((state / "registry.json").read_text())
     pub = [t for t in reg["themes"].values() if t["published"]]
     assert all(t["label"]["source"] == "claude" for t in pub)
+
+
+def test_labels_written_under_an_older_prompt_are_rewritten_once():
+    from themegraph.monitor import naming
+    th = {"name": "a · b · c", "label": {"source": "claude", "status": "ok",
+                                         "for_name": "a · b · c", "title": "T", "summary": "S"}}
+    assert naming.needs_label(th, writer_available=True)        # no prompt_version: older
+    assert not naming.needs_label(th, writer_available=False)   # no writer: left alone
+    th["label"]["prompt_version"] = naming.PROMPT_VERSION
+    assert not naming.needs_label(th, writer_available=True)    # current: no call
+    th["label"].update(source="curated")
+    th["label"].pop("prompt_version")
+    assert not naming.needs_label(th, writer_available=True)    # a person's label stays
+    assert "what is happening to it" in naming.PROMPT

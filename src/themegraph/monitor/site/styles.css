@@ -364,3 +364,18 @@ main { gap: 36px; padding-top: 32px; }
 @media (max-width: 560px) { .panel { padding: 16px; } .card { padding: 16px; } main { gap: 28px; } }
 .intro h1 { max-width: 24ch; }
 h2, .panel, .section { scroll-margin-top: 80px; }
+
+/* Quotes and the companies page */
+.pull { margin: 0; padding: 2px 0 2px 12px; border-left: 3px solid var(--line-strong); }
+.pull p { font-family: var(--display); font-size: .98rem; line-height: 1.4; color: var(--ink-2);
+  display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.pull footer { font-size: .76rem; color: var(--muted); margin-top: 4px; }
+.hero .pull p { -webkit-line-clamp: unset; font-size: 1.08rem; max-width: 70ch; }
+.panel.flush { padding: 0; overflow-x: auto; }
+table.companies td, table.companies th { padding: 10px 14px; vertical-align: top; }
+.ctags { display: flex; flex-wrap: wrap; gap: 6px; }
+.ctag { display: inline-flex; align-items: baseline; gap: 6px; font-size: .82rem; padding: 3px 10px; border-radius: 999px;
+  text-decoration: none; color: var(--ink-2); border: 1px solid var(--line-strong); background: transparent; }
+.ctag.held { background: var(--teal-bg); border-color: var(--teal); color: var(--ink); }
+.ctag:hover { border-color: var(--ink-2); }
+.ctag .pc { font-size: .72rem; color: var(--muted); }

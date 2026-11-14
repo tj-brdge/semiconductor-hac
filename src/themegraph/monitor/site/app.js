@@ -3,6 +3,7 @@
 //   #/            overview: emerging and established themes first
 //   #/themes      all themes: search, filters, sorting
 //   #/theme/<id>  one theme: chart, returns, companies, evidence, history
+//   #/companies   every company and the themes it belongs to
 //   #/clusters    market clusters: the stock-return HAC cut into groups
 //   #/method      method, coverage, freshness, release details
 import { fmtDate, lineChart, sparkline } from "./chart.js";
@@ -106,6 +107,7 @@ function card(row) {
   return `<article class="card">
     <div class="card-top"><h3><a href="#/theme/${esc(row.id)}">${esc(row.title)}</a></h3>${chip(row.status)}</div>
     ${row.label_source === "keywords" ? "" : `<p class="summary">${esc(row.summary)}</p>`}
+    ${cardQuote(row)}
     <div class="meta">${toneTag(row)}${row.route === "newly_covered" ? `<span class="tag" title="Visible because coverage expanded; not counted as emerging">Newly covered</span>` : ""}<span>${st.n_issuers ?? "—"} companies</span><span>${esc((row.sectors || []).join(", "))}</span>${row.label_source === "keywords" ? `<span title="No written summary yet: the title is the theme's three most distinctive terms">Automatic title</span>` : ""}</div>
     ${row.tone?.direction === "headwind" && row.tone.headwind_terms?.length ? `<p class="small"><span class="muted">Problems described:</span> ${esc(row.tone.headwind_terms.slice(0, 4).join(" · "))}</p>` : ""}
     <div class="tickers" aria-label="Largest constituents">${keys.map((c) => esc(c.symbol)).join(" · ")}${more > 0 ? ` <span class="muted">+${more}</span>` : ""}</div>
@@ -126,6 +128,13 @@ function card(row) {
 function growthWord(g) {
   if (g == null) return "";
   return g >= 1.25 ? "growing" : g <= 0.8 ? "shrinking" : "steady";
+}
+
+// The theme in the companies' own words: one extracted passage, attributed.
+function cardQuote(row) {
+  const q = row.quote;
+  if (!q) return "";
+  return `<blockquote class="pull"><p>“${esc(q.text)}”</p><footer>${esc(q.symbol)} · ${esc(ROLE[q.role] || q.role || "")} · ${esc(fmtDate(q.date))}</footer></blockquote>`;
 }
 
 function toneTag(row) {
@@ -412,6 +421,7 @@ async function themePage(id, token) {
     <header class="hero"><div class="card-top"><h1>${esc(t.title)}</h1><span>${toneTag(S.byId[t.id] || {})} ${chip(t.status)}</span></div>
       <p class="summary">${esc(t.summary)}</p>
       <p class="small muted">${labelNote(t)}</p>
+      ${cardQuote(S.byId[t.id] || {})}
       ${t.newly_covered ? `<p class="notice"><span><b>Newly covered.</b> This theme became visible when coverage expanded: ${t.newly_covered.new_companies.length} of its companies were added recently. Their earlier documents show the topic in ${t.newly_covered.backfill_present} of the ${t.newly_covered.of_last} months before ${esc(fmtDate(t.newly_covered.at))}; that is historical analysis, not an earlier discovery. Tracking began when it was published on ${esc(fmtDate(t.published_at))}.</span></p>` : ""}
       <p class="facts"><span>${m.n_issuers ?? "—"} companies</span><span>${esc((m.sectors || []).join(", "))}</span>
         <span>Entered ${esc(fmtDate(t.published_snapshot))} via the ${{ emergence: "emergence rule", established: "established-theme rule", newly_covered: "newly-covered rule" }[t.route] || esc(t.route)}</span></p>
@@ -673,6 +683,52 @@ function method() {
       <p>This is a research tool, not investment advice. Simulated history shows what a rule would have done; it is not a track record.</p></section>`;
 }
 
+// -- companies -------------------------------------------------------------------------
+function companiesPage(params) {
+  const all = S.index.companies || [];
+  const sectors = [...new Set(all.map((c) => c.sector).filter(Boolean))].sort();
+  const opts = (list, cur) => list.map(([v, l]) => `<option value="${esc(v)}"${v === cur ? " selected" : ""}>${esc(l)}</option>`).join("");
+  const q0 = { q: params.get("q") || "", sector: params.get("sector") || "", show: params.get("show") || "" };
+  const none = all.filter((c) => !c.themes.length).length;
+  $("#main").innerHTML = `
+    <section class="intro"><h1>Companies and their themes</h1>
+      <p class="lede">Every monitored company and the active themes it belongs to. ${all.length - none} of ${all.length} companies are in at least one theme.</p>
+      <p class="muted small">A filled tag means the company is held in that theme's basket; an outlined tag means it discusses the theme this month but is not in the basket (a change needs two months in a row). The percentage is the company's share of the theme's passages.</p></section>
+    ${notices()}
+    <form class="controls" role="search" onsubmit="return false">
+      <label class="field">Search<input id="c-q" type="search" placeholder="Ticker or theme" value="${esc(q0.q)}"></label>
+      <label class="field">Sector<select id="c-sector">${opts([["", "Any sector"], ...sectors.map((s) => [s, s])], q0.sector)}</select></label>
+      <label class="field">Show<select id="c-show">${opts([["", "All companies"], ["in", "In a theme"], ["none", "In no theme"], ["many", "In three or more themes"]], q0.show)}</select></label>
+    </form>
+    <p class="count" id="c-count" aria-live="polite"></p>
+    <div id="c-list"></div>`;
+  const tag = (t) => {
+    const row = S.byId[t.id];
+    if (!row) return "";
+    return `<a class="ctag${t.in_basket ? " held" : ""}" href="#/theme/${esc(t.id)}" title="${t.in_basket ? "Held in the basket" : "Discusses it; not in the basket"}">${esc(row.title)}${t.share_of_theme ? ` <span class="pc">${Math.round(t.share_of_theme * 100)}%</span>` : ""}</a>`;
+  };
+  const draw = () => {
+    const f = { q: $("#c-q").value.trim().toLowerCase(), sector: $("#c-sector").value, show: $("#c-show").value };
+    const rows = all.filter((c) => {
+      if (f.sector && c.sector !== f.sector) return false;
+      if (f.show === "in" && !c.themes.length) return false;
+      if (f.show === "none" && c.themes.length) return false;
+      if (f.show === "many" && c.themes.length < 3) return false;
+      if (!f.q) return true;
+      const hay = [c.symbol, c.sector, ...c.themes.map((t) => S.byId[t.id]?.title || "")].join(" ").toLowerCase();
+      return f.q.split(/\s+/).every((w) => hay.includes(w));
+    });
+    $("#c-count").textContent = `Showing ${rows.length} of ${all.length} companies`;
+    $("#c-list").innerHTML = rows.length ? `<div class="table-wrap panel flush"><table class="stack companies"><thead><tr><th>Company</th><th>Sector</th><th class="num">Themes</th><th>Belongs to</th></tr></thead>
+      <tbody>${rows.map((c) => `<tr><td class="mono"><b>${esc(c.symbol)}</b></td><td>${esc(c.sector || "—")}</td><td class="num">${c.themes.length}</td><td>${c.themes.length ? `<div class="ctags">${c.themes.map(tag).join("")}</div>` : `<span class="muted small">In no active theme</span>`}</td></tr>`).join("")}</tbody></table></div>`
+      : `<p class="empty">No companies match these filters.</p>`;
+    const p = new URLSearchParams(Object.entries(f).filter(([, v]) => v));
+    history.replaceState(null, "", `#/companies${p.toString() ? "?" + p : ""}`);
+  };
+  ["c-q", "c-sector", "c-show"].forEach((id) => $("#" + id).addEventListener(id === "c-q" ? "input" : "change", draw));
+  draw();
+}
+
 // -- market clusters ---------------------------------------------------------------------
 const SVGNS = "http://www.w3.org/2000/svg";
 function svgEl(tag, attrs, parent) {
@@ -799,6 +855,7 @@ async function route() {
   if (path === "/themes") { setNav("themes"); allThemes(new URLSearchParams(query || "")); }
   else if (path === "/method") { setNav("method"); method(); }
   else if (path === "/clusters") { setNav("clusters"); clustersPage(); }
+  else if (path === "/companies") { setNav("companies"); companiesPage(new URLSearchParams(query || "")); }
   else { setNav("overview"); overview(); }
   if (token === S.nav && !location.hash.includes("#coverage") && !location.hash.includes("#freshness")) window.scrollTo(0, 0);
 }
