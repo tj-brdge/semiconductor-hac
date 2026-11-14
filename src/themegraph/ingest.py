@@ -41,7 +41,10 @@ def _stamp(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def ingest_fmp_prices(client: F.FMPClient, cfg: PipelineConfig, universe: UniverseConfig,
-                      store: Store, end: dt.date, log=_log) -> Path:
+                      store: Store, end: dt.date, log=_log,
+                      failed: dict | None = None) -> Path:
+    """`failed` (optional dict) is filled with symbol -> reason for every symbol
+    that returned no prices, so the caller can report them instead of only logging."""
     start = cfg.periods.start - dt.timedelta(days=400)  # warm-up for the first windows
     fx = {}
     for cur, pair in F.FX_PAIRS.items():
@@ -60,9 +63,13 @@ def ingest_fmp_prices(client: F.FMPClient, cfg: PipelineConfig, universe: Univer
                 df = F.to_usd(df, fx[cur])
         except Exception as e:  # keep going; coverage report shows the gap
             log(f"  {sym}: {type(e).__name__}: {e}")
+            if failed is not None:
+                failed[sym] = f"{type(e).__name__}: {e}"[:200]
             continue
         if not len(df):
             log(f"  {sym}: no prices returned")
+            if failed is not None:
+                failed[sym] = "no prices returned"
             continue
         frames.append(df)
         log(f"  {sym}: {len(df)} sessions")

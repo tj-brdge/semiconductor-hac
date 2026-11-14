@@ -159,3 +159,35 @@ def test_watermark_needs_every_source_and_ignores_partial_batches(tmp_path):
     st.write("documents_edgar", _docs([(s, f"e3-{s}") for s in "ABCDEFGHI"], d),
              "20180312T060000Z")  # nine of ten: counts
     assert M.document_watermark(st, u, 0.9)["at"].startswith("2018-02-05")
+
+
+def test_plain_refresh_downloads_documents_when_they_are_due():
+    from themegraph.monitor.profiles import load_profile
+    prof = load_profile("tech-v2")
+    now = "2018-03-08T22:30:00+00:00"
+
+    def due(at):
+        return M.documents_due(prof, MC, dt.date(2018, 3, 8), now,
+                               watermark={"at": at, "sources": {}})
+    assert due(None) == "no complete document download yet"
+    assert due("2018-02-27 06:00:00+00:00") == "last download 9 days ago"
+    # Downloaded 4 days ago, but before February settled (5 Mar): due again.
+    assert "2018-02-28 month-end has settled" in due("2018-03-04 06:00:00+00:00")
+    assert due("2018-03-06 06:00:00+00:00") is None  # recent and after the settle date
+
+
+def test_prices_that_stopped_updating_are_named():
+    import numpy as np
+
+    from themegraph.monitor.baskets import PriceBook
+    cal = pd.bdate_range("2024-01-02", periods=40, tz="UTC") + pd.Timedelta(hours=22)
+    df = pd.DataFrame({s: 100 + np.arange(40.0) for s in ("SPY", "A", "B")}, index=cal)
+    df.loc[df.index[-12:], "B"] = np.nan  # B stopped twelve sessions ago
+    book = PriceBook(df, "SPY", {c: "USD" for c in df}, None, None, 5)
+    u = UniverseConfig(issuers=[Issuer(symbol=s, segment="x", role="core") for s in "ABC"],
+                       benchmarks=["SPY"], sectors={"x": "X"})
+    gaps = {g["symbol"]: g for g in M.price_gaps(book, u, MC)}
+    assert set(gaps) == {"B", "C"}  # A and SPY are current
+    assert gaps["B"]["sessions_behind"] == 12 and gaps["B"]["last_price"] == str(
+        cal[-13].date())
+    assert gaps["C"]["reason"] == "no prices stored" and gaps["C"]["last_price"] is None

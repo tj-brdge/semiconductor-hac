@@ -11,6 +11,10 @@ themegraph monitor compare --profile semis --against tech-v2   # comparison repo
 themegraph monitor serve --profile tech-v2                  # http://127.0.0.1:8780/, the pilot's site
 ```
 
+**Since 2026-11-14 this profile is the monitor**: every command without `--profile`
+uses it (docs/MONITOR.md, "Profiles"). The commands below still work; `--profile
+tech-v2` is now the default and can be left out.
+
 Status on 2026-10-27: implemented and tested on synthetic fixture data only. It has
 **not** been run on real data (see "Before the first real run").
 

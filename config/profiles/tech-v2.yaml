@@ -1,8 +1,9 @@
-# Technology pilot v2: the semiconductor pilot plus software, cybersecurity and
-# data/cloud companies. Runs beside the semiconductor pilot with its own registry and
-# site, so the published semiconductor monitor is untouched while this is reviewed.
+# The monitor: all 127 companies (the 76 semiconductor-pilot companies plus software,
+# cybersecurity and data/cloud). Since 2026-11-14 this is the profile every command
+# uses when --profile is not given; the name and directories are kept so the
+# registry, forward-test logs and site already built carry on.
 name: tech-v2
-title: Technology pilot v2
+title: Technology and semiconductors
 description: Semiconductors, software, cybersecurity, data platforms and the adjacent companies that connect them.
 universe: config/tech_v2/universe.yaml
 pipeline: config/pipeline.yaml   # the research specification, shared and unchanged

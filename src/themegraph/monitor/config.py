@@ -105,6 +105,9 @@ class Completeness(_S):
     # documents must have been made after them. An assumption about how quickly
     # providers publish, not a guarantee: no provider reports "this month is complete".
     settle_days: int = 5
+    # `refresh` without flags downloads documents too when the last full download is
+    # at least this old, or a month-end has settled since it (--prices-only skips it).
+    refresh_days: int = 7
     # A download counts when it covers at least this share of the universe's
     # companies that have documents at all (a partial batch does not).
     min_symbol_share: float = 0.9

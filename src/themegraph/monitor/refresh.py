@@ -93,6 +93,29 @@ def load_inputs(fixtures: bool, as_of: dt.date, log=print,
 DOC_TABLES = ("documents_transcripts", "documents_edgar")
 
 
+def documents_due(profile: Profile, mcfg: MonitorConfig, as_of: dt.date, now: str,
+                  watermark: dict | None = None) -> str | None:
+    """Why a plain refresh should download documents now, or None. Due when there is
+    no full download yet, the last one is `completeness.refresh_days` old, or the
+    latest month-end has settled since it (so that month-end can be processed)."""
+    if watermark is None:
+        from ..cli import _store
+        watermark = document_watermark(_store(), load_universe(profile.universe),
+                                       mcfg.completeness.min_symbol_share)
+    if not watermark.get("at"):
+        return "no complete document download yet"
+    at, ref = pd.Timestamp(watermark["at"]), pd.Timestamp(now)
+    age = (ref - at).days
+    if age >= mcfg.completeness.refresh_days:
+        return f"last download {age} days ago"
+    ends = [t for t in _month_ends(as_of - dt.timedelta(days=70), as_of) if t <= _cut(as_of)]
+    if ends:
+        need = ends[-1] + pd.Timedelta(days=mcfg.completeness.settle_days)
+        if at < need <= ref:
+            return f"the {ends[-1].date()} month-end has settled since the last download"
+    return None
+
+
 def document_watermark(store, universe, min_share: float) -> dict:
     """When each document source was last downloaded for (nearly) the whole universe.
 
@@ -131,7 +154,13 @@ def ingest_step(kind: str, as_of: dt.date, log=print, profile: Profile | None = 
     store = _store()
     client = FMPClient(DATA / "raw" / "fmp")
     if kind == "prices":
-        return str(I.ingest_fmp_prices(client, cfg, u, store, as_of))
+        failed: dict = {}
+        out = str(I.ingest_fmp_prices(client, cfg, u, store, as_of, failed=failed))
+        # A symbol the provider returned nothing for keeps its old prices: say so
+        # here (status.json) instead of leaving it in the terminal log.
+        return out if not failed else (
+            f"{out}; {len(failed)} symbols returned no prices: " +
+            "; ".join(f"{k} ({v})" for k, v in sorted(failed.items())[:25]))
     out = [str(I.ingest_fmp_transcripts(client, cfg, u, store))]
     from ..data.edgar import EdgarClient
     out.append(str(I.ingest_edgar(EdgarClient(DATA / "raw" / "edgar"), cfg, u, store,
@@ -153,7 +182,7 @@ def price_book(prices: pd.DataFrame, universe, mcfg: MonitorConfig) -> PriceBook
 
 def refresh(state_dir: Path, site_dir: Path, *, fixtures: bool = False,
             as_of: dt.date | None = None, ingest_prices: bool = True,
-            ingest_documents: bool = False, now: str | None = None, log=print,
+            ingest_documents: bool | None = False, now: str | None = None, log=print,
             inputs_hook=None, namer=None, profile: Profile | None = None,
             fork_state: Path | None = None) -> dict:
     """One refresh of `profile` (default: the semiconductor pilot). `fork_state`:
@@ -185,8 +214,17 @@ def refresh(state_dir: Path, site_dir: Path, *, fixtures: bool = False,
 
     if not fixtures and ingest_prices:
         run("ingest_prices", lambda: ingest_step("prices", as_of, log, profile))
+    why_docs = None
+    if not fixtures and ingest_prices and ingest_documents is None:
+        # Automatic: one command keeps prices and documents current, so themes are
+        # not left waiting for a download nobody remembered to run.
+        why_docs = documents_due(profile, mcfg, as_of, now)
+        ingest_documents = why_docs is not None
     if not fixtures and ingest_documents:
-        run("ingest_documents", lambda: ingest_step("documents", as_of, log, profile))
+        if run("ingest_documents", lambda: ingest_step("documents", as_of, log, profile)) \
+                and why_docs:
+            steps["ingest_documents"]["detail"] = \
+                f"automatic ({why_docs}); {steps['ingest_documents']['detail']}"
 
     ctxd: dict = {}
     def _load():
@@ -245,6 +283,7 @@ def refresh(state_dir: Path, site_dir: Path, *, fixtures: bool = False,
                     "market_clusters": book_box.get("market_clusters"),
                     "forward_tests": book_box.get("forward_tests"),
                     "pending_snapshots": getattr(reg, "pending", []),
+                    "price_gaps": price_gaps(book_box["book"], ctxd["universe"], mcfg),
                     "late_documents": late_documents(reg, ctxd["docs"]),
                     "completeness": {**mcfg.completeness.model_dump(),
                                      "doc_watermark": ctxd.get("doc_watermark")},
@@ -512,6 +551,8 @@ def _status(site: Path, steps: dict, now: str, d: dict, reg: Registry, box: dict
         behind = pd.bdate_range(book.last_date.tz_convert(None).normalize()
                                 + pd.Timedelta(days=1), ref.tz_convert(None).normalize())
         stale["prices"] = len(behind) > mcfg.freshness.price_stale_sessions
+    gaps = price_gaps(book, d["universe"], mcfg) if book is not None and "universe" in d \
+        else None
     if len(d.get("docs", [])):
         newest = pd.Timestamp(d["docs"]["available_at"].max())
         stale["documents"] = (ref - newest).days > mcfg.freshness.documents_stale_days
@@ -526,4 +567,25 @@ def _status(site: Path, steps: dict, now: str, d: dict, reg: Registry, box: dict
             or prev.get("published_release"),
             "data_as_of": _as_of(d, reg, book) if book is not None and "docs" in d
             else prev.get("data_as_of"),
-            "stale": stale, "evaluation_note": EVALUATION_NOTE}
+            "stale": stale, "price_gaps": gaps, "evaluation_note": EVALUATION_NOTE}
+
+
+def price_gaps(book, universe, mcfg: MonitorConfig) -> list[dict]:
+    """Covered companies and benchmarks whose latest close is behind the calendar's
+    latest session by more than `freshness.price_stale_sessions` of their own
+    market's sessions, or that have no prices at all. Delisted companies are left
+    out (they are held on their recorded terms)."""
+    out = []
+    gone = {i.symbol for i in universe.issuers if i.delisted}
+    for s in list(universe.benchmarks) + [i.symbol for i in universe.issuers
+                                          if i.symbol not in gone]:
+        if s not in book.closes or not book.closes[s].notna().any():
+            out.append({"symbol": s, "last_price": None, "sessions_behind": None,
+                        "reason": "no prices stored"})
+            continue
+        behind = int(book.missing_sessions(s).iloc[-1])
+        if behind > mcfg.freshness.price_stale_sessions:
+            last = book.closes[s].dropna().index[-1]
+            out.append({"symbol": s, "last_price": str(last.date()),
+                        "sessions_behind": behind, "reason": "no recent close"})
+    return out
