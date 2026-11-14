@@ -64,12 +64,12 @@ def test_research_commands_take_a_profile(capsys):
 
     from themegraph import cli
     cfg, u, prof = cli._research(Namespace())
-    assert prof.name == "semis" and len(u.issuers) == 76  # default: the pilot, unchanged
-    cfg2, u2, prof2 = cli._research(Namespace(profile="tech-v2"))
-    assert prof2.name == "tech-v2" and len(u2.issuers) == 127
-    assert cli._is_default(prof) and not cli._is_default(prof2)
-    with pytest.raises(SystemExit, match="holdout protocol belongs to the semiconductor"):
-        cli.main(["run", "--period", "holdout", "--profile", "tech-v2"])
+    assert prof.name == "tech-v2" and len(u.issuers) == 127  # one universe by default
+    cfg2, u2, prof2 = cli._research(Namespace(profile="semis"))
+    assert prof2.name == "semis" and len(u2.issuers) == 76   # the pilot, on request
+    assert cli._is_default(prof2) and not cli._is_default(prof)
+    with pytest.raises(SystemExit, match="--profile semis"):
+        cli.main(["run", "--period", "holdout"])  # the holdout belongs to the pilot
     for cmd in ("run", "ingest", "coverage", "topics", "forward", "report"):
         with pytest.raises(SystemExit):
             cli.main([cmd, "--help"])

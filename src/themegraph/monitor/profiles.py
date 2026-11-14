@@ -26,7 +26,14 @@ from ..config import CONFIG_DIR, ROOT, file_sha256, load_universe, universe_sour
 from .config import monitor_sources
 
 PROFILES = CONFIG_DIR / "profiles"
-DEFAULT = "semis"
+# The semiconductor pilot: the research protocol (development runs, the holdout,
+# its forward log) is defined on this universe, and library calls and tests that
+# name no profile use it.
+PILOT = DEFAULT = "semis"
+# The one monitor people use: every command-line command without --profile runs
+# this profile, so there is a single universe to download, refresh and look at.
+# Changed from the pilot on 2026-11-14 (docs/MONITOR.md, "Profiles").
+ACTIVE = "tech-v2"
 
 
 class Profile(BaseModel):

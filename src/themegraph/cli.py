@@ -20,17 +20,18 @@ def _store():
 
 
 def _research(a):
-    """(pipeline config, universe, profile) for a research command. The default
-    profile is the semiconductor pilot, whose files and results are unchanged; any
-    other profile reads its own pipeline and universe files (config/profiles)."""
-    from .monitor.profiles import DEFAULT, load_profile
-    prof = load_profile(getattr(a, "profile", None) or DEFAULT)
+    """(pipeline config, universe, profile) for a research command: the profile
+    named with --profile, else the one monitor everyone uses (profiles.ACTIVE)."""
+    from .monitor.profiles import ACTIVE, load_profile
+    prof = load_profile(getattr(a, "profile", None) or ACTIVE)
     return load_pipeline(prof.pipeline), load_universe(prof.universe), prof
 
 
 def _is_default(prof) -> bool:
-    from .monitor.profiles import DEFAULT
-    return prof.name == DEFAULT
+    """The semiconductor pilot: the research protocol's universe, whose run names,
+    manifests and forward log keep their original form."""
+    from .monitor.profiles import PILOT
+    return prof.name == PILOT
 
 
 def cmd_demo(a):
@@ -90,8 +91,8 @@ def cmd_run(a):
 
     cfg, u, prof = _research(a)
     if a.period == "holdout" and not _is_default(prof):
-        sys.exit("the holdout protocol belongs to the semiconductor pilot; other profiles "
-                 "run the development period only")
+        sys.exit("the holdout protocol belongs to the semiconductor pilot: run it with "
+                 "--profile semis; other profiles run the development period only")
     overrides = {}
     if a.topic_mode and a.topic_mode != cfg.text.topic_mode:
         if a.period != "dev":
@@ -224,9 +225,8 @@ def cmd_questions(a):
 def cmd_monitor(a):
     """Theme monitor: refresh the inventory and data feed, or serve the dashboard."""
     from .monitor import refresh as M
-    from .monitor.profiles import load_profile
-
-    prof = load_profile(a.profile)
+    from .monitor.profiles import ACTIVE, load_profile
+    prof = load_profile(a.profile or ACTIVE)
     a.state = a.state or str(prof.state)
     a.site = a.site or str(prof.site)
     if a.action == "refresh":
@@ -234,7 +234,11 @@ def cmd_monitor(a):
         if a.fixtures and as_of is None:
             sys.exit("--fixtures needs --as-of (fixture data ends 2021-12-31)")
         st = M.refresh(Path(a.state), Path(a.site), fixtures=a.fixtures, as_of=as_of,
-                       ingest_prices=not a.no_ingest, ingest_documents=a.documents,
+                       ingest_prices=not a.no_ingest,
+                       # --documents forces a download, --prices-only (or --no-ingest)
+                       # prevents one; otherwise it happens when it is due.
+                       ingest_documents=True if a.documents else
+                       False if (a.prices_only or a.no_ingest) else None,
                        profile=prof)
         print(json.dumps({k: st.get(k) for k in ("ok", "errors", "skipped", "warnings",
                                                  "published_release", "data_as_of",
@@ -364,12 +368,14 @@ def main(argv=None):
     s.add_argument("--vintage", help="snapshot date (YYYY-MM-DD) for data that changes over "
                    "time; default today. Reuse a past date to rebuild from that snapshot "
                    "without downloading")
-    s.add_argument("--profile", default="semis",
-                   help="configuration profile in config/profiles (default: semis)")
+    s.add_argument("--profile",
+                   help="configuration profile in config/profiles (default: tech-v2, all "
+                        "127 companies; semis is the semiconductor-only pilot)")
     s.set_defaults(fn=cmd_ingest)
     s = sub.add_parser("coverage", help="per-issuer data coverage")
-    s.add_argument("--profile", default="semis",
-                   help="configuration profile in config/profiles (default: semis)")
+    s.add_argument("--profile",
+                   help="configuration profile in config/profiles (default: tech-v2, all "
+                        "127 companies; semis is the semiconductor-only pilot)")
     s.set_defaults(fn=cmd_coverage)
     s = sub.add_parser("run", help="build layers, candidates, evaluation and report")
     s.add_argument("--period", choices=["dev", "holdout"], default="dev")
@@ -383,8 +389,9 @@ def main(argv=None):
     s.add_argument("--topic-mode", choices=["window", "anchored"],
                    help="development runs only: override text.topic_mode to compare "
                    "methods; recorded in the manifest")
-    s.add_argument("--profile", default="semis",
-                   help="configuration profile in config/profiles (default: semis)")
+    s.add_argument("--profile",
+                   help="configuration profile in config/profiles (default: tech-v2, all "
+                        "127 companies; semis is the semiconductor-only pilot)")
     s.set_defaults(fn=cmd_run)
     s = sub.add_parser("topics", help="print topics for sample windows (calibration)")
     s.add_argument("--dates", nargs="+", default=["2016-06-30"])
@@ -392,14 +399,16 @@ def main(argv=None):
     s.add_argument("--top", type=int, default=12)
     s.add_argument("--allow-holdout-dates", action="store_true",
                    help="inspect dates after dev_end; logged as holdout contamination")
-    s.add_argument("--profile", default="semis",
-                   help="configuration profile in config/profiles (default: semis)")
+    s.add_argument("--profile",
+                   help="configuration profile in config/profiles (default: tech-v2, all "
+                        "127 companies; semis is the semiconductor-only pilot)")
     s.set_defaults(fn=cmd_topics)
     s = sub.add_parser("forward", help="as-of prediction log (predict) and outcomes")
     s.add_argument("action", choices=["predict", "outcomes"])
     s.add_argument("--cutoff", help="prediction date YYYY-MM-DD (default today)")
-    s.add_argument("--profile", default="semis",
-                   help="configuration profile in config/profiles (default: semis)")
+    s.add_argument("--profile",
+                   help="configuration profile in config/profiles (default: tech-v2, all "
+                        "127 companies; semis is the semiconductor-only pilot)")
     s.set_defaults(fn=cmd_forward)
     s = sub.add_parser("adjudicate", help="write/refresh a run's adjudication worksheet")
     s.add_argument("run_dir")
@@ -420,13 +429,13 @@ def main(argv=None):
     s.add_argument("--read", choices=["headwind", "emergence", "tailwind"],
                    help="forward: read this test's result (once; refused until 20 events "
                         "have a completed 126-session window)")
-    s.add_argument("--profile", default="semis",
-                   help="configuration profile in config/profiles (default: semis, the "
-                        "semiconductor pilot); sets the files, state and site below")
+    s.add_argument("--profile",
+                   help="configuration profile in config/profiles (default: tech-v2, all "
+                        "127 companies; semis is the semiconductor-only pilot)")
     s.add_argument("--state", help="registry directory (default: the profile's)")
     s.add_argument("--site", help="dashboard directory (default: the profile's)")
-    s.add_argument("--against", default="tech-v2",
-                   help="compare: the other profile (default tech-v2)")
+    s.add_argument("--against", default="semis",
+                   help="compare: the other profile (default semis, the pilot)")
     s.add_argument("--against-state", help="compare: the other profile's registry directory")
     s.add_argument("--against-site", help="compare: the other profile's site directory")
     s.add_argument("--out", help="compare/review: write the report here (default: "
@@ -434,9 +443,14 @@ def main(argv=None):
     s.add_argument("--as-of", help="data cutoff date (default: today)")
     s.add_argument("--fixtures", action="store_true",
                    help="synthetic labelled fixture data instead of the store")
-    s.add_argument("--no-ingest", action="store_true", help="skip the price download")
+    s.add_argument("--no-ingest", action="store_true",
+                   help="download nothing; recompute from what is stored")
     s.add_argument("--documents", action="store_true",
-                   help="also download transcripts and filings (weekly job)")
+                   help="download transcripts and filings now (otherwise they are "
+                        "downloaded when the last download is a week old or a month-end "
+                        "has settled)")
+    s.add_argument("--prices-only", action="store_true",
+                   help="download prices only, never documents")
     s.add_argument("--port", type=int, default=8780)
     s.set_defaults(fn=cmd_monitor)
     s = sub.add_parser("questions", help="share of analyst questions in a run's text")
@@ -452,8 +466,9 @@ def main(argv=None):
     s.set_defaults(fn=cmd_labels)
     s = sub.add_parser("report", help="rebuild report.html for a run directory")
     s.add_argument("run_dir")
-    s.add_argument("--profile", default="semis",
-                   help="configuration profile in config/profiles (default: semis)")
+    s.add_argument("--profile",
+                   help="configuration profile in config/profiles (default: tech-v2, all "
+                        "127 companies; semis is the semiconductor-only pilot)")
     s.set_defaults(fn=cmd_report)
     a = p.parse_args(argv)
     a.fn(a)

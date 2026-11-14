@@ -49,6 +49,7 @@ freshness:
 
 completeness:                  # when a month-end may be processed (docs/MONITOR.md, "Month-end completeness")
   settle_days: 5               # wait this long after the month-end, then need a document download made after it
+  refresh_days: 7              # a plain refresh also downloads documents when the last download is this old
   min_symbol_share: 0.9        # a download counts only if it covers this share of the companies with documents
 
 labels:                        # readable titles and summaries (docs/MONITOR.md, "Theme labels")

@@ -229,9 +229,10 @@ site/data/releases/<id>/themes/<th>.json  title, summary, label (source, evidenc
 ## Refresh and scheduling
 
 ```
-themegraph monitor refresh                 # prices + themes (if a month-end passed) + valuation + export
-themegraph monitor refresh --documents     # also transcripts and filings (weekly)
-themegraph monitor refresh --no-ingest     # recompute from what is already stored
+themegraph monitor refresh                 # prices, documents when due, themes, valuation, export
+themegraph monitor refresh --documents     # force a document download now
+themegraph monitor refresh --prices-only   # prices only, never documents
+themegraph monitor refresh --no-ingest     # download nothing; recompute from what is stored
 themegraph monitor serve                   # http://127.0.0.1:8780/
 themegraph monitor review                  # similar themes, families and tone (Markdown)
 themegraph monitor refresh --fixtures --as-of 2021-06-30   # labelled synthetic data
@@ -288,20 +289,31 @@ processed only when the documents were downloaded at or after `t` +
   transcript published later than that still arrives late and is reported as such.
   Fixture data carries no download record and is treated as complete.
 
+**One command.** A plain `refresh` downloads prices every time and documents when
+they are due: no full download yet, the last one is `completeness.refresh_days` (7)
+old, or the latest month-end has settled since it. The documents stage in
+`status.json` then starts with "automatic" and the reason. So a daily `refresh` is
+the whole schedule; `--documents` and `--prices-only` override it.
+
+**Prices that did not update.** A symbol the provider returns nothing for keeps
+its old prices. The prices stage in `status.json` names such symbols with the
+provider's message, and `price_gaps` (status and release) lists every covered
+company or benchmark whose latest close is more than
+`freshness.price_stale_sessions` (3) of its own market's sessions behind, or that
+has no prices. The dashboard shows a notice and the Method page the list.
+
 **Suggested schedule.** Credentials stay in the job's environment (`FMP_API_KEY`,
 `VOYAGE_API_KEY`, the SEC user agent) and are never written to the site.
 ```
-30 22 * * 1-5  cd /path/to/semiconductor-hac && themegraph monitor refresh ; <sync site/>
-0  6  * * 6    cd /path/to/semiconductor-hac && themegraph monitor refresh --documents ; <sync site/>
+30 22 * * 1-5  cd /path/to/semiconductor-hac && themegraph monitor refresh ; <sync site-tech-v2/>
 ```
-With documents downloaded on Saturdays, a month-end is processed on the first
-Saturday at least five days after it (between 5 and 11 days late); add a
-`--documents` run on the 6th of each month to make that a fixed five days.
+Documents are downloaded by that same job when due, so a month-end is processed
+by the first weekday run at least five days after it.
 Sync with `;`, not `&&`: a failed refresh exits 1, and the site still has to be
 uploaded so that visitors see the new `status.json` (the failure notice) next to
 the unchanged last good release.
-Here `<sync site/>` is any static upload, for example
-`aws s3 sync site/ s3://bucket/ --delete` or `npx wrangler pages deploy site`.
+Here `<sync site-tech-v2/>` is any static upload, for example
+`aws s3 sync site-tech-v2/ s3://bucket/ --delete` or `npx wrangler pages deploy site-tech-v2`.
 
 ## Headwinds (`monitor/tone.py`)
 
@@ -536,13 +548,25 @@ method & data (coverage, freshness, the last refresh's stages, release ID).
 
 ## Profiles (`config/profiles/`, `monitor/profiles.py`)
 
-A profile names its universe, pipeline and monitor files, its registry (state)
-directory and its site directory, so that pilots with different coverage run side
-by side. `semis` (the default) is the original semiconductor pilot with the
-original files and directories (`monitor_state/`, `site/`); `tech-v2` is the
-technology pilot (docs/TECH_PILOT_V2.md, `monitor_state-tech-v2/`, `site-tech-v2/`).
+**One monitor.** Since 2026-11-14 every command without `--profile` uses `tech-v2`:
+all 127 companies (the 76 semiconductor-pilot companies plus software,
+cybersecurity and data/cloud), one download of prices and documents, one registry
+(`monitor_state-tech-v2/`) and one site (`site-tech-v2/`). The profile keeps its
+name and directories so the registry, forward-test logs and site already built
+carry on. Before that date the default was the semiconductor-only pilot, and the
+two were refreshed separately: a refresh of one downloaded prices and documents
+for its own companies only, so the other fell behind.
 
-- `--profile NAME` on `themegraph monitor refresh | serve | compare`.
+`semis` remains as the semiconductor pilot (`monitor_state/`, `site/`): the research
+protocol (development runs, the holdout, its forward log) is defined on that
+universe, so `themegraph run --period holdout` needs `--profile semis`. Its monitor
+no longer needs refreshing; its companies and themes are all in the one monitor.
+
+A profile names its universe, pipeline and monitor files, its registry (state)
+directory and its site directory.
+
+- `--profile NAME` on every `themegraph monitor` action and on the research
+  commands (`ingest`, `coverage`, `run`, `topics`, `forward`, `report`).
 - Universe and monitor files can `extends:` a base file, so the technology universe
   adds companies to the semiconductor universe without copying it.
 - The document and price store is shared; every read is limited to the profile's

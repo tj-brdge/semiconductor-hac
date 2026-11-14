@@ -54,6 +54,10 @@ function notices() {
     const failed = Object.entries(st.errors || {}).filter(([, v]) => v).map(([k]) => k);
     out.push(`<div class="notice bad" role="alert"><span class="icon" aria-hidden="true">×</span><div><b>The latest update failed</b> (${esc(failed.join(", ") || "incomplete")}, ${esc(fmtDate(st.checked_at))}). You are seeing the last complete release, from ${esc(fmtDate(S.index?.generated_at))}. <a href="#/method#freshness">Details</a></div></div>`);
   }
+  const gaps = S.index?.price_gaps || [];
+  if (gaps.length) {
+    out.push(`<div class="notice warn" role="note"><span class="icon" aria-hidden="true">!</span><div><b>${gaps.length === 1 ? "One price is" : `${gaps.length} prices are`} not up to date:</b> ${esc(gaps.slice(0, 8).map((g) => g.symbol).join(", "))}${gaps.length > 8 ? ` and ${gaps.length - 8} more` : ""}. Baskets holding them use the last close. <a href="#/method#freshness">Details</a></div></div>`);
+  }
   const pend = S.index?.pending_snapshots || [];
   if (pend.length) {
     out.push(`<div class="notice" role="note"><span class="icon" aria-hidden="true">i</span><div><b>${pend.length === 1 ? "One month-end is" : `${pend.length} month-ends are`} waiting for documents.</b> Themes are shown through ${esc(fmtDate(S.index.themes_processed_through))}; ${esc(fmtDate(pend[0].t))} is not processed yet: ${esc(pend[0].reason)}. <a href="#/method#freshness">Details</a></div></div>`);
@@ -675,6 +679,7 @@ function method() {
         ${S.index.completeness?.doc_watermark ? `<dt>Documents last downloaded</dt><dd>${S.index.completeness.doc_watermark.at ? esc(fmtDate(S.index.completeness.doc_watermark.at)) : "no complete download yet"}. A month-end is processed only after a download made at least ${S.index.completeness.settle_days} days after it; this shows a download was made, not that providers had published everything.</dd>` : ""}
         ${(S.index.pending_snapshots || []).map((p) => `<dt>Waiting</dt><dd>${esc(fmtDate(p.t))}: ${esc(p.reason)}.</dd>`).join("")}
         ${S.index.late_documents ? `<dt>Late documents</dt><dd>${S.index.late_documents.total} eligible for month-ends already processed (${Object.entries(S.index.late_documents.by_snapshot).map(([t, v]) => `${esc(fmtDate(t))}: ${v.documents}`).join(", ")}). Not added to those month-ends; used in later ones.</dd>` : ""}
+        ${(S.index.price_gaps || []).length ? `<dt>Prices not up to date</dt><dd>${S.index.price_gaps.map((g) => `<span class="mono">${esc(g.symbol)}</span> ${g.last_price ? `last close ${esc(fmtDate(g.last_price))} (${g.sessions_behind} sessions behind)` : esc(g.reason)}`).join("; ")}. The last update's price stage below says what the provider returned.</dd>` : ""}
         <dt>Generated</dt><dd>${esc(S.index.generated_at)}</dd>
         ${S.index.effective ? `<dt>Configuration</dt><dd>${esc(S.index.effective.title)} (profile ${esc(S.index.effective.profile)}), universe version ${esc(S.index.effective.universe_version)}: ${esc(Object.values(S.index.effective.files).flat().map((x) => `${x.path} ${x.sha256.slice(0, 8)}`).join(", "))}</dd>` : ""}
         ${S.index.fork ? `<dt>Started from</dt><dd>a copy of the ${esc(S.index.fork.from_profile)} registry at ${esc(fmtDate(S.index.fork.at_snapshot))} (${S.index.fork.inherited_themes.length} published themes kept with their IDs, baskets and history)</dd>` : ""}<dt>Last update attempt</dt><dd>${esc(st.checked_at || "—")} · ${st.ok ? "succeeded" : "did not complete"}</dd></dl>
