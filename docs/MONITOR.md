@@ -166,10 +166,15 @@ the latest ones. Each passage is labelled with its role:
   the registry refuses to write a version that breaks either. A version without
   companies left by an older registry is not valued: `performance.status` is
   `unavailable` with a `reason` and `note` (see "Repairing state").
-- **Corporate actions.** Every price refresh downloads each symbol's full
-  dividend- and split-adjusted history again (the provider restates it after each
-  action), and the monitor values every basket from each symbol's latest download
-  only. A symbol's history is never stitched from two downloads, so a split or
+- **Corporate actions.** The provider restates a symbol's whole dividend- and
+  split-adjusted history after each action. A price refresh downloads the last 45
+  days of each US-dollar symbol and compares them with the stored closes: if they
+  agree, the stored history is reused; if any differs, the history was restated and
+  the full series is downloaded again. The prices stage in `status.json` says how
+  many symbols were updated from stored history and which were downloaded in full
+  and why. Symbols quoted in other currencies, and exchange rates, are always
+  downloaded in full; `--full-prices` does that for everything. The monitor values
+  every basket from each symbol's latest download only. A symbol's history is never stitched from two downloads, so a split or
   dividend cannot leave a false jump; index levels of past days can move slightly
   when the provider restates a history. Mergers and delistings are recorded by hand
   in the universe file (`delisted`, `successor`).
@@ -307,6 +312,11 @@ has no prices. The dashboard shows a notice and the Method page the list.
 ```
 30 22 * * 1-5  cd /path/to/semiconductor-hac && themegraph monitor refresh ; <sync site-tech-v2/>
 ```
+On macOS, `scripts/install_schedule.sh [HOUR MINUTE]` installs the same job with
+launchd (weekdays, local time, default 19:00; `remove` uninstalls it). It runs
+`scripts/refresh.sh`, which reads credentials from `~/.themegraph.env` (launchd does
+not load a shell profile) and appends to `logs/refresh.log`.
+
 Documents are downloaded by that same job when due, so a month-end is processed
 by the first weekday run at least five days after it.
 Sync with `;`, not `&&`: a failed refresh exits 1, and the site still has to be

@@ -32,7 +32,8 @@ and inspected), **deferred** (not built).
 | Anchored topics (`--topic-mode anchored`: yearly discovery, monthly assignment, new topics from unclaimed text) | live dev runs at assign 0.45, 0.35 and 0.40. **No tested threshold met both confirmation criteria** (at 0.40, median per-window assigned share 0.475 vs window 0.583; median tightness 0.611 vs 0.632). The comparison uses the stated value 0.40 with that caveat; both modes need rerunning first (docs/EVIDENCE.md) |
 | Window vs anchored comparison (`themegraph compare`, declared criteria in DESIGN.md) | tested on synthetic data; **real comparison pending** (needs both runs rerun with the approved labels, then adjudication) |
 | Evaluation: detection, co-movement, buy-and-hold returns, dependence-grouped inference, adjudication | tested |
-| **Theme monitor** (`themegraph monitor refresh` / `serve`: persistent theme inventory, equal-weight basket indexes vs SPY/SOXX, static data feed and dashboard; docs/MONITOR.md) | tested end to end on labelled fixture data (two refreshes, rerun, failed refresh); **not yet run on live data** |
+| **Theme monitor** (`themegraph monitor refresh` / `serve`: one monitor of 127 technology and semiconductor companies; persistent theme inventory, equal-weight basket indexes vs SPY, XLK and a sector benchmark, headwinds, companies, network and market-cluster pages, static data feed and dashboard; docs/MONITOR.md) | tested end to end on labelled fixture data; refreshes have run on live data on the owner's machine, but **the live outputs have not been reviewed or validated**, and no forward test has been read |
+| Forward tests of the monitor (headwind, emergence, tailwind; DESIGN.md) | registered 2026-11-12 before any outcome; events are logged by live refreshes; **none read** (each needs 20 events with six months of prices) |
 | Holdout lifecycle (attempt logged before outcomes, one clean attempt, verification) | tested; the formal holdout run has **not** been done, but from 2026-10-27 the monitor reads 2022–2026 data, so that period counts as **inspected**, not untouched (DESIGN.md) |
 | Forward prediction log (`themegraph forward`) | tested; not yet used on live data |
 | Theme labels (`labels/themes.yaml`) | 17 entries approved 2026-10-25 and copied from `labels/themes_draft.yaml` (evidence and verification kept there); not frozen |
@@ -57,30 +58,38 @@ show co-movement only for the real ones.
 uv run themegraph monitor refresh --fixtures --as-of 2021-06-30   # synthetic, labelled as such
 uv run themegraph monitor refresh --fixtures --as-of 2021-12-31   # second refresh: updates, no duplicates
 uv run themegraph monitor serve                                    # http://127.0.0.1:8780/
-uv run themegraph monitor refresh                                  # live: prices, themes, baskets, export
+uv run themegraph monitor refresh                                  # live: prices, documents when due, themes, baskets, export
+scripts/install_schedule.sh                                        # macOS: run that refresh every weekday evening
 ```
 
-The monitor keeps every published theme with stable IDs and its history. A theme
-enters through the emergence rule or by persisting. For each theme it shows the
-emergence, theme-strength and market-strength measures separately, along with the
-companies, dated evidence, and an equal-weight basket index against the configured
-benchmarks (SPY and SOXX for now). v1 covers the semiconductor pilot universe in
-`config/universe.yaml`: "strongest" means strongest among those companies, and
-adding companies is versioned so it never reads as theme growth or rewrites
-basket history (docs/MONITOR.md, "Universe changes").
-Theme titles and summaries are written by Claude from cited evidence when
-credentials are available on the refresh machine, otherwise they are automatic
-keyword titles that say so. Basket returns are split into a simulated history and
-a live (observed) period, and labelled everywhere.
+There is one monitor. Without `--profile`, every command uses the 127-company
+universe in `config/tech_v2/universe.yaml` (the 76 semiconductor-pilot companies
+plus software, cybersecurity and data/cloud), with its registry in
+`monitor_state-tech-v2/` and its site in `site-tech-v2/`. "Strongest" always means
+strongest among those companies. `--profile semis` is the semiconductor-only pilot,
+kept for the research protocol below (docs/MONITOR.md, "Profiles").
 
-A second profile, the technology pilot v2 (`--profile tech-v2`), adds 51 software,
-cybersecurity and data/cloud companies and runs beside the semiconductor monitor
-with its own registry and site (docs/TECH_PILOT_V2.md); it has been tested on
-synthetic data only.
+What it does, in order (docs/HOW_IT_WORKS.md has the plain-language version):
 
-The dashboard (`site/`: static HTML, CSS and JavaScript, no build step) reads
-`site/data/`, which any static host can serve. Method, feed schema, labels,
-dashboard and scheduling are in docs/MONITOR.md.
+- keeps every published theme with a stable ID and its history; a theme enters
+  through the emergence rule, by persisting, or as newly covered;
+- measures discussion, breadth and persistence each month-end, and says whether the
+  language is about problems or growth (headwind / tailwind);
+- builds an equal-weight basket of each theme's companies and compares it with SPY,
+  XLK and a sector benchmark, with simulated history and live days always labelled;
+- shows which companies belong to which themes, the company network, and which
+  stocks trade together on prices alone;
+- logs three registered forward tests live and reads each once.
+
+One command keeps it current: `themegraph monitor refresh` downloads prices (reusing
+stored history unless the provider restated it, which is how a split or dividend
+shows up), downloads documents when they are due, processes a month-end once its
+documents have settled, and publishes. A failed step leaves the last good release
+in place and says what failed.
+
+Theme titles and summaries are written by Claude from cited passages when
+`ANTHROPIC_API_KEY` and the `review` extra are on the refresh machine; otherwise
+titles are automatic keywords and each card shows a quoted passage instead.
 
 ## Real data
 
@@ -98,7 +107,8 @@ uv run themegraph ingest fmp-transcripts
 uv run themegraph ingest edgar             # 10-K/10-Q/20-F sections, 8-K/6-K exhibit 99
 uv run themegraph coverage                 # per-issuer gaps, before trusting anything
 uv run themegraph topics                   # read sample topics; calibrate cluster_distance
-uv run themegraph run --period dev         # -> runs/dev-<timestamp>/report.html
+uv run themegraph run --period dev         # -> runs/tech-v2-dev-<timestamp>/report.html
+uv run themegraph run --period dev --profile semis   # the semiconductor pilot: runs/dev-<timestamp>/
 uv run themegraph adjudicate runs/dev-...  # review matches and candidates (worksheet)
 ```
 
@@ -109,11 +119,13 @@ tables in `data/store/<table>/<vintage>.parquet`; embeddings are cached per mode
 ### Research commands for another profile
 
 `ingest`, `coverage`, `run`, `topics`, `forward` and `report` take `--profile`
-(default `semis`, whose files, run names and prediction log are unchanged):
+(default `tech-v2`, all 127 companies; `--profile semis` is the semiconductor pilot,
+whose files, run names and prediction log are unchanged):
 
 ```
-uv run themegraph run --period dev --profile tech-v2    # -> runs/tech-v2-dev-<timestamp>/report.html
-uv run themegraph report runs/<run> --profile tech-v2   # rebuild a run's report
+uv run themegraph run --period dev                      # -> runs/tech-v2-dev-<timestamp>/report.html
+uv run themegraph report runs/<run>                     # rebuild a run's report
+uv run themegraph run --period holdout --profile semis  # the holdout belongs to the pilot
 ```
 
 A non-default profile reads its own pipeline and universe files, keeps its forward

@@ -40,11 +40,56 @@ def _stamp(df: pd.DataFrame) -> pd.DataFrame:
     return df.assign(first_seen_at=pd.Timestamp.now(tz="UTC"))
 
 
+OVERLAP_DAYS = 45      # recent stretch re-downloaded and compared with what is stored
+MIN_OVERLAP = 5        # sessions that must be comparable to trust the stored history
+RESTATED_TOL = 1e-7    # relative difference that counts as a restated close
+
+
+def _reuse_history(old: pd.DataFrame, recent: pd.DataFrame,
+                   lo: dt.date) -> tuple[pd.DataFrame | None, str]:
+    """Stored history plus a fresh recent stretch, when the stored history is still
+    what the provider serves. Adjusted closes are restated for the whole history
+    after a split or dividend, so the recent stretch is compared with the stored
+    closes for the same days: if every one agrees, nothing was restated and the
+    older rows are reused; otherwise (None, why) and the caller downloads the full
+    history again."""
+    if old is None or not len(old):
+        return None, "not stored yet"
+    if not len(recent):
+        # Nothing new from the provider (a delisted company, or a failed request):
+        # keep what is stored; `price_gaps` reports a symbol that has gone quiet.
+        return old[[c for c in old.columns if c not in ("vintage", "first_seen_at")]], ""
+    day = pd.to_datetime(old["date"]).dt.tz_localize(None).dt.normalize()
+    new_day = pd.to_datetime(recent["date"]).dt.tz_localize(None).dt.normalize()
+    both = pd.merge(pd.DataFrame({"d": day.to_numpy(), "a": old["close"].to_numpy()}),
+                    pd.DataFrame({"d": new_day.to_numpy(), "b": recent["close"].to_numpy()}),
+                    on="d")
+    if len(both) < MIN_OVERLAP:
+        return None, "too little overlap with the stored history"
+    diff = (both["a"] - both["b"]).abs() / both["a"].abs().clip(lower=1e-12)
+    if (diff > RESTATED_TOL).any():
+        return None, "history restated (a split, dividend or correction)"
+    keep = old.loc[(day < pd.Timestamp(lo)).to_numpy(), recent.columns]
+    return pd.concat([keep, recent], ignore_index=True), ""
+
+
 def ingest_fmp_prices(client: F.FMPClient, cfg: PipelineConfig, universe: UniverseConfig,
                       store: Store, end: dt.date, log=_log,
-                      failed: dict | None = None) -> Path:
-    """`failed` (optional dict) is filled with symbol -> reason for every symbol
-    that returned no prices, so the caller can report them instead of only logging."""
+                      failed: dict | None = None, full: bool = False,
+                      info: dict | None = None) -> Path:
+    """Download prices and write one vintage holding every symbol's whole series.
+
+    Incremental by default: for a US-dollar symbol already stored, only the last
+    `OVERLAP_DAYS` are downloaded and compared with the stored closes. If they
+    agree the stored history is reused; if they differ the provider has restated
+    the series (a split, a dividend, a correction) and the full history is
+    downloaded again, so a corporate action is never missed and never mixed with
+    old adjusted prices. Symbols quoted in other currencies, and their exchange
+    rates, are always downloaded in full (their stored closes are converted, so the
+    comparison would not be like for like). `full=True` downloads everything.
+
+    `failed` (optional dict) is filled with symbol -> reason for every symbol that
+    returned no prices; `info` with counts of symbols reused, reloaded and why."""
     start = cfg.periods.start - dt.timedelta(days=400)  # warm-up for the first windows
     fx = {}
     for cur, pair in F.FX_PAIRS.items():
@@ -52,15 +97,31 @@ def ingest_fmp_prices(client: F.FMPClient, cfg: PipelineConfig, universe: Univer
             fx[cur] = F.normalise_prices(client.prices(pair, start, end), pair, cfg.availability)
     frames = []
     currency = {i.symbol: i.currency for i in universe.issuers}
-    bar = _bar(universe.benchmarks + [i.symbol for i in universe.issuers], "FMP prices",
-               "symbol")
+    symbols = universe.benchmarks + [i.symbol for i in universe.issuers]
+    stored = {}
+    if not full and store.vintages("prices"):
+        prev = store.read("prices", symbols=set(symbols))
+        stored = {s: g for s, g in prev.groupby("symbol")}
+    reused, reloaded = [], {}
+    bar = _bar(symbols, "FMP prices", "symbol")
     for sym in bar:
         bar.set_postfix_str(sym)
         try:
-            df = F.normalise_prices(client.prices(sym, start, end), sym, cfg.availability)
             cur = currency.get(sym, "USD")
-            if cur != "USD" and len(df):
-                df = F.to_usd(df, fx[cur])
+            df = None
+            if cur == "USD" and sym in stored:
+                last = pd.Timestamp(stored[sym]["date"].max()).date()
+                lo = max(start, last - dt.timedelta(days=OVERLAP_DAYS))
+                recent = F.normalise_prices(client.prices(sym, lo, end), sym, cfg.availability)
+                df, why = _reuse_history(stored[sym], recent, lo)
+                if df is None:
+                    reloaded[sym] = why
+                else:
+                    reused.append(sym)
+            if df is None:
+                df = F.normalise_prices(client.prices(sym, start, end), sym, cfg.availability)
+                if cur != "USD" and len(df):
+                    df = F.to_usd(df, fx[cur])
         except Exception as e:  # keep going; coverage report shows the gap
             log(f"  {sym}: {type(e).__name__}: {e}")
             if failed is not None:
@@ -72,7 +133,11 @@ def ingest_fmp_prices(client: F.FMPClient, cfg: PipelineConfig, universe: Univer
                 failed[sym] = "no prices returned"
             continue
         frames.append(df)
-        log(f"  {sym}: {len(df)} sessions")
+        log(f"  {sym}: {len(df)} sessions" + (f" (full: {reloaded[sym]})"
+                                              if sym in reloaded else ""))
+    if info is not None:
+        info.update(reused=len(reused), reloaded=reloaded,
+                    full=len(frames) - len(reused))
     return store.write("prices", _stamp(_combine(frames, "prices")), vintage_id())
 
 

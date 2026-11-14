@@ -145,7 +145,8 @@ def document_watermark(store, universe, min_share: float) -> dict:
     return out
 
 
-def ingest_step(kind: str, as_of: dt.date, log=print, profile: Profile | None = None) -> str:
+def ingest_step(kind: str, as_of: dt.date, log=print, profile: Profile | None = None,
+                full: bool = False) -> str:
     from .. import ingest as I
     from ..cli import DATA, _store
     from ..data.fmp import FMPClient
@@ -155,7 +156,16 @@ def ingest_step(kind: str, as_of: dt.date, log=print, profile: Profile | None = 
     client = FMPClient(DATA / "raw" / "fmp")
     if kind == "prices":
         failed: dict = {}
-        out = str(I.ingest_fmp_prices(client, cfg, u, store, as_of, failed=failed))
+        info: dict = {}
+        out = str(I.ingest_fmp_prices(client, cfg, u, store, as_of, failed=failed,
+                                      full=full, info=info))
+        # What was downloaded: stored history reused, or the full history again and
+        # why (a restated history is how a split or dividend shows up).
+        out += (f"; {info.get('reused', 0)} symbols updated from stored history, "
+                f"{info.get('full', 0)} downloaded in full")
+        if info.get("reloaded"):
+            out += " (" + "; ".join(f"{k}: {v}" for k, v in
+                                    sorted(info["reloaded"].items())[:25]) + ")"
         # A symbol the provider returned nothing for keeps its old prices: say so
         # here (status.json) instead of leaving it in the terminal log.
         return out if not failed else (
@@ -184,7 +194,7 @@ def refresh(state_dir: Path, site_dir: Path, *, fixtures: bool = False,
             as_of: dt.date | None = None, ingest_prices: bool = True,
             ingest_documents: bool | None = False, now: str | None = None, log=print,
             inputs_hook=None, namer=None, profile: Profile | None = None,
-            fork_state: Path | None = None) -> dict:
+            fork_state: Path | None = None, full_prices: bool = False) -> dict:
     """One refresh of `profile` (default: the semiconductor pilot). `fork_state`:
     where the registry to fork from lives, when the profile forks and has no
     registry yet (default: the source profile's state directory)."""
@@ -213,7 +223,8 @@ def refresh(state_dir: Path, site_dir: Path, *, fixtures: bool = False,
             steps[name]["seconds"] = round(time.perf_counter() - clock, 2)
 
     if not fixtures and ingest_prices:
-        run("ingest_prices", lambda: ingest_step("prices", as_of, log, profile))
+        run("ingest_prices", lambda: ingest_step("prices", as_of, log, profile,
+                                                 full=full_prices))
     why_docs = None
     if not fixtures and ingest_prices and ingest_documents is None:
         # Automatic: one command keeps prices and documents current, so themes are

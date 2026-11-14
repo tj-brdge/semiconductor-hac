@@ -1,4 +1,11 @@
-# Technology pilot v2
+# Technology pilot v2 (how the 127-company universe was chosen)
+
+> **Read this as history.** The "pilot" is now the monitor: since 2026-11-14 every
+> command uses this universe by default and there is one registry and one site
+> (docs/MONITOR.md, "Profiles"). This document records how the 51 added companies
+> were selected and what was tested when they were added. Where it describes two
+> monitors running side by side, fork mode, or commands with `--profile tech-v2`,
+> that is how it worked before; the current behaviour is in docs/MONITOR.md.
 
 A controlled expansion of the theme monitor from the semiconductor pilot toward the
 wider technology ecosystem. It runs as its own profile (`tech-v2`) beside the
