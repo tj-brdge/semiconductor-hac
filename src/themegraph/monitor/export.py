@@ -25,6 +25,7 @@ import pandas as pd
 
 from . import naming
 from .baskets import market_history
+from .network import network
 
 SCHEMA_VERSION = 1
 KEEP_RELEASES = 5
@@ -460,9 +461,11 @@ def publish(site: Path, docs: list[dict], meta: dict, mcfg,
     rel = site / "data" / "releases" / rel_id
     staging = site / "data" / "releases" / f".staging-{rel_id}"
     rows = [summary_row(d, mcfg.market.benchmarks[0]) for d in docs]
+    companies = company_index(docs, meta.get("company_sectors") or {})
     index = {"schema_version": SCHEMA_VERSION, "release": rel_id, **meta,
              "themes": rows, "lists": overview_lists(rows, mcfg, snapshots),
-             "companies": company_index(docs, meta.get("company_sectors") or {})}
+             "companies": companies,
+             "network": network(companies, docs, meta.get("market_clusters"))}
     index.pop("company_sectors", None)
     try:
         _dump(staging / "index.json", index)

@@ -423,6 +423,28 @@ right now. Prices only; it changes nothing in the registry and selects no theme.
   in `index.json` (`pool`, scipy-style `merges` as [left, right, correlation, size],
   `leaves` in tree order, `clusters`, `cut`).
 
+## Network (`monitor/network.py`)
+
+The dashboard's *Network* page draws the covered companies as points with two kinds
+of link, which can be switched on and off separately:
+- **Trading together** (solid): the pair's correlation beyond SPY over the last six
+  months is above the market-cluster cut, i.e. stronger than the strongest pair that
+  shuffled returns produce.
+- **Discussing the same theme** (dashed): both companies discuss the same active
+  theme this month; pairs sharing more themes are listed first.
+
+Positions are computed with the release (a small force-directed layout with a fixed
+seed), so the page has no layout code and a release always draws the same picture.
+Companies that sit close together are linked, directly or through others; distance
+means nothing else. Selecting a theme, a sector or a company highlights it and its
+links, and a company's panel lists its themes, the companies it trades with and
+those it shares themes with. Feed: `network` in `index.json` (`nodes` with `x`, `y`,
+`degree`, `cluster`, `themes`; `price_links`; `discussion_links`). It describes the
+latest window only and feeds no measure.
+
+The research report's multi-layer graph (`report.html` in a run directory) is a
+separate, historical view with a time slider; see "Research commands for another profile" in the README.
+
 ## Theme labels (`monitor/naming.py`)
 
 Topics are named by keywords ("ethernet · transceivers · enterprise"); readers get a
@@ -462,8 +484,8 @@ per-refresh cap). Fixture runs never call Claude.
 Plain HTML, CSS and two small ES modules; no framework, no build step and no
 third-party scripts, so the `site/` directory can be copied to any static host.
 Views: overview (emerging themes, headwinds and established themes as cards, one per
-family; relative-performance lists; cooling and inactive themes), market clusters
-(the stock-return HAC cut into groups), all themes (search, filters, sorting), a theme
+family; relative-performance lists; cooling and inactive themes), companies, the
+company network, market clusters (the stock-return HAC cut into groups), all themes (search, filters, sorting), a theme
 page (chart with ranges and keyboard/pointer readout, returns by period and basis,
 companies, evidence, disclosures for method, membership, names and diagnostics), and
 method & data (coverage, freshness, the last refresh's stages, release ID).

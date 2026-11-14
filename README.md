@@ -106,6 +106,22 @@ Raw responses land in `data/raw/` (content-hashed, never overwritten); normalise
 tables in `data/store/<table>/<vintage>.parquet`; embeddings are cached per model.
 `data/` and `runs/` are git-ignored.
 
+### Research commands for another profile
+
+`ingest`, `coverage`, `run`, `topics`, `forward` and `report` take `--profile`
+(default `semis`, whose files, run names and prediction log are unchanged):
+
+```
+uv run themegraph run --period dev --profile tech-v2    # -> runs/tech-v2-dev-<timestamp>/report.html
+uv run themegraph report runs/<run> --profile tech-v2   # rebuild a run's report
+```
+
+A non-default profile reads its own pipeline and universe files, keeps its forward
+predictions in `forward-<profile>/`, and records the profile in the run manifest.
+The holdout protocol belongs to the semiconductor pilot: `--period holdout` is
+refused for other profiles. `docs/MONITOR.md` ("Network") says how this report's
+graph differs from the dashboard's live network.
+
 ### Refreshing data
 
 Re-run the same `ingest` commands. Data that providers revise or extend (adjusted
