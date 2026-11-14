@@ -258,12 +258,45 @@ and the release goes out with earlier or automatic labels.
 
 A rerun with the same data changes nothing in the registry.
 
+**Month-end completeness.** Prices and themes can be refreshed daily but documents
+are downloaded less often, and history is append-only: a month-end processed before
+its documents were downloaded would stay incomplete for good. So a month-end `t` is
+processed only when the documents were downloaded at or after `t` +
+`completeness.settle_days` (5):
+- The **document watermark** is the time of the latest download of each document
+  source (transcripts, EDGAR filings) that covers at least 90% of this profile's
+  companies that have documents in that source; the earlier of the sources counts,
+  so both must have been downloaded. A partial batch, or another profile's smaller
+  download in the shared store, does not move it.
+- Until then the month-end is **pending**, with every later one. The refresh still
+  succeeds and still publishes the daily price update, but themes stop at the last
+  processed month-end, and `status.json` and the release list `pending_snapshots`
+  with the reason and the date a download is needed after. The dashboard shows a
+  notice. A pending month-end is processed by the first refresh after a qualifying
+  download (`--documents`), also with `--no-ingest`; the first build follows the
+  same rule, so its latest month-end may wait.
+- A failed download fails the refresh: later steps are skipped, nothing is
+  processed or published.
+- Each processed month-end records `processed_at` and the watermark it was built
+  from (`snapshot_meta`).
+- **Late documents.** A document eligible for a processed month-end but first
+  downloaded after it was processed is not added to that month-end. It is counted
+  in `late_documents` (status and release, by month-end, with the companies), and
+  it is used by every later month-end whose 180-day window still contains it.
+- **What this does not prove.** No provider reports that a month is complete. The
+  rule is a settling period plus evidence that a download was made after it; a
+  transcript published later than that still arrives late and is reported as such.
+  Fixture data carries no download record and is treated as complete.
+
 **Suggested schedule.** Credentials stay in the job's environment (`FMP_API_KEY`,
 `VOYAGE_API_KEY`, the SEC user agent) and are never written to the site.
 ```
 30 22 * * 1-5  cd /path/to/semiconductor-hac && themegraph monitor refresh ; <sync site/>
 0  6  * * 6    cd /path/to/semiconductor-hac && themegraph monitor refresh --documents ; <sync site/>
 ```
+With documents downloaded on Saturdays, a month-end is processed on the first
+Saturday at least five days after it (between 5 and 11 days late); add a
+`--documents` run on the 6th of each month to make that a fixed five days.
 Sync with `;`, not `&&`: a failed refresh exits 1, and the site still has to be
 uploaded so that visitors see the new `status.json` (the failure notice) next to
 the unchanged last good release.
@@ -342,11 +375,24 @@ time the condition is met at a month-end processed live (`headwind_log`,
 
 ```
 themegraph monitor forward [--profile P]             # progress: counts only, no returns
-themegraph monitor forward --read headwind           # the one read, when 20 events are complete
+themegraph monitor forward --read headwind           # the one read, when 20 outcomes are usable
 ```
 
-The Method page shows the same progress table (`forward_tests` in `index.json`) and,
-once a test is read, its stored result. A rebuild from scratch starts new, empty
+- **Ready** means 20 counted events with a completed 126-session window and a
+  primary outcome that can be computed; completed windows without one are listed
+  with the reason (for example, no benchmark price) and do not count.
+- **A read** stores the raw result once: valid outcomes, exact ties, the non-tied
+  outcomes the sign test uses, the wins among those, the median and the nominal
+  one-sided p-value. It never changes afterwards.
+- **Supported or not** is decided only by Holm's correction across the three
+  primary p-values, derived when all three tests have been read. Until then every
+  p-value is shown as nominal and unadjusted and no claim is called supported.
+- **Independence.** The sign test treats counted events as independent. The overlap
+  rule removes events sharing half their companies within the window; baskets that
+  share fewer companies, a sector or the same market months remain related, and the
+  correction for three tests does not address that.
+
+The Method page shows the same table and wording (`forward_tests` in `index.json`). A rebuild from scratch starts new, empty
 logs: events are only ever logged by live refreshes, so keep the state directory
 once the monitor is live (a rebuilt registry cannot recover them).
 
