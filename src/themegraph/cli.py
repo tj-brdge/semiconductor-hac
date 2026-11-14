@@ -19,6 +19,20 @@ def _store():
     return Store(DATA / "store")
 
 
+def _research(a):
+    """(pipeline config, universe, profile) for a research command. The default
+    profile is the semiconductor pilot, whose files and results are unchanged; any
+    other profile reads its own pipeline and universe files (config/profiles)."""
+    from .monitor.profiles import DEFAULT, load_profile
+    prof = load_profile(getattr(a, "profile", None) or DEFAULT)
+    return load_pipeline(prof.pipeline), load_universe(prof.universe), prof
+
+
+def _is_default(prof) -> bool:
+    from .monitor.profiles import DEFAULT
+    return prof.name == DEFAULT
+
+
 def cmd_demo(a):
     from . import pipeline as P
     from . import synthetic as S
@@ -42,7 +56,7 @@ def cmd_demo(a):
 
 def cmd_ingest(a):
     from . import ingest as I
-    cfg, u = load_pipeline(), load_universe()
+    cfg, u, _ = _research(a)
     end = dt.date.fromisoformat(a.end) if a.end else dt.date.today()
     store = _store()
     if a.source == "edgar":
@@ -62,7 +76,7 @@ def cmd_ingest(a):
 
 def cmd_coverage(a):
     from .ingest import coverage
-    df = coverage(_store(), load_universe())
+    df = coverage(_store(), _research(a)[1])
     print(df.to_string(index=False))
 
 
@@ -74,7 +88,10 @@ def cmd_run(a):
     from .report.build import build_report
     from .text.embed import make_embedder
 
-    cfg, u = load_pipeline(), load_universe()
+    cfg, u, prof = _research(a)
+    if a.period == "holdout" and not _is_default(prof):
+        sys.exit("the holdout protocol belongs to the semiconductor pilot; other profiles "
+                 "run the development period only")
     overrides = {}
     if a.topic_mode and a.topic_mode != cfg.text.topic_mode:
         if a.period != "dev":
@@ -92,7 +109,8 @@ def cmd_run(a):
     prices, docs, factors = I.load_prices(store, up, u), I.load_documents(store, up, u), \
         I.load_factors(store, cfg, up)
     tag = f"-{a.topic_mode}" if overrides else ""
-    out = Path(a.out or RUNS / f"{a.period}{tag}-{dt.datetime.now(dt.UTC):%Y%m%dT%H%M%SZ}")
+    name = "" if _is_default(prof) else f"{prof.name}-"
+    out = Path(a.out or RUNS / f"{name}{a.period}{tag}-{dt.datetime.now(dt.UTC):%Y%m%dT%H%M%SZ}")
     inputs = {
         **P.input_bindings(prices, docs, observed=False),
         "vintages": dict(store.used),
@@ -103,6 +121,8 @@ def cmd_run(a):
     }
     if overrides:
         inputs["config_overrides"] = overrides
+    if not _is_default(prof):
+        inputs["profile"] = prof.name  # the default profile's manifests are unchanged
     if a.period == "holdout" and not a.verify_identical:
         attempt = begin_holdout(inputs, a.new_attempt_reason)
     ctx = P.build(prices, docs, cfg, u, make_embedder(cfg.embedding), DATA / "cache",
@@ -120,7 +140,8 @@ def cmd_run(a):
             print("holdout verified: identical inputs and outputs")
         else:
             complete_holdout(attempt, outputs)
-    print("report:", build_report(out, u, f"Theme graph · {a.period}"))
+    title = f"Theme graph · {a.period}" + ("" if _is_default(prof) else f" · {prof.name}")
+    print("report:", build_report(out, u, title))
 
 
 def cmd_topics(a):
@@ -132,7 +153,7 @@ def cmd_topics(a):
     from .data.pit import snapshot_ts
     from .text.embed import make_embedder
 
-    cfg = load_pipeline()
+    cfg, u, _ = _research(a)
     late = [d for d in a.dates if pd.Timestamp(d).date() > cfg.periods.dev_end]
     if late:
         if not a.allow_holdout_dates:
@@ -142,7 +163,7 @@ def cmd_topics(a):
         from .eval.freeze import _append
         _append(ROOT, {"event": "holdout_topic_inspection", "dates": late,
                        "note": "holdout topics inspected before evaluation: not clean"})
-    docs = I.load_documents(_store(), universe=load_universe())
+    docs = I.load_documents(_store(), universe=u)
     # Embed only what the sample windows need (each window plus the novelty filter's
     # lookback); eligibility is still decided on the full history, as in a run.
     from .text.novelty import LOOKBACK_DAYS
@@ -287,9 +308,10 @@ def cmd_forward(a):
     from . import ingest as I
     from .text.embed import make_embedder
 
-    cfg, u = load_pipeline(), load_universe()
+    cfg, u, prof = _research(a)
     store = _store()
-    out = ROOT / "forward"
+    # Each profile keeps its own prediction log; the pilot's stays where it was.
+    out = ROOT / ("forward" if _is_default(prof) else f"forward-{prof.name}")
     if a.action == "predict":
         cutoff = dt.date.fromisoformat(a.cutoff) if a.cutoff else dt.date.today()
         # Only vintages downloaded by the end of the cutoff day: replaying an earlier
@@ -326,7 +348,7 @@ def cmd_labels(a):
 
 def cmd_report(a):
     from .report.build import build_report
-    print(build_report(Path(a.run_dir), load_universe()))
+    print(build_report(Path(a.run_dir), _research(a)[1]))
 
 
 def main(argv=None):
@@ -342,8 +364,12 @@ def main(argv=None):
     s.add_argument("--vintage", help="snapshot date (YYYY-MM-DD) for data that changes over "
                    "time; default today. Reuse a past date to rebuild from that snapshot "
                    "without downloading")
+    s.add_argument("--profile", default="semis",
+                   help="configuration profile in config/profiles (default: semis)")
     s.set_defaults(fn=cmd_ingest)
     s = sub.add_parser("coverage", help="per-issuer data coverage")
+    s.add_argument("--profile", default="semis",
+                   help="configuration profile in config/profiles (default: semis)")
     s.set_defaults(fn=cmd_coverage)
     s = sub.add_parser("run", help="build layers, candidates, evaluation and report")
     s.add_argument("--period", choices=["dev", "holdout"], default="dev")
@@ -357,6 +383,8 @@ def main(argv=None):
     s.add_argument("--topic-mode", choices=["window", "anchored"],
                    help="development runs only: override text.topic_mode to compare "
                    "methods; recorded in the manifest")
+    s.add_argument("--profile", default="semis",
+                   help="configuration profile in config/profiles (default: semis)")
     s.set_defaults(fn=cmd_run)
     s = sub.add_parser("topics", help="print topics for sample windows (calibration)")
     s.add_argument("--dates", nargs="+", default=["2016-06-30"])
@@ -364,10 +392,14 @@ def main(argv=None):
     s.add_argument("--top", type=int, default=12)
     s.add_argument("--allow-holdout-dates", action="store_true",
                    help="inspect dates after dev_end; logged as holdout contamination")
+    s.add_argument("--profile", default="semis",
+                   help="configuration profile in config/profiles (default: semis)")
     s.set_defaults(fn=cmd_topics)
     s = sub.add_parser("forward", help="as-of prediction log (predict) and outcomes")
     s.add_argument("action", choices=["predict", "outcomes"])
     s.add_argument("--cutoff", help="prediction date YYYY-MM-DD (default today)")
+    s.add_argument("--profile", default="semis",
+                   help="configuration profile in config/profiles (default: semis)")
     s.set_defaults(fn=cmd_forward)
     s = sub.add_parser("adjudicate", help="write/refresh a run's adjudication worksheet")
     s.add_argument("run_dir")
@@ -420,6 +452,8 @@ def main(argv=None):
     s.set_defaults(fn=cmd_labels)
     s = sub.add_parser("report", help="rebuild report.html for a run directory")
     s.add_argument("run_dir")
+    s.add_argument("--profile", default="semis",
+                   help="configuration profile in config/profiles (default: semis)")
     s.set_defaults(fn=cmd_report)
     a = p.parse_args(argv)
     a.fn(a)

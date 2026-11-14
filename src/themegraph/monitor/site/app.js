@@ -4,6 +4,7 @@
 //   #/themes      all themes: search, filters, sorting
 //   #/theme/<id>  one theme: chart, returns, companies, evidence, history
 //   #/companies   every company and the themes it belongs to
+//   #/network     companies linked by price co-movement and by shared themes
 //   #/clusters    market clusters: the stock-return HAC cut into groups
 //   #/method      method, coverage, freshness, release details
 import { fmtDate, lineChart, sparkline } from "./chart.js";
@@ -729,6 +730,99 @@ function companiesPage(params) {
   draw();
 }
 
+// -- network -----------------------------------------------------------------------------
+// Companies as dots, two kinds of link: trading together (solid) and discussing the
+// same theme (dashed). Positions come with the release (monitor/network.py), so the
+// same release always draws the same picture. Selecting a theme, a sector or a
+// company highlights it; identity is never carried by colour alone.
+function networkPage() {
+  const net = S.index.network;
+  if (!net || !net.nodes?.length) {
+    $("#main").innerHTML = `<section class="intro"><h1>Network</h1></section>${notices()}<p class="empty">Not available in this release.</p>`;
+    return;
+  }
+  const sectors = [...new Set(net.nodes.map((n) => n.sector).filter(Boolean))].sort();
+  const themes = S.index.themes.filter((r) => !["inactive", "merged"].includes(r.status))
+    .sort((a, b) => a.title.localeCompare(b.title));
+  const opts = (list) => list.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("");
+  $("#main").innerHTML = `
+    <section class="intro"><h1>Company network</h1>
+      <p class="lede">How the monitored companies connect: by trading together, and by talking about the same themes.</p>
+      <p class="muted small">${net.price_links.length} price links${net.price_cut != null ? ` (correlation beyond ${esc(net.window.index)} above ${net.price_cut.toFixed(2)}, ${esc(fmtDate(net.window.start))} – ${esc(fmtDate(net.window.end))})` : ""} and ${net.discussion_links.length} discussion links (both companies discuss the same active theme this month). Companies that sit close together are linked, directly or through others; distance has no other meaning.</p></section>
+    ${notices()}
+    <section class="panel">
+      <form class="controls" onsubmit="return false">
+        <label class="check"><input type="checkbox" id="n-price" checked> <i class="key" style="border-top-color:var(--series-1);border-top-width:2px"></i>Trading together</label>
+        <label class="check"><input type="checkbox" id="n-disc" checked> <i class="key dash" style="border-top-color:var(--series-2);border-top-width:2px"></i>Discussing the same theme</label>
+        <label class="field">Highlight a theme<select id="n-theme">${opts([["", "None"], ...themes.map((t) => [t.id, t.title])])}</select></label>
+        <label class="field">Highlight a sector<select id="n-sector">${opts([["", "None"], ...sectors.map((s) => [s, s])])}</select></label>
+        <label class="check"><input type="checkbox" id="n-labels"> Show every ticker</label>
+      </form>
+      <div class="net-wrap"><div id="net" class="net"></div><aside id="net-info" class="net-info" aria-live="polite"></aside></div>
+      <p class="small muted">Click or focus a company to see its links; the <a href="#/companies">Companies</a> page has the same memberships as a table.</p>
+    </section>`;
+  const by = Object.fromEntries(net.nodes.map((n) => [n.symbol, n]));
+  const nb = {}; // symbol -> {price: [[other, corr]], disc: [[other, themes]]}
+  net.nodes.forEach((n) => { nb[n.symbol] = { price: [], disc: [] }; });
+  net.price_links.forEach((e) => { nb[e.a].price.push([e.b, e.corr]); nb[e.b].price.push([e.a, e.corr]); });
+  net.discussion_links.forEach((e) => { nb[e.a].disc.push([e.b, e.themes]); nb[e.b].disc.push([e.a, e.themes]); });
+  let picked = null;
+  const host = $("#net");
+  const draw = () => {
+    host.textContent = "";
+    const W = Math.max(host.clientWidth, 300), small = narrowNet(W);
+    const H = Math.round(small ? W * 1.25 : Math.min(Math.max(W * 0.72, 380), 760)), pad = 28;
+    const X = (n) => pad + n.x * (W - 2 * pad), Y = (n) => pad + n.y * (H - 2 * pad);
+    const svg = svgEl("svg", { width: W, height: H, viewBox: `0 0 ${W} ${H}`, class: "netsvg", role: "group",
+      "aria-label": `Network of ${net.nodes.length} companies. Each company is a focusable point; the Companies page lists the same memberships as a table.` }, host);
+    const showP = $("#n-price").checked, showD = $("#n-disc").checked;
+    const theme = $("#n-theme").value, sector = $("#n-sector").value, all = $("#n-labels").checked;
+    const lit = new Set();
+    if (picked) { lit.add(picked); if (showP) nb[picked].price.forEach(([o]) => lit.add(o)); if (showD) nb[picked].disc.forEach(([o]) => lit.add(o)); }
+    net.nodes.forEach((n) => { if ((theme && n.themes.includes(theme)) || (sector && n.sector === sector)) lit.add(n.symbol); });
+    const focus = picked || theme || sector;
+    const edge = (e, cls) => {
+      const a = by[e.a], b = by[e.b];
+      const on = picked ? (e.a === picked || e.b === picked) : theme ? (cls === "d" && e.themes.includes(theme)) || (cls === "p" && lit.has(e.a) && lit.has(e.b)) : sector ? lit.has(e.a) && lit.has(e.b) : true;
+      svgEl("line", { x1: X(a), y1: Y(a), x2: X(b), y2: Y(b), class: `ne ${cls}${focus ? (on ? " on" : " off") : ""}` }, svg);
+    };
+    if (showD) net.discussion_links.forEach((e) => edge(e, "d"));
+    if (showP) net.price_links.forEach((e) => edge(e, "p"));
+    const maxDeg = Math.max(1, ...net.nodes.map((n) => n.degree));
+    const labelCut = [...net.nodes].sort((a, b) => b.degree - a.degree)[Math.min(net.nodes.length - 1, narrowNet(W) ? 14 : 34)].degree;
+    net.nodes.forEach((n) => {
+      const on = !focus || lit.has(n.symbol);
+      const g = svgEl("g", { class: `nn${on ? "" : " off"}${n.symbol === picked ? " picked" : ""}`, tabindex: "0", role: "button",
+        "aria-label": `${n.symbol}, ${n.sector || "no sector"}, ${n.themes.length} themes, ${nb[n.symbol].price.length} price links` }, svg);
+      svgEl("circle", { cx: X(n), cy: Y(n), r: (small ? 3 : 4) + (small ? 3 : 5) * Math.sqrt(n.degree / maxDeg) }, g);
+      if (all || (focus ? lit.has(n.symbol) : n.degree >= labelCut)) {
+        const t = svgEl("text", { x: X(n), y: Y(n) - 9 - 5 * Math.sqrt(n.degree / maxDeg), "text-anchor": "middle" }, g);
+        t.textContent = n.symbol;
+      }
+      svgEl("title", {}, g).textContent = `${n.symbol}${n.sector ? ` · ${n.sector}` : ""}`;
+      const pick = () => { picked = picked === n.symbol ? null : n.symbol; draw(); info(); host.querySelector(".nn.picked")?.focus(); };
+      g.addEventListener("click", pick);
+      g.addEventListener("keydown", (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); pick(); } });
+    });
+  };
+  const info = () => {
+    const box = $("#net-info");
+    if (!picked) { box.innerHTML = `<p class="muted small">Select a company to see what it is linked to.</p>`; return; }
+    const n = by[picked];
+    const price = [...nb[picked].price].sort((a, b) => b[1] - a[1]);
+    const disc = [...nb[picked].disc].sort((a, b) => b[1].length - a[1].length);
+    box.innerHTML = `<h3 class="mono">${esc(n.symbol)}</h3><p class="small muted">${esc(n.sector || "")}${n.cluster ? ` · <a href="#/clusters">market cluster ${n.cluster}</a>` : ""}</p>
+      <h4>Themes (${n.themes.length})</h4>${n.themes.length ? `<ul class="plain">${n.themes.map((id) => `<li><a href="#/theme/${esc(id)}">${esc(S.byId[id]?.title || id)}</a></li>`).join("")}</ul>` : `<p class="small muted">In no active theme.</p>`}
+      <h4>Trades with (${price.length})</h4>${price.length ? `<p class="small">${price.slice(0, 12).map(([o, c]) => `<span class="mono">${esc(o)}</span> ${c.toFixed(2)}`).join(" · ")}${price.length > 12 ? ` · +${price.length - 12}` : ""}</p>` : `<p class="small muted">No price link above the cut.</p>`}
+      <h4>Discusses the same themes as (${disc.length})</h4>${disc.length ? `<p class="small">${disc.slice(0, 16).map(([o, th]) => `<span class="mono">${esc(o)}</span>${th.length > 1 ? ` ×${th.length}` : ""}`).join(" · ")}${disc.length > 16 ? ` · +${disc.length - 16}` : ""}</p>` : `<p class="small muted">None this month.</p>`}`;
+  };
+  ["n-price", "n-disc", "n-theme", "n-sector", "n-labels"].forEach((id) => $("#" + id).addEventListener("change", () => { if (id === "n-theme" || id === "n-sector") picked = null; draw(); info(); }));
+  let w = host.clientWidth;
+  window.addEventListener("resize", () => { if ($("#net") === host && host.clientWidth !== w) { w = host.clientWidth; draw(); } });
+  draw(); info();
+}
+const narrowNet = (w) => w < 560;
+
 // -- market clusters ---------------------------------------------------------------------
 const SVGNS = "http://www.w3.org/2000/svg";
 function svgEl(tag, attrs, parent) {
@@ -855,6 +949,7 @@ async function route() {
   if (path === "/themes") { setNav("themes"); allThemes(new URLSearchParams(query || "")); }
   else if (path === "/method") { setNav("method"); method(); }
   else if (path === "/clusters") { setNav("clusters"); clustersPage(); }
+  else if (path === "/network") { setNav("network"); networkPage(); }
   else if (path === "/companies") { setNav("companies"); companiesPage(new URLSearchParams(query || "")); }
   else { setNav("overview"); overview(); }
   if (token === S.nav && !location.hash.includes("#coverage") && !location.hash.includes("#freshness")) window.scrollTo(0, 0);

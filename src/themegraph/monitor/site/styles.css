@@ -379,3 +379,27 @@ table.companies td, table.companies th { padding: 10px 14px; vertical-align: top
 .ctag.held { background: var(--teal-bg); border-color: var(--teal); color: var(--ink); }
 .ctag:hover { border-color: var(--ink-2); }
 .ctag .pc { font-size: .72rem; color: var(--muted); }
+
+/* Network */
+.net-wrap { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 18px; align-items: start; }
+.net { min-width: 0; border: 1px solid var(--line); border-radius: var(--radius); background: var(--page); overflow: hidden; }
+.netsvg { display: block; }
+.ne { stroke-width: 1; }
+.ne.p { stroke: var(--series-1); opacity: .55; stroke-width: 1.4; }
+.ne.d { stroke: var(--series-2); opacity: .28; stroke-dasharray: 3 3; }
+.ne.on { opacity: .95; stroke-width: 2; }
+.ne.off { opacity: .05; }
+.nn { cursor: pointer; }
+.nn circle { fill: var(--surface); stroke: var(--ink); stroke-width: 1.5; }
+.nn text { font: 600 10.5px var(--mono); fill: var(--ink); paint-order: stroke; stroke: var(--page); stroke-width: 3px; }
+.nn.off circle { stroke: var(--line-strong); }
+.nn.off text { display: none; }
+.nn.picked circle { fill: var(--ink); }
+.nn:hover circle, .nn:focus circle { stroke-width: 3; }
+.nn:focus { outline: none; }
+.net-info { font-size: .9rem; display: grid; gap: 6px; align-content: start; }
+.net-info h3 { font-size: 1.2rem; }
+.net-info h4 { font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 8px 0 0; }
+.net-info .plain { margin: 0; padding-left: 16px; }
+@media (max-width: 860px) { .net-wrap { grid-template-columns: minmax(0, 1fr); } }
+@media (forced-colors: active) { .nn circle { stroke: CanvasText; } .ne { stroke: GrayText; } }

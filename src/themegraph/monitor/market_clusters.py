@@ -34,6 +34,8 @@ from scipy.spatial.distance import squareform
 from .baskets import PriceBook
 from .comovement import _window
 
+MAX_LINKS = 600
+
 
 def _residuals(R, m) -> np.ndarray:
     x = R.to_numpy(dtype=float)
@@ -87,6 +89,12 @@ def market_clusters(book: PriceBook, universe, baskets: dict[str, list[str]],
                          "sectors": dict(sorted(secs.items(), key=lambda kv: -kv[1])),
                          "themes": [{"id": t, "shared": k} for t, k in themes]})
     member_of = {s: c["id"] for c in clusters for s in c["members"]}
+    # Pairs whose own correlation beats the cut (the network page's price links),
+    # strongest first; the cut is familywise, so these are few by construction.
+    iu = np.triu_indices(len(pool), 1)
+    strong = np.flatnonzero(C[iu] >= level)
+    strong = strong[np.argsort(-C[iu][strong], kind="stable")][:MAX_LINKS]
+    links = [[pool[iu[0][k]], pool[iu[1][k]], round(float(C[iu][k]), 4)] for k in strong]
     return {"available": True, "index": index, "window_sessions": window_sessions,
             "start": w["start"], "end": w["end"], "shrinkage": round(w["shrinkage"], 3),
             "cut": {"corr": round(level, 4), "alpha": alpha, "draws": draws,
@@ -96,6 +104,6 @@ def market_clusters(book: PriceBook, universe, baskets: dict[str, list[str]],
                         "cluster": member_of.get(pool[k])} for k in order],
             # merges: [left, right, corr at which they join, size]; ids < n are
             # companies (index into `pool` order), n + i is merge i, as in scipy.
-            "pool": pool,
+            "pool": pool, "links": links,
             "merges": [[int(a), int(b), round(1.0 - float(h), 4), int(c)] for a, b, h, c in Z],
             "clusters": clusters}
