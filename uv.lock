@@ -902,6 +902,7 @@ name = "themegraph"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "anthropic" },
     { name = "duckdb" },
     { name = "httpx" },
     { name = "numpy" },
@@ -914,11 +915,6 @@ dependencies = [
     { name = "tqdm" },
 ]
 
-[package.optional-dependencies]
-review = [
-    { name = "anthropic" },
-]
-
 [package.dev-dependencies]
 dev = [
     { name = "pytest" },
@@ -927,7 +923,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "anthropic", marker = "extra == 'review'", specifier = ">=1.0" },
+    { name = "anthropic", specifier = ">=1.0" },
     { name = "duckdb", specifier = ">=1.0" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "numpy", specifier = ">=1.26" },

@@ -484,7 +484,10 @@ def _labels(reg: Registry, d: dict, mcfg: MonitorConfig, now: str, namer, log) -
             namer = naming.ClaudeNamer(mcfg.labels.model)
         except Exception as e:  # noqa: BLE001 - no SDK or no credentials
             if mcfg.labels.writer == "claude":
-                out["labels"] = f"Claude labels unavailable ({type(e).__name__}: {e})"
+                out["labels"] = (f"Claude labels unavailable ({type(e).__name__}: {e}). "
+                                 "Titles are keywords until this is fixed: run `uv sync` "
+                                 "(or `pip install -e .`) for the anthropic package and "
+                                 "set ANTHROPIC_API_KEY where the refresh runs")
     try:
         sectors = coverage(d, mcfg).sector
         c = naming.apply_labels(reg.published(), sectors, namer, now=now,
