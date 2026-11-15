@@ -30,7 +30,15 @@ import yaml
 LABELS = Path(__file__).resolve().parents[3] / "config" / "theme_labels.yaml"
 DEFAULT_MODEL = "claude-opus-5-5"
 MAX_QUOTES = 10
-TITLE_WORDS = 9
+TITLE_WORDS = 9        # what the prompt asks for
+# What is accepted: on real data (2026-11-15) 22 of 120 answers were good titles of
+# ten to twelve words, thrown away for one or two words over the asked length.
+TITLE_MAX_WORDS = 12
+# Bumped when the acceptance checks change: an answer rejected only for its title
+# length under earlier checks is asked for again once.
+CHECK_VERSION = 2
+TOO_LONG = "title missing or too long"
+ACTIVE = ("new", "stable", "strengthening", "cooling")
 # Bumped when the instructions change: themes labelled by Claude under an earlier
 # version are labelled again once (kept in label_history), others are left alone.
 PROMPT_VERSION = 2
@@ -184,11 +192,12 @@ def checked(th: dict, answer: dict, model: str) -> dict:
         problems.append("fewer than two cited passages from two companies")
     if len(cited) < len(answer.get("evidence", [])):
         problems.append("cited passages it was not shown")
-    if not title or len(title.split()) > TITLE_WORDS:
-        problems.append("title missing or too long")
+    if not title or len(title.split()) > TITLE_MAX_WORDS:
+        problems.append(TOO_LONG)
     if problems:
         lab = keyword_label(th)
         lab.update(status="ambiguous", note="; ".join(problems), model=model,
+                   check_version=CHECK_VERSION,
                    rejected={"title": title, "summary": answer.get("summary")})
         return lab
     return {"title": title, "summary": " ".join(str(answer["summary"]).split()),
@@ -198,11 +207,29 @@ def checked(th: dict, answer: dict, model: str) -> dict:
 
 def needs_label(th: dict, writer_available: bool = False) -> bool:
     """No label, keywords drifted since it was written, or only an automatic label
-    while a writer is available (an ambiguous verdict is not retried)."""
+    while a writer is available. An ambiguous verdict is not retried, except one
+    rejected only for title length under earlier checks (once)."""
     lab = th.get("label")
     return lab is None or lab.get("for_name") != th["name"] or (
         writer_available and (lab.get("status") == "automatic" or (
-            lab.get("source") == "claude" and lab.get("prompt_version") != PROMPT_VERSION)))
+            lab.get("source") == "claude" and lab.get("prompt_version") != PROMPT_VERSION)
+            or (lab.get("status") == "ambiguous" and lab.get("note") == TOO_LONG
+                and lab.get("check_version") != CHECK_VERSION)))
+
+
+def _priority(th: dict):
+    """Themes a reader sees first are labelled first: active before inactive or
+    merged, then the most recently published. With a limit per refresh, labelling
+    in registry order spent every call on the oldest (mostly inactive) themes."""
+    return (th.get("status") not in ACTIVE, -_stamp(th.get("published_snapshot")
+                                                    or th.get("first_seen")))
+
+
+def _stamp(v) -> float:
+    try:
+        return dt.datetime.fromisoformat(str(v).replace("Z", "+00:00")).timestamp()
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def apply_labels(themes: list[dict], sectors: dict[str, str], namer=None,
@@ -215,7 +242,7 @@ def apply_labels(themes: list[dict], sectors: dict[str, str], namer=None,
     now = now or _now()
     counts = {"curated": 0, "claude": 0, "ambiguous": 0, "keywords": 0, "errors": {}}
     calls = 0
-    for th in themes:
+    for th in sorted(themes, key=_priority):
         cur = curated.get(th["id"])
         if cur is not None:
             if (th.get("label") or {}).get("source") == "curated" and \
@@ -237,7 +264,10 @@ def apply_labels(themes: list[dict], sectors: dict[str, str], namer=None,
                 lab = keyword_label(th)
         else:
             # No writer available (or over this refresh's limit): a label written for
-            # earlier keywords would describe a topic that has since drifted.
+            # earlier keywords would describe a topic that has since drifted. One
+            # written for the current keywords is kept until its turn comes.
+            if (th.get("label") or {}).get("for_name") == th["name"]:
+                continue
             lab = keyword_label(th)
         old = th.get("label") or {}
         if all(old.get(k) == lab.get(k) for k in ("title", "summary", "source", "status",

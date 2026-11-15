@@ -487,7 +487,7 @@ the first source that applies:
    (`th-00004: {title: ..., summary: ..., by: ...}`). For human corrections.
 2. **Claude:** written from the theme's quoted passages, on the machine that runs
    the refresh (`ANTHROPIC_API_KEY` in the job's environment; never in the browser). Claude must cite at least two passages from
-   two companies among those it was shown, keep the title to 8 words, describe
+   two companies among those it was shown, keep the title to 12 words, describe
    discussion rather than stocks, and may answer that the evidence is ambiguous.
    An answer that fails any check is not used.
 3. **Automatic:** a title from the top three keywords and a factual summary (how
@@ -505,6 +505,18 @@ Titles are asked to say what the subject is and what is happening to it in four 
 nine words, and the summary's first sentence to say what the companies are
 discussing (`PROMPT_VERSION` 2, 2026-11-14). Themes labelled by Claude under an
 earlier version are labelled again once; curated labels are never replaced.
+
+Changed 2026-11-15, after the first feed from live data (433 published themes, 31
+active; 120 answers, 40 not used, 22 of those only for a title of ten to twelve
+words):
+- **Order:** active themes are labelled first, then the most recently published.
+  Before, labels were written in registry order, so each refresh's 40 calls went to
+  the oldest, mostly inactive themes and no active theme had a written title.
+- **Title length:** the prompt still asks for four to nine words; up to twelve are
+  accepted. An answer rejected only for length under the earlier check is asked for
+  again once. A mixed-subject verdict stays final.
+- **Over the limit:** a label already written for a theme's current keywords is kept
+  until its turn comes (it was being replaced by a keyword label).
 
 A label is written once per theme and keyword name, so reruns make no calls; a
 theme whose keywords drift (the registry renames it) gets a new one. Every label is
