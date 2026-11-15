@@ -467,6 +467,16 @@ latest window only and feeds no measure.
 The research report's multi-layer graph (`report.html` in a run directory) is a
 separate, historical view with a time slider; see "Research commands for another profile" in the README.
 
+## Theme feed (`monitor/feed.py`)
+
+`themegraph monitor feed` writes `<state>/themes_feed.md`: every published theme
+with its title and where the title came from, summary, keywords, companies, tone
+and three quoted passages. The top says how titles are being written on this
+machine (package installed, key set, the last refresh's labels warning) and how
+many are written, automatic or rejected, with the reason for each rejection. It
+is the file to hand to a reviewer. Text only: no price or return is read, and no
+credential is written.
+
 ## Theme labels (`monitor/naming.py`)
 
 Topics are named by keywords ("ethernet · transceivers · enterprise"); readers get a
@@ -476,8 +486,7 @@ the first source that applies:
 1. **Curated:** `config/theme_labels.yaml`, by theme ID
    (`th-00004: {title: ..., summary: ..., by: ...}`). For human corrections.
 2. **Claude:** written from the theme's quoted passages, on the machine that runs
-   the refresh (`pip install -e '.[review]'` and `ANTHROPIC_API_KEY` in the job's
-   environment; never in the browser). Claude must cite at least two passages from
+   the refresh (`ANTHROPIC_API_KEY` in the job's environment; never in the browser). Claude must cite at least two passages from
    two companies among those it was shown, keep the title to 8 words, describe
    discussion rather than stocks, and may answer that the evidence is ambiguous.
    An answer that fails any check is not used.
@@ -485,8 +494,10 @@ the first source that applies:
    many companies, which sectors, which kind of text). It claims no thesis, and the
    page says it is automatic.
 
-To turn written labels on: `pip install -e '.[review]'` and set `ANTHROPIC_API_KEY`
-in the environment of the machine that runs the refresh. `labels.writer: claude`
+To turn written labels on: set `ANTHROPIC_API_KEY` in the environment of the machine
+that runs the refresh (the `anthropic` package is installed with the project since
+2026-11-15; before that it was an optional extra, and a refresh without it kept
+keyword titles). `labels.writer: claude`
 (the configured value) reports a missing key or package as a warning in
 `status.json`, and titles fall back to keywords until it is fixed.
 

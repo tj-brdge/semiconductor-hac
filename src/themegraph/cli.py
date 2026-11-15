@@ -275,6 +275,14 @@ def cmd_monitor(a):
         (Path(a.state) / "forward_tests.md").write_text(text)
         print(text)
         return
+    if a.action == "feed":
+        from .monitor.feed import feed
+        text = feed(Path(a.state), Path(a.site))
+        out = Path(a.out) if a.out else Path(a.state) / "themes_feed.md"
+        out.write_text(text)
+        print("\n".join(text.splitlines()[:8]))
+        print(f"\nwritten to {out}")
+        return
     if a.action == "review":
         from .monitor.config import load_monitor
         from .monitor.review import review_report
@@ -425,7 +433,7 @@ def main(argv=None):
     s.add_argument("--no-browser", action="store_true")
     s.set_defaults(fn=cmd_review)
     s = sub.add_parser("monitor", help="theme monitor: refresh the data feed or serve it")
-    s.add_argument("action", choices=["refresh", "serve", "compare", "review", "forward"])
+    s.add_argument("action", choices=["refresh", "serve", "compare", "review", "forward", "feed"])
     s.add_argument("--read", choices=["headwind", "emergence", "tailwind"],
                    help="forward: read this test's result (once; refused until 20 events "
                         "have a completed 126-session window)")
@@ -438,8 +446,8 @@ def main(argv=None):
                    help="compare: the other profile (default semis, the pilot)")
     s.add_argument("--against-state", help="compare: the other profile's registry directory")
     s.add_argument("--against-site", help="compare: the other profile's site directory")
-    s.add_argument("--out", help="compare/review: write the report here (default: "
-                   "<state>/comparison.md or <state>/review.md)")
+    s.add_argument("--out", help="compare/review/feed: write the report here (default: "
+                   "<state>/comparison.md, review.md or themes_feed.md)")
     s.add_argument("--as-of", help="data cutoff date (default: today)")
     s.add_argument("--fixtures", action="store_true",
                    help="synthetic labelled fixture data instead of the store")

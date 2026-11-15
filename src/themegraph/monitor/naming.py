@@ -153,13 +153,13 @@ class ClaudeNamer:
     as the `anthropic` SDK resolves them (server side only)."""
 
     def __init__(self, model: str = DEFAULT_MODEL):
-        import anthropic  # optional dependency: `pip install -e '.[review]'`
-        self.client = anthropic.Anthropic()
+        import anthropic
+        self.client = anthropic.Anthropic()  # raises here when no credentials are set
         self.model = model
 
     def __call__(self, prompt: str) -> tuple[dict, str]:
         r = self.client.beta.messages.create(
-            model=self.model, max_tokens=2000,
+            model=self.model, max_tokens=16000,  # thinking counts towards this limit
             betas=["server-side-fallback-2026-07-01"], fallbacks="default",
             output_config={"effort": "low",
                            "format": {"type": "json_schema", "schema": SCHEMA}},
