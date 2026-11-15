@@ -15,7 +15,7 @@ import os
 from collections import Counter
 from pathlib import Path
 
-from .families import ACTIVE
+from .naming import ACTIVE
 from .registry import Registry
 
 SOURCE = {"claude": "written by Claude", "curated": "curated",
