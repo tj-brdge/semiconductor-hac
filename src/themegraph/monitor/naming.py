@@ -106,6 +106,28 @@ SCHEMA = {
     "additionalProperties": False,
 }
 
+GROUP_SCHEMA = {
+    "type": "object",
+    "properties": {"name": {"type": "string"}, "summary": {"type": "string"}},
+    "required": ["name", "summary"],
+    "additionalProperties": False,
+}
+GROUP_WORDS = 6
+
+GROUP_PROMPT = """Several themes found in company earnings calls and SEC filings are close \
+in meaning and are shown together as one broader topic. Name the topic.
+
+Rules:
+- Use only the theme titles and terms below. Add no claim, number, forecast or \
+company name that they do not contain.
+- name: two to {words} words, plain English, the subject the themes share (for \
+example "Memory supply and pricing", "AI data-centre build-out"). No tickers, no \
+hype, no investment view.
+- summary: one sentence saying what the themes have in common.
+
+Themes:
+{themes}"""
+
 PROMPT = """You are labelling a theme found by a text-clustering system in the earnings \
 calls and SEC filings of a monitored set of public companies. Write a label a \
 general reader understands.
@@ -166,11 +188,17 @@ class ClaudeNamer:
         self.model = model
 
     def __call__(self, prompt: str) -> tuple[dict, str]:
+        return self._ask(prompt, SCHEMA)
+
+    def group(self, prompt: str) -> tuple[dict, str]:
+        return self._ask(prompt, GROUP_SCHEMA)
+
+    def _ask(self, prompt: str, schema: dict) -> tuple[dict, str]:
         r = self.client.beta.messages.create(
             model=self.model, max_tokens=16000,  # thinking counts towards this limit
             betas=["server-side-fallback-2026-07-01"], fallbacks="default",
             output_config={"effort": "low",
-                           "format": {"type": "json_schema", "schema": SCHEMA}},
+                           "format": {"type": "json_schema", "schema": schema}},
             messages=[{"role": "user", "content": prompt}])
         if r.stop_reason in ("refusal", "max_tokens"):
             raise RuntimeError(f"no label ({r.stop_reason})")
@@ -279,4 +307,58 @@ def apply_labels(themes: list[dict], sectors: dict[str, str], namer=None,
         th.setdefault("label_history", []).append(lab)
         key = "ambiguous" if lab["status"] == "ambiguous" else lab["source"]
         counts[key] += 1
+    return counts
+
+
+# -- groups of themes (monitor/families.py, `groups`) ----------------------------------
+
+def _title(th: dict) -> str:
+    return (th.get("label") or {}).get("title") or th["name"]
+
+
+def group_key(group: dict, by: dict[str, dict]) -> str:
+    """Identity of a group's name: its themes and their current titles. A name is
+    written once per key, so a group whose themes or titles change is named again."""
+    import hashlib
+    text = "|".join(f"{i}:{_title(by[i])}" for i in sorted(group["members"]))
+    return hashlib.sha256(text.encode()).hexdigest()[:16]
+
+
+def group_prompt(group: dict, by: dict[str, dict]) -> str:
+    lines = "\n".join(f"- {_title(by[i])} (terms: {', '.join(by[i].get('keywords', [])[:6])})"
+                      for i in group["members"])
+    return GROUP_PROMPT.format(words=GROUP_WORDS, themes=lines)
+
+
+def name_groups(groups: list[dict], themes: list[dict], store: dict, namer=None,
+                limit: int | None = None, now: str | None = None) -> dict:
+    """Give each group a name, in place (`name`, `summary`, `name_source`). `store`
+    (kept in the registry) maps group keys to names already written. Without a
+    writer, or over the limit, a group is called after its lead theme."""
+    by = {t["id"]: t for t in themes}
+    ask = getattr(namer, "group", None)
+    counts = {"claude": 0, "stored": 0, "lead": 0, "errors": {}}
+    calls = 0
+    for g in groups:
+        key = group_key(g, by)
+        hit = store.get(key)
+        if hit is None and ask is not None and (limit is None or calls < limit):
+            calls += 1
+            try:
+                answer, model = ask(group_prompt(g, by))
+                name = " ".join(str(answer.get("name", "")).split())
+                if not name or len(name.split()) > GROUP_WORDS + 2:
+                    raise ValueError("name missing or too long")
+                hit = store[key] = {"name": name, "model": model, "at": now or _now(),
+                                    "summary": " ".join(str(answer.get("summary", "")).split())}
+                counts["claude"] += 1
+            except Exception as e:  # noqa: BLE001 - one group's failure is reported
+                counts["errors"][g["id"]] = f"{type(e).__name__}: {e}"
+        elif hit is not None:
+            counts["stored"] += 1
+        if hit is not None:
+            g.update(name=hit["name"], summary=hit.get("summary"), name_source="claude")
+        else:
+            counts["lead"] += 1
+            g.update(name=_title(by[g["lead"]]), summary=None, name_source="lead")
     return counts

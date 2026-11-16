@@ -51,6 +51,23 @@ def _max_corr(E: np.ndarray) -> float:
     return float(C.max())
 
 
+def cluster_name(sectors: dict[str, int], members: list[str], taken: set[str]) -> str:
+    """A plain name from what the cluster is made of: its sector when one sector is
+    at least 60% of the companies, otherwise its two largest sectors. Two clusters
+    with the same make-up are told apart by their first tickers. Sectors come from
+    the coverage list; nothing here reads text or says why the stocks move together."""
+    ranked = sorted(sectors.items(), key=lambda kv: (-kv[1], kv[0]))
+    n = sum(sectors.values())
+    if ranked[0][1] / n >= 0.6 or len(ranked) == 1:
+        name = ranked[0][0]
+    else:
+        name = f"{ranked[0][0]} and {ranked[1][0].lower()}"
+    if name in taken:
+        name = f"{name} ({', '.join(members[:2])})"
+    taken.add(name)
+    return name
+
+
 def market_clusters(book: PriceBook, universe, baskets: dict[str, list[str]],
                     window_sessions: int, min_share: float, index: str,
                     draws: int = 200, alpha: float = 0.05) -> dict:
@@ -75,6 +92,7 @@ def market_clusters(book: PriceBook, universe, baskets: dict[str, list[str]],
     groups = sorted([g for g in groups if len(g) > 1], key=lambda g: min(pos[k] for k in g))
     scale = 1.0 - w["shrinkage"]
     clusters = []
+    taken: set[str] = set()
     for n, g in enumerate(groups, 1):
         members = [pool[k] for k in sorted(g, key=lambda k: pos[k])]
         sub = C[np.ix_(g, g)]
@@ -84,7 +102,8 @@ def market_clusters(book: PriceBook, universe, baskets: dict[str, list[str]],
             secs[sector.get(s, "?")] = secs.get(sector.get(s, "?"), 0) + 1
         themes = sorted(([tid, len(set(b) & set(members))] for tid, b in baskets.items()
                          if len(set(b) & set(members)) >= 2), key=lambda x: -x[1])
-        clusters.append({"id": n, "members": members, "size": len(members),
+        clusters.append({"id": n, "name": cluster_name(secs, members, taken),
+                         "members": members, "size": len(members),
                          "avg_corr": round(avg, 4), "avg_corr_shrunk": round(scale * avg, 4),
                          "sectors": dict(sorted(secs.items(), key=lambda kv: -kv[1])),
                          "themes": [{"id": t, "shared": k} for t, k in themes]})

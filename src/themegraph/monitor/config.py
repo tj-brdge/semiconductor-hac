@@ -81,6 +81,14 @@ class Labels(_S):
     max_per_refresh: int = 40
 
 
+class Groups(_S):
+    """Broader topics above the families (monitor/families.py, `groups`). Display
+    only. Set 2026-11-16 from the meaning of the text alone, before any group was
+    seen on live data: a starting value to check against `themegraph monitor feed`."""
+    min_cosine: float = 0.6
+    max_names_per_refresh: int = 20
+
+
 class Tone(_S):
     """Headwind/tailwind direction from business language (monitor/tone.py).
     Declared 2026-10-29 from the text alone, before any return was looked at."""
@@ -137,6 +145,7 @@ class MonitorConfig(_S):
     comovement: Comovement = Comovement()
     tone: Tone = Tone()
     families: Families = Families()
+    groups: Groups = Groups()
     completeness: Completeness = Completeness()
 
 

@@ -403,3 +403,8 @@ table.companies td, table.companies th { padding: 10px 14px; vertical-align: top
 .net-info .plain { margin: 0; padding-left: 16px; }
 @media (max-width: 860px) { .net-wrap { grid-template-columns: minmax(0, 1fr); } }
 @media (forced-colors: active) { .nn circle { stroke: CanvasText; } .ne { stroke: GrayText; } }
+
+/* Topics: groups of themes with their subthemes */
+.topics { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+.topic .subthemes { margin: 8px 0 0; display: grid; gap: 6px; }
+.topic .subthemes a { font-weight: 600; }

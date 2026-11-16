@@ -68,3 +68,15 @@ def test_not_enough_history_says_so():
     out = market_clusters(book, u, {}, 126, 0.9, "SPY")
     assert out == {"available": False, "index": "SPY", "window_sessions": 126,
                    "note": "not enough price history"}
+
+
+def test_clusters_are_named_after_their_sectors():
+    from themegraph.monitor.market_clusters import cluster_name
+    taken = set()
+    assert cluster_name({"Semiconductor equipment": 4, "Semiconductors": 1}, ["A"], taken) == \
+        "Semiconductor equipment"
+    assert cluster_name({"Networking": 2, "Semiconductors": 2, "Power": 1}, ["B"], taken) == \
+        "Networking and semiconductors"
+    # The same make-up twice: told apart by tickers.
+    assert cluster_name({"Semiconductor equipment": 2}, ["X", "Y", "Z"], taken) == \
+        "Semiconductor equipment (X, Y)"

@@ -3,9 +3,10 @@
 import numpy as np
 import pytest
 
+from themegraph.monitor import naming
 from themegraph.monitor.config import load_monitor
 from themegraph.monitor.export import overview_lists, theme_overview
-from themegraph.monitor.families import families
+from themegraph.monitor.families import families, groups
 from themegraph.monitor.tone import score, terms, theme_tone
 
 M = load_monitor()
@@ -109,3 +110,48 @@ def test_families_leave_inactive_themes_and_records_alone():
     fam = families(th, vec, 0.85)
     assert set(fam) == {"a"} and fam["a"]["members"] == ["a"]
     assert th == before  # display only: nothing in the registry changes
+
+
+def test_groups_are_the_family_tree_cut_lower():
+    # a, b near-duplicates; c related to both; d unrelated; e inactive.
+    vec = {"a": _unit(1, 0, 0), "b": _unit(1, 0.25, 0), "c": _unit(1, 0.9, 0),
+           "d": _unit(0, 0, 1), "e": _unit(1, 0.1, 0)}
+    th = [_theme("a", persistence=9, issuers=("A", "B")), _theme("b", issuers=("B", "C")),
+          _theme("c", issuers=("D",)), _theme("d"), _theme("e", vec_status="inactive")]
+    before = [dict(t) for t in th]
+    g = groups(th, vec, 0.6, 0.85)
+    assert [x["members"] for x in g] == [["a", "b", "c"]]   # d alone: no group of one
+    assert g[0]["lead"] == "a" and g[0]["companies"] == ["A", "B", "C", "D"]
+    assert groups(th, vec, 0.99, 0.85) == []
+    assert th == before                                    # display only
+
+
+def test_group_names_are_written_once_and_fall_back_to_the_lead_theme():
+    th = [{**_theme("a"), "name": "memory · supply", "label": {"title": "Memory supply tight"}},
+          {**_theme("b"), "name": "nand · pricing", "label": {"title": "NAND prices rising"}}]
+    g = [{"id": "g-a", "lead": "a", "members": ["a", "b"]}]
+    naming.name_groups(g, th, {})
+    assert g[0]["name"] == "Memory supply tight" and g[0]["name_source"] == "lead"
+
+    calls = []
+
+    class Namer:
+        def group(self, prompt):
+            calls.append(prompt)
+            return {"name": "Memory supply and pricing", "summary": "Both are about memory."}, "m"
+    store = {}
+    c = naming.name_groups(g, th, store, Namer(), now="t")
+    assert g[0]["name"] == "Memory supply and pricing" and g[0]["name_source"] == "claude"
+    assert "NAND prices rising" in calls[0] and c["claude"] == 1
+    naming.name_groups(g, th, store, Namer())
+    assert len(calls) == 1                                  # stored: no second call
+    th[1]["label"]["title"] = "NAND prices falling"         # a title changed: named again
+    naming.name_groups(g, th, store, Namer())
+    assert len(calls) == 2
+
+    class Bad:
+        def group(self, prompt):
+            return {"name": " ".join(["word"] * 12), "summary": ""}, "m"
+    g2 = [{"id": "g-a", "lead": "a", "members": ["a", "b"]}]
+    c = naming.name_groups(g2, th, {}, Bad())
+    assert g2[0]["name_source"] == "lead" and "g-a" in c["errors"]
