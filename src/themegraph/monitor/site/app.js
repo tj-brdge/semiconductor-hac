@@ -342,12 +342,13 @@ const RANGES = [["3m", "3M", 63], ["6m", "6M", 126], ["1y", "1Y", 252], ["all", 
 
 // Macro sensitivity (prices only): how a basket or cluster has moved with rates,
 // oil, inflation and the dollar, beyond the market. A description, not a forecast.
+const lowerFactor = (t) => t.toLowerCase().replace("us dollar", "the US dollar");
 const signed = (v) => `${v > 0 ? "+" : "−"}${Math.abs(v).toFixed(2)}`;
 function macroLine(g) {
   const M = S.index.macro;
   if (!M?.available || !g) return "";
   const clear = M.factors.filter((f) => g[f.key]?.clear);
-  const short = (f) => f.label.split(" (")[0].toLowerCase();
+  const short = (f) => lowerFactor(f.label.split(" (")[0]);
   if (!clear.length) return `<p class="small muted">Macro: no clear link to ${M.factors.map(short).join(", ")} over ${g.months} months.</p>`;
   return `<p class="small">Macro (last ${g.months} months, beyond ${esc(M.index)}): ${clear.map((f) => `${g[f.key].beta > 0 ? "rose" : "fell"} when ${esc(short(f))} rose (${signed(g[f.key].beta)})`).join("; ")}.</p>`;
 }
@@ -948,6 +949,27 @@ function clusterName(mc, id) {
   return c?.name ? ` (${c.name})` : "";
 }
 
+// Clusters by macro sensitivity: a different question from the price clusters.
+function macroClustersHTML() {
+  const X = S.index.macro_clusters;
+  if (!X) return "";
+  if (!X.available) return `<section class="section" aria-labelledby="h-mcl"><h2 id="h-mcl">Clusters by macro sensitivity</h2><p class="empty">${esc(X.note || "Not available.")}</p></section>`;
+  const short = (f) => f.label.split(" (")[0];
+  const chance = `With the factor months shuffled, ${X.null.sensitive_mean} companies pass on average and ${Math.round(X.null.sensitive_p95)} or fewer in 95% of ${X.draws} shuffles.`;
+  return `<section class="section" aria-labelledby="h-mcl"><div><h2 id="h-mcl">Clusters by macro sensitivity</h2>
+    <p class="muted small">A second grouping, by how each stock has traded against monthly changes in ${X.factors.map((f) => esc(lowerFactor(short(f)))).join(", ")}, beyond ${esc(X.index)} (${X.months} months, ${esc(X.start)} to ${esc(X.end)}). Only companies whose returns the factors explain beyond the market are grouped (${X.sensitive} of ${X.companies}); for the rest the direction of a sensitivity would be noise. Companies join a cluster when their macro-driven return paths correlate ${X.min_corr} or more on average (hierarchical clustering, average linkage).</p></div>
+    ${X.beyond_chance ? `<p class="small"><b>${X.sensitive} of ${X.companies} companies are macro-sensitive, more than chance gives.</b> ${chance}</p>`
+      : `<p class="notice"><span><b>Not distinguishable from chance.</b> ${X.sensitive} of ${X.companies} companies pass the test. ${chance} Treat the clusters below as noise until this changes.</span></p>`}
+    ${X.clusters.length ? `<div class="cluster-list">${X.clusters.map((c) => `<article class="card cluster">
+      <div class="card-top"><h3>${esc(c.name)}</h3><span class="small muted">${c.size} companies</span></div>
+      <p class="tickers">${c.members.map(esc).join(" · ")}</p>
+      <p class="small">${Object.entries(c.sectors).map(([k, v]) => `${esc(k)} ${v}`).join(", ")}</p>
+      <p class="small muted">Average sensitivity: ${X.factors.map((f) => `${esc(lowerFactor(short(f)))} ${signed(c.betas[f.key])}`).join(", ")}</p>
+    </article>`).join("")}</div>` : `<p class="empty">No two macro-sensitive companies are similar enough to form a cluster.</p>`}
+    ${X.unclustered.length ? `<p class="small muted">Macro-sensitive but in no cluster: <span class="mono">${X.unclustered.map(esc).join(" · ")}</span></p>` : ""}
+    <p class="small muted">Sensitivities are in the companies' usual monthly moves per usual monthly move of the factor. ${X.months} months is a short sample, today's companies are used throughout, and this describes the recent past: it is not a forecast.${X.left_out ? ` ${X.left_out} companies without a full ${X.months}-month history are left out.` : ""}</p></section>`;
+}
+
 function clustersPage() {
   const mc = S.index.market_clusters;
   const names = S.index.benchmark_labels || {};
@@ -972,7 +994,8 @@ function clustersPage() {
         ${macroLine(S.index.macro?.clusters?.[String(c.id)])}
         ${c.themes.length ? `<p class="small">In theme baskets: ${c.themes.map((t) => `<a href="#/theme/${esc(t.id)}">${esc(S.byId[t.id]?.title || t.id)}</a> (${t.shared})`).join(", ")}</p>` : `<p class="small muted">No theme basket holds two or more of these companies.</p>`}
       </article>`).join("")}</div></section>
-    <section class="panel" aria-labelledby="h-tree"><h2 id="h-tree">The tree</h2>
+    ${macroClustersHTML()}
+    <section class="panel" aria-labelledby="h-tree"><h2 id="h-tree">The tree (price clusters)</h2>
       <p class="small muted">Each row is a company. Lines join companies, then groups, at the correlation shown on the axis; joins to the left of the dashed cut are clusters (labelled bands). Hover a join or a ticker for details.</p>
       <div id="dendro" class="dendro-wrap"></div></section>
     ${loose.length ? `<section class="section"><h2>Not in a cluster</h2><p class="tickers">${loose.map(esc).join(" · ")}</p></section>` : ""}`;

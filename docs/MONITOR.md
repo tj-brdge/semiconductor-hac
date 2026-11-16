@@ -526,6 +526,33 @@ short sample; current members are used throughout, so it describes today's
 basket, not its past holdings. It is a description of the recent past, not a
 forecast, and nothing here feeds detection, baskets or any threshold.
 
+### Clusters by macro sensitivity (`macro_clusters`)
+
+Added 2026-11-16, at the owner's request: a second grouping of stocks, by how they
+have traded against the factors. It sits beside the price clusters and replaces
+nothing. The factors are monthly **changes** (yield changes, log price changes, CPI
+growth), not levels.
+
+1. **Per stock:** monthly return on SPY and the factor changes (same window and
+   factors as above). A stock is macro-sensitive when the factors are jointly
+   significant beyond the market (F-test, 5%). The others are not grouped: the
+   direction of a sensitivity that is not there is noise.
+2. **Similarity:** each sensitive stock's macro-driven return path (the factor
+   changes times its coefficients). Two stocks are similar when those paths
+   correlate.
+3. **Clusters:** average linkage, cut at an average correlation of 0.7. A cluster
+   is named after its strongest average sensitivity ("Falls when long-term rates
+   rise").
+4. **Chance comparison:** the factor months are shuffled 200 times, which breaks
+   any link to returns but keeps how stocks move with each other, and steps 1 to 3
+   are repeated. The page says how many stocks pass on average and in 95% of
+   shuffles. If the real count is not above that, the section is marked "not
+   distinguishable from chance".
+
+The 5% level, the 0.7 cut and the 200 shuffles were set before any result on live
+data. Limits: 36 months and five factors is a small sample; today's companies are
+used throughout; companies without the full window are left out. Descriptive only.
+
 The series are downloaded with prices on each refresh (`macro series updated` in
 the prices stage of `status.json`). A failed download is reported there and the
 tables keep the last stored series; with none stored the section says so.

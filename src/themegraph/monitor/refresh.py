@@ -304,6 +304,7 @@ def refresh(state_dir: Path, site_dir: Path, *, fixtures: bool = False,
                     "groups": mcfg.groups.model_dump(),
                     "theme_groups": book_box.get("theme_groups", []),
                     "market_clusters": book_box.get("market_clusters"),
+                    "macro_clusters": book_box.get("macro_clusters"),
                     "macro": {k: v for k, v in (book_box.get("macro") or {}).items()
                               if k != "themes"},
                     "forward_tests": book_box.get("forward_tests"),
@@ -560,7 +561,10 @@ def _value(reg: Registry, d: dict, mcfg: MonitorConfig, box: dict) -> str:
          if p.get("status") == "ok"},
         c.window_sessions, c.min_observations_share, c.index)
     box["forward_tests"] = forward_tests.progress(reg.data, book, reg.root)
-    from .macro import macro_table
+    from .macro import macro_clusters, macro_table
+    box["macro_clusters"] = macro_clusters(book, d.get("factors"), d["universe"],
+                                           d["cfg"].macro.window_months,
+                                           d["cfg"].macro.min_months, c.index)
     mc = box["market_clusters"]
     macro = box["macro"] = macro_table(
         book, d.get("factors"), mc.get("clusters", []) if mc.get("available") else [],
