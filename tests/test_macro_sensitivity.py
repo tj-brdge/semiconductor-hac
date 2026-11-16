@@ -80,3 +80,68 @@ def test_refresh_publishes_sensitivities_for_clusters_and_themes(tmp_path):
     g = doc["macro"]
     assert g["months"] == 36 and set(g) == {"months", *FACTORS}
     assert all(set(g[k]) == {"beta", "t", "clear"} for k in FACTORS)
+
+
+# -- clusters by macro sensitivity -----------------------------------------------------
+
+def _book(seed, planted=True, n=40, months=38):
+    from types import SimpleNamespace as NS
+
+    from themegraph.monitor.macro import FACTORS as FK
+    rng = np.random.default_rng(seed)
+    idx = pd.period_range("2018-01", periods=months, freq="M")
+    F = pd.DataFrame(rng.standard_normal((months, 5)),
+                     index=idx.to_timestamp(how="end").normalize(), columns=list(FK))
+    mkt = rng.standard_normal(months) * 0.04
+    rets = {"SPY": mkt}
+    for i in range(n):
+        e = rng.standard_normal(months) * 0.05
+        if planted and i < 8:
+            e = e - 0.06 * F["us10y"].to_numpy()      # hurt by rising long rates
+        elif planted and i < 14:
+            e = e + 0.06 * F["wti"].to_numpy()        # helped by rising oil
+        rets[f"S{i:02d}"] = mkt + e
+    # One close per month (its last business day), a starting row before the first.
+    ends = pd.DatetimeIndex([pd.offsets.BDay().rollback(p.to_timestamp(how="end").normalize())
+                             for p in idx]).tz_localize("UTC")
+    start = ends[0] - pd.offsets.BMonthEnd(1)
+    lvl = (1 + pd.DataFrame(rets)).cumprod() * 100
+    carry = pd.concat([pd.DataFrame(100.0, index=[start], columns=lvl.columns),
+                       lvl.set_index(ends)])
+    u = NS(issuers=[NS(symbol=f"S{i:02d}", segment="a" if i < 20 else "b") for i in range(n)],
+           sectors={"a": "Sector A", "b": "Sector B"})
+    return NS(carry=carry, last_date=ends[-1]), F, u
+
+
+def test_stocks_are_clustered_by_how_they_trade_against_the_factors():
+    from themegraph.monitor.macro import macro_clusters
+    book, F, u = _book(1)
+    out = macro_clusters(book, F, u, 36, 30, "SPY")
+    assert out["available"] and out["months"] == 36 and out["companies"] == 40
+    assert out["beyond_chance"] and out["sensitive"] > out["null"]["sensitive_p95"]
+    by = {c["name"]: set(c["members"]) for c in out["clusters"]}
+    rates = by["Falls when long-term rates rise"]
+    oil = by["Rises when oil rises"]
+    assert len(rates & {f"S{i:02d}" for i in range(8)}) >= 6
+    assert len(oil & {f"S{i:02d}" for i in range(8, 14)}) >= 4
+    assert not rates & oil
+    c = next(c for c in out["clusters"] if c["name"] == "Falls when long-term rates rise")
+    assert c["betas"]["us10y"] < -0.3 and c["avg_corr"] >= 0.7
+
+
+def test_noise_is_reported_as_not_beyond_chance():
+    from themegraph.monitor.macro import macro_clusters
+    flagged = 0
+    for seed in range(8):
+        book, F, u = _book(100 + seed, planted=False)
+        out = macro_clusters(book, F, u, 36, 30, "SPY", draws=100)
+        flagged += out["beyond_chance"]
+        assert out["sensitive"] <= 8            # about 5% of 40 by chance
+    assert flagged <= 2
+
+
+def test_macro_clusters_need_series_and_history():
+    from themegraph.monitor.macro import macro_clusters
+    book, F, u = _book(1)
+    assert macro_clusters(book, None, u, 36, 30, "SPY")["available"] is False
+    assert macro_clusters(book, F.tail(10), u, 36, 30, "SPY")["available"] is False
