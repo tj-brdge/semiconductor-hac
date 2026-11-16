@@ -965,25 +965,50 @@ function clusterName(mc, id) {
   return c?.name ? ` (${c.name})` : "";
 }
 
-// Clusters by macro sensitivity: a different question from the price clusters.
-function macroClustersHTML() {
-  const X = S.index.macro_clusters;
-  if (!X) return "";
-  if (!X.available) return `<section class="section" aria-labelledby="h-mcl"><h2 id="h-mcl">Clusters by macro sensitivity</h2><p class="empty">${esc(X.note || "Not available.")}</p></section>`;
+// Companies against the macro factors: each company measured on its own, the ones
+// that trade against several factors at once, and clusters of similar companies.
+function companyMacroInner() {
+  const X = S.index.company_macro;
   const short = (f) => f.label.split(" (")[0];
-  const chance = `With the factor months shuffled, ${X.null.sensitive_mean} companies pass on average and ${Math.round(X.null.sensitive_p95)} or fewer in 95% of ${X.draws} shuffles.`;
-  return `<section class="section" aria-labelledby="h-mcl"><div><h2 id="h-mcl">Clusters by macro sensitivity</h2>
-    <p class="muted small">A second grouping, by how each stock has traded against monthly changes in ${X.factors.map((f) => esc(lowerFactor(short(f)))).join(", ")}, beyond ${esc(X.index)} (${X.months} months, ${esc(X.start)} to ${esc(X.end)}). Only companies whose returns the factors explain beyond the market are grouped (${X.sensitive} of ${X.companies}); for the rest the direction of a sensitivity would be noise. Companies join a cluster when their macro-driven return paths correlate ${X.min_corr} or more on average (hierarchical clustering, average linkage).</p></div>
-    ${X.beyond_chance ? `<p class="small"><b>${X.sensitive} of ${X.companies} companies are macro-sensitive, more than chance gives.</b> ${chance}</p>`
-      : `<p class="notice"><span><b>Not distinguishable from chance.</b> ${X.sensitive} of ${X.companies} companies pass the test. ${chance} Treat the clusters below as noise until this changes.</span></p>`}
-    ${X.clusters.length ? `<div class="cluster-list">${X.clusters.map((c) => `<article class="card cluster">
+  const avail = X.spans.filter((sp) => X.by_span[sp.key]?.available);
+  if (!avail.some((sp) => sp.key === S.macroSpan)) S.macroSpan = avail[0].key;
+  const V = X.by_span[S.macroSpan], label = X.spans.find((sp) => sp.key === S.macroSpan).label;
+  const rows = V.companies.filter((c) => !S.macroMulti || c.n_clear >= 2);
+  const cname = Object.fromEntries(V.clusters.map((c) => [c.id, c.name]));
+  const chance = `With the factor history slid out of step with returns, ${V.null.mean} companies pass on average and ${Math.round(V.null.p95)} or fewer in 95% of ${V.null.offsets} trials.`;
+  return `
+    <div class="controls" role="group" aria-label="Time frame"><span class="small muted">Time frame</span><div class="seg">${X.spans.map((sp) => { const ok = X.by_span[sp.key]?.available; return `<button type="button" data-mspan="${sp.key}" aria-pressed="${sp.key === S.macroSpan}"${ok ? "" : ` disabled title="${esc(X.by_span[sp.key]?.note || "Not available")}"`}>${esc(sp.label)}</button>`; }).join("")}</div></div>
+    <p class="small muted">Spans of ${esc(label)}, ${V.months} months of history (${esc(V.start)} to ${esc(V.end)}), ${V.n_companies} companies${V.left_out ? `; ${V.left_out} without the full history are left out` : ""}.</p>
+    ${V.beyond_chance ? `<p class="small"><b>${V.sensitive} of ${V.n_companies} companies trade against the factors, more than chance gives.</b> ${chance} ${V.multi} have clear links to two or more factors at once.</p>`
+      : `<p class="notice"><span><b>Not distinguishable from chance at this time frame.</b> ${V.sensitive} of ${V.n_companies} companies pass. ${chance} Treat the clusters and bold values below as noise until this changes.</span></p>`}
+    <h3>Clusters of companies with similar sensitivities</h3>
+    ${V.clusters.length ? `<div class="cluster-list">${V.clusters.map((c) => `<article class="card cluster">
       <div class="card-top"><h3>${esc(c.name)}</h3><span class="small muted">${c.size} companies</span></div>
       <p class="tickers">${c.members.map(esc).join(" · ")}</p>
       <p class="small">${Object.entries(c.sectors).map(([k, v]) => `${esc(k)} ${v}`).join(", ")}</p>
       <p class="small muted">Average sensitivity: ${X.factors.map((f) => `${esc(lowerFactor(short(f)))} ${signed(c.betas[f.key])}`).join(", ")}</p>
-    </article>`).join("")}</div>` : `<p class="empty">No two macro-sensitive companies are similar enough to form a cluster.</p>`}
-    ${X.unclustered.length ? `<p class="small muted">Macro-sensitive but in no cluster: <span class="mono">${X.unclustered.map(esc).join(" · ")}</span></p>` : ""}
-    <p class="small muted">Sensitivities are in the companies' usual monthly moves per usual monthly move of the factor. ${X.months} months is a short sample, today's companies are used throughout, and this describes the recent past: it is not a forecast.${X.left_out ? ` ${X.left_out} companies without a full ${X.months}-month history are left out.` : ""}</p></section>`;
+    </article>`).join("")}</div>` : `<p class="empty">No two macro-sensitive companies are alike enough to form a cluster at this time frame.</p>`}
+    <h3>Every company against each factor</h3>
+    <p class="small muted">+ means the stock tended to rise over a span in which the factor rose, − that it fell, each holding the market and the other factors fixed. <b>Bold</b> is a clear link. "Clear links" counts them: two or more means the company has traded against several factors at once. Companies the factors clearly help explain are listed first.</p>
+    <label class="check small"><input type="checkbox" id="mc-multi"${S.macroMulti ? " checked" : ""}> Only companies with clear links to two or more factors (${V.multi})</label>
+    <div class="table-wrap"><table class="stack"><thead><tr><th>Company</th><th>Sector</th>${X.factors.map((f) => `<th class="num">${esc(short(f))}</th>`).join("")}<th class="num">Clear links</th><th>Cluster</th></tr></thead>
+    <tbody>${rows.map((c) => `<tr><td class="mono">${esc(c.symbol)}</td><td>${esc(c.sector || "")}</td>${X.factors.map((f) => { const x = c.links[f.key]; return `<td class="num">${x.clear ? `<b>${signed(x.beta)}</b>` : `<span class="muted">${signed(x.beta)}</span>`}</td>`; }).join("")}<td class="num">${c.n_clear}</td><td class="small">${c.cluster ? esc(cname[c.cluster]) : c.sensitive ? `<span class="muted">Sensitive, no cluster</span>` : `<span class="muted">—</span>`}</td></tr>`).join("") || `<tr><td colspan="${X.factors.length + 4}" class="muted">No company has clear links to two or more factors at this time frame.</td></tr>`}</tbody></table></div>
+    <p class="small muted">Values are in the stock's usual moves over the span per usual move of the factor. A link is clear when it is larger than in 95% of trials with the factor history slid out of step; with five factors per company, some bold values appear by chance. Today's companies are used throughout, and this describes the past: it is not a forecast.</p>`;
+}
+function macroClustersHTML() {
+  const X = S.index.company_macro;
+  if (!X) return "";
+  const head = `<h2 id="h-mcl">Companies against the macro factors</h2>`;
+  if (!X.available) return `<section class="section" aria-labelledby="h-mcl">${head}<p class="empty">${esc(X.note || "Not available.")}</p></section>`;
+  return `<section class="section" aria-labelledby="h-mcl"><div>${head}
+    <p class="muted small">Each company measured on its own against changes in ${X.factors.map((f) => esc(lowerFactor(f.label.split(" (")[0]))).join(", ")}, beyond ${esc(X.index)}. This is about how a stock trades against the factors, not against other stocks. Companies the factors clearly help explain are then grouped when their factor-driven moves are alike (hierarchical clustering, average linkage, cut at ${X.min_corr}).</p></div>
+    <div id="mc-host">${companyMacroInner()}</div></section>`;
+}
+function bindCompanyMacro() {
+  const host = $("#mc-host");
+  if (!host) return;
+  host.querySelectorAll("[data-mspan]").forEach((b) => b.addEventListener("click", () => { S.macroSpan = b.dataset.mspan; host.innerHTML = companyMacroInner(); bindCompanyMacro(); host.querySelector(`[data-mspan="${S.macroSpan}"]`)?.focus(); }));
+  $("#mc-multi")?.addEventListener("change", (e) => { S.macroMulti = e.target.checked; host.innerHTML = companyMacroInner(); bindCompanyMacro(); $("#mc-multi")?.focus(); });
 }
 
 function clustersPage() {
@@ -1016,6 +1041,7 @@ function clustersPage() {
       <p class="small muted">Each row is a company. Lines join companies, then groups, at the correlation shown on the axis; joins to the left of the dashed cut are clusters (labelled bands). Hover a join or a ticker for details.</p>
       <div id="dendro" class="dendro-wrap"></div></section>
     ${loose.length ? `<section class="section"><h2>Not in a cluster</h2><p class="tickers">${loose.map(esc).join(" · ")}</p></section>` : ""}`;
+  bindCompanyMacro();
   const host = $("#dendro");
   drawDendrogram(host, mc);
   let w = host.clientWidth;

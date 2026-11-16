@@ -545,32 +545,41 @@ release: the section says it was not computed.
 Changed 2026-11-16: the first version (same day) used one span, the last 36
 months and |t| >= 2. It was replaced before any live result was seen.
 
-### Clusters by macro sensitivity (`macro_clusters`)
+### Companies against the factors (`company_macro`)
 
-Added 2026-11-16, at the owner's request: a second grouping of stocks, by how they
-have traded against the factors. It sits beside the price clusters and replaces
-nothing. The factors are monthly **changes** (yield changes, log price changes, CPI
-growth), not levels.
+Changed 2026-11-16 at the owner's request, replacing the same day's first version
+(36 months, F-test, one span) before any live result was seen. The owner asked to
+see how each company trades against the factors, not against other companies;
+which companies trade against several factors at once; and clusters built from
+those individual results.
 
-1. **Per stock:** monthly return on SPY and the factor changes (same window and
-   factors as above). A stock is macro-sensitive when the factors are jointly
-   significant beyond the market (F-test, 5%). The others are not grouped: the
-   direction of a sensitivity that is not there is noise.
-2. **Similarity:** each sensitive stock's macro-driven return path (the factor
-   changes times its coefficients). Two stocks are similar when those paths
-   correlate.
-3. **Clusters:** average linkage, cut at an average correlation of 0.7. A cluster
-   is named after its strongest average sensitivity ("Falls when long-term rates
-   rise").
-4. **Chance comparison:** the factor months are shuffled 200 times, which breaks
-   any link to returns but keeps how stocks move with each other, and steps 1 to 3
-   are repeated. The page says how many stocks pass on average and in 95% of
-   shuffles. If the real count is not above that, the section is marked "not
-   distinguishable from chance".
+1. **Per company and time frame:** the company's return over the span on SPY's
+   return and each factor's change over the span, all standardised. A link to one
+   factor is clear when its coefficient beats 95% of slid factor histories (as
+   above). Each coefficient holds the market and the other factors fixed, so two
+   clear links mean the company has traded against both at once. The page counts
+   them ("Clear links") and can list only companies with two or more.
+2. **History per time frame:** 72 months for 30, 60 and 90 days, 96 for 180 days,
+   144 for 360 days. A company needs the whole window to be included, so every
+   company in a time frame is measured over the same months; the rest are counted
+   as left out. A time frame without enough stored history is disabled and says
+   what it needs.
+3. **Macro-sensitive:** the factors together account for more of the company's
+   return than in 95% of slid histories. Only these are clustered: the direction
+   of a sensitivity that is not there is noise.
+4. **Clusters:** average linkage on how alike the companies' factor-driven return
+   paths are, cut at an average correlation of 0.7. A cluster is named after its
+   strongest average sensitivity, or its two strongest when they are close
+   ("Falls when long-term rates rise and rises when oil rises").
+5. **Chance comparison:** for each slid history, the number of companies that
+   would have passed their own bar. Sliding keeps how companies move with each
+   other. The page gives the average and the 95% level, and marks the time frame
+   "not distinguishable from chance" when the real count is not above it.
 
-The 5% level, the 0.7 cut and the 200 shuffles were set before any result on live
-data. Limits: 36 months and five factors is a small sample; today's companies are
-used throughout; companies without the full window are left out. Descriptive only.
+The 5% level and the 0.7 cut were set before any result on live data. Limits:
+today's companies are used throughout; with five factors per company some clear
+links appear by chance; the long spans rest on few independent stretches.
+Descriptive only.
 
 The series are downloaded with prices on each refresh (`macro series updated` in
 the prices stage of `status.json`). A failed download is reported there and the

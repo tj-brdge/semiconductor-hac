@@ -212,42 +212,30 @@ def macro_table(book, factors: pd.DataFrame | None, clusters: list[dict],
             "themes": {g[2:]: v for g, v in per.items() if g.startswith("t:")}}
 
 
-# -- clusters by macro sensitivity -----------------------------------------------------
-# Declared 2026-11-16, before any result on live data. Text and returns thresholds
-# elsewhere are untouched; nothing here feeds detection or baskets.
-ALPHA = 0.05          # a stock counts as macro-sensitive when the five factors together
-                      # explain its returns beyond the market at this level (F-test)
-MIN_CORR = 0.7        # stocks join a cluster when their macro-driven return paths
+# -- companies against the factors, and clusters of them -----------------------------------
+# Declared 2026-11-16, before any result on live data; nothing here feeds
+# detection or baskets.
+ALPHA = 0.05          # a link, or a company's factors taken together, is clear at this level
+MIN_CORR = 0.7        # companies join a cluster when their factor-driven return paths
                       # correlate this much on average
-DRAWS = 200           # shuffles of the factor months, for the chance comparison
+# Months of history each span uses. Every company in a span has the full window,
+# so the chance comparison can treat them together.
+SPAN_WINDOW = {1: 72, 2: 72, 3: 72, 6: 96, 12: 144}
 PHRASE = {"us2y": "short-term rates rise", "us10y": "long-term rates rise",
           "wti": "oil rises", "cpi": "inflation rises", "dxy": "the dollar rises"}
 
 
-def _fit(Y: np.ndarray, m: np.ndarray, Fz: np.ndarray, rss0: np.ndarray):
-    """Per stock (columns of Y): factor coefficients beyond the market, and the
-    p-value of the factors jointly (F-test against market only)."""
-    from scipy.stats import f as fdist
-    X = np.column_stack([np.ones(len(m)), m, Fz])
-    B, *_ = np.linalg.lstsq(X, Y, rcond=None)
-    rss = ((Y - X @ B) ** 2).sum(axis=0)
-    k, dof = Fz.shape[1], len(m) - X.shape[1]
-    stat = ((rss0 - rss) / k) / np.clip(rss / dof, 1e-18, None)
-    return B[2:], fdist.sf(stat, k, dof)
-
-
-def _groups(Fz: np.ndarray, betas: np.ndarray, min_corr: float) -> tuple[list, np.ndarray]:
-    """Average-linkage clusters of the stocks' macro-driven return paths."""
+def _groups(C: np.ndarray, min_corr: float) -> list[np.ndarray]:
+    """Average-linkage clusters from a correlation matrix; pairs and larger only."""
     from scipy.cluster.hierarchy import fcluster, linkage
     from scipy.spatial.distance import squareform
-    if betas.shape[1] < 2:
-        return [], np.zeros((betas.shape[1],) * 2)
-    C = np.corrcoef((Fz @ betas).T)
+    if len(C) < 2:
+        return []
     D = np.clip(1.0 - C, 0.0, 2.0)
     np.fill_diagonal(D, 0.0)
     lab = fcluster(linkage(squareform(D, checks=False), method="average"),
                    t=1.0 - min_corr, criterion="distance")
-    return [g for g in (np.flatnonzero(lab == x) for x in np.unique(lab)) if len(g) > 1], C
+    return [g for g in (np.flatnonzero(lab == x) for x in np.unique(lab)) if len(g) > 1]
 
 
 def _name(mean: dict[str, float], members: list[str], taken: set[str]) -> str:
@@ -261,86 +249,118 @@ def _name(mean: dict[str, float], members: list[str], taken: set[str]) -> str:
     return name
 
 
-def macro_clusters(book, factors: pd.DataFrame | None, universe, window_months: int,
-                   min_months: int, index: str, alpha: float = ALPHA,
-                   min_corr: float = MIN_CORR, draws: int = DRAWS) -> dict:
-    """Stocks grouped by how they have traded against the factors.
+def _company_span(r: pd.DataFrame, F: pd.DataFrame, sector: dict[str, str], index: str,
+                  h: int, alpha: float, min_corr: float) -> dict:
+    W = SPAN_WINDOW[h]
+    ok = (r[index].notna() & F.notna().all(axis=1)).to_numpy()
+    run = 0
+    for v in ok[::-1]:                       # the latest unbroken run of complete months
+        if not v:
+            if run:
+                break
+            continue
+        run += 1
+    end = len(ok) - int(np.argmax(ok[::-1]))
+    if run < W:
+        return {"available": False,
+                "note": f"Needs {W} complete months of prices and factors; {run} stored."}
+    rows = slice(end - W, end)
+    rw, Fw = r.iloc[rows], F.iloc[rows].to_numpy()
+    syms = [s for s in sector if s in rw.columns and rw[s].notna().all() and rw[s].std() > 0]
+    if len(syms) < 3:
+        return {"available": False, "note": "Too few companies with the full history."}
+    Y, m = np.log1p(rw[syms].to_numpy()), np.log1p(rw[index].to_numpy())
+    obs = _span_betas(Y, m, Fw, h)                            # factors x companies
+    gap = max(h, 12)
+    shifts = range(gap, W - gap + 1)
+    null = np.stack([_span_betas(Y, m, np.roll(Fw, k, axis=0), h) for k in shifts])
 
-    1. Per stock: monthly return regressed on the market and the factor changes.
-       Stocks whose factors are jointly significant (F-test, `alpha`) are
-       macro-sensitive; the rest are left out, because the direction of a
-       sensitivity that is not there is noise.
-    2. Each sensitive stock's macro-driven return path (factor changes times its
-       coefficients) is clustered by average linkage, cut at `min_corr`.
-    3. Chance comparison: the factor months are shuffled `draws` times (which
-       breaks any link to returns but keeps how stocks move with each other), and
-       the same steps are repeated. `beyond_chance` says whether more stocks are
-       sensitive than in 95% of shuffles.
+    def strength(B, Fmat):
+        """Share of a company's (standardised) return the factors account for."""
+        C = np.corrcoef(_z(_roll(Fmat, h)).T) if Fmat.shape[1] > 1 else np.ones((1, 1))
+        return np.einsum("kn,kl,ln->n", B, C, B), C
+    q, C = strength(obs, Fw)
+    qn = np.stack([strength(null[i], np.roll(Fw, k, axis=0))[0] for i, k in enumerate(shifts)])
+    p_link = (1 + (np.abs(null) >= np.abs(obs)).sum(axis=0)) / (1 + len(null))
+    p_joint = (1 + (qn >= q).sum(axis=0)) / (1 + len(qn))
+    sens = np.flatnonzero(p_joint < alpha)
+    # Chance comparison: in each slid history, how many companies would have passed
+    # their own bar? Sliding keeps how companies move with each other.
+    counts = (qn > np.quantile(qn, 1 - alpha, axis=0)).sum(axis=1)
+
+    keys = list(F.columns)
+    clusters, taken, member_of = [], set(), {}
+    if len(sens) > 1:
+        B = obs[:, sens]
+        cov = B.T @ C @ B
+        d = np.sqrt(np.clip(np.diag(cov), 1e-18, None))
+        Cs = np.clip(cov / np.outer(d, d), -1.0, 1.0)
+        for g in sorted(_groups(Cs, min_corr), key=lambda g: -len(g)):
+            members = [syms[sens[k]] for k in g]
+            mean = {k: round(float(B[j, g].mean()), 3) for j, k in enumerate(keys)}
+            secs: dict[str, int] = {}
+            for sy in members:
+                secs[sector[sy]] = secs.get(sector[sy], 0) + 1
+            sub = Cs[np.ix_(g, g)]
+            c = {"id": len(clusters) + 1, "name": _name(mean, members, taken),
+                 "members": members, "size": len(members), "betas": mean,
+                 "avg_corr": round(float(sub[np.triu_indices(len(g), 1)].mean()), 3),
+                 "sectors": dict(sorted(secs.items(), key=lambda kv: -kv[1]))}
+            clusters.append(c)
+            member_of.update(dict.fromkeys(members, c["id"]))
+    companies = []
+    for n, sy in enumerate(syms):
+        links = {k: {"beta": round(float(obs[j, n]), 3), "clear": bool(p_link[j, n] < alpha)}
+                 for j, k in enumerate(keys)}
+        companies.append({"symbol": sy, "sector": sector[sy], "links": links,
+                          "n_clear": sum(v["clear"] for v in links.values()),
+                          "joint_p": round(float(p_joint[n]), 3),
+                          "sensitive": bool(p_joint[n] < alpha),
+                          "cluster": member_of.get(sy)})
+    companies.sort(key=lambda c: (-c["sensitive"], -c["n_clear"], c["joint_p"], c["symbol"]))
+    return {"available": True, "months": W, "start": str(rw.index[0]), "end": str(rw.index[-1]),
+            "n_companies": len(syms), "left_out": len(sector) - len(syms),
+            "sensitive": int(len(sens)),
+            "multi": sum(c["n_clear"] >= 2 for c in companies),
+            "null": {"mean": round(float(counts.mean()), 1),
+                     "p95": float(np.quantile(counts, 0.95)), "offsets": len(counts)},
+            "beyond_chance": bool(len(sens) > np.quantile(counts, 0.95)),
+            "companies": companies, "clusters": clusters}
+
+
+def company_macro(book, factors: pd.DataFrame | None, universe, index: str,
+                  alpha: float = ALPHA, min_corr: float = MIN_CORR) -> dict:
+    """Each company against the factors, at each span, and clusters of companies.
+
+    1. Per company and span: its return over the span on the market's and on each
+       factor's change over the span. A link to one factor is clear when its
+       coefficient beats 95% of slid factor histories (as `span_sensitivities`).
+       `n_clear` counts a company's clear links: two or more means it has traded
+       against several factors at once (each holding the others fixed).
+    2. A company is macro-sensitive when the factors together account for more of
+       its return than in 95% of slid histories. Only these are clustered: the
+       direction of a sensitivity that is not there is noise.
+    3. Clusters: average linkage on how alike the companies' factor-driven return
+       paths are, cut at `min_corr`; named after the strongest average sensitivity.
+    4. Chance comparison: the number of companies that would pass in each slid
+       history. `beyond_chance` says whether the real count beats 95% of them.
     """
     if factors is None or factors.empty:
         return {"available": False, "note": "No macro series stored yet."}
-    r = monthly_returns(book.carry, book.last_date).tail(window_months)
+    r = monthly_returns(book.carry, book.last_date).tail(HISTORY_MONTHS)
     F = factors.copy()
     F.index = pd.DatetimeIndex(F.index).to_period("M")
     F = F.loc[~F.index.duplicated(keep="last")].reindex(r.index)
-    F = F[[c for c in FACTORS if c in F.columns and F[c].notna().sum() >= min_months]]
+    F = F[[c for c in FACTORS if c in F.columns and F[c].notna().sum() >= MIN_BLOCKS]]
     if index not in r or not F.shape[1]:
         return {"available": False, "note": "Not enough complete months of prices."}
-    ok = r[index].notna() & F.notna().all(axis=1)
-    r, F = r.loc[ok], F.loc[ok]
-    if len(r) < max(min_months, F.shape[1] + 4):
-        return {"available": False, "note": "Not enough complete months of prices."}
     sector = {i.symbol: universe.sectors.get(i.segment, i.segment) for i in universe.issuers}
-    syms = [s for s in sector if s in r.columns and r[s].notna().all() and r[s].std() > 0]
-    if len(syms) < 3:
-        return {"available": False, "note": "Not enough companies with a full history."}
-
-    def z(a):
-        a = np.asarray(a, dtype=float)
-        return (a - a.mean(axis=0)) / a.std(axis=0)
-    Y, m, Fz = z(r[syms]), z(r[index]), z(F)
-    X0 = np.column_stack([np.ones(len(m)), m])
-    B0, *_ = np.linalg.lstsq(X0, Y, rcond=None)
-    rss0 = ((Y - X0 @ B0) ** 2).sum(axis=0)
-    betas, p = _fit(Y, m, Fz, rss0)
-    sens = np.flatnonzero(p < alpha)
-    groups, C = _groups(Fz, betas[:, sens], min_corr)
-
-    rng = np.random.default_rng(zlib.crc32(b"macro-clusters"))
-    null_s, null_c = [], []
-    for _ in range(draws):
-        Fp = Fz[rng.permutation(len(Fz))]
-        bp, pp = _fit(Y, m, Fp, rss0)
-        sp = np.flatnonzero(pp < alpha)
-        null_s.append(len(sp))
-        null_c.append(sum(len(g) for g in _groups(Fp, bp[:, sp], min_corr)[0]))
-    s95, c95 = float(np.quantile(null_s, 0.95)), float(np.quantile(null_c, 0.95))
-
-    keys = list(F.columns)
-    clusters, taken = [], set()
-    for g in sorted(groups, key=lambda g: -len(g)):
-        members = [syms[sens[k]] for k in g]
-        mean = {k: round(float(betas[j, sens[g]].mean()), 3) for j, k in enumerate(keys)}
-        secs: dict[str, int] = {}
-        for sy in members:
-            secs[sector[sy]] = secs.get(sector[sy], 0) + 1
-        sub = C[np.ix_(g, g)]
-        clusters.append({"id": len(clusters) + 1, "name": _name(mean, members, taken),
-                         "members": members, "size": len(members), "betas": mean,
-                         "avg_corr": round(float(sub[np.triu_indices(len(g), 1)].mean()), 3),
-                         "sectors": dict(sorted(secs.items(), key=lambda kv: -kv[1]))})
-    clustered = {s for c in clusters for s in c["members"]}
-    return {"available": True, "index": index, "months": int(len(r)),
-            "start": str(r.index[0]), "end": str(r.index[-1]),
-            "factors": [{"key": k, "label": FACTORS[k]} for k in keys],
-            "companies": len(syms), "left_out": len(sector) - len(syms),
-            "alpha": alpha, "min_corr": min_corr, "draws": draws,
-            "sensitive": int(len(sens)), "clustered": len(clustered),
-            "null": {"sensitive_p95": s95, "sensitive_mean": round(float(np.mean(null_s)), 1),
-                     "clustered_p95": c95},
-            "beyond_chance": bool(len(sens) > s95),
-            "clusters": clusters,
-            "unclustered": [syms[k] for k in sens if syms[k] not in clustered]}
+    spans = {str(h): _company_span(r, F, sector, index, h, alpha, min_corr) for h, _ in SPANS}
+    if not any(v["available"] for v in spans.values()):
+        return {"available": False, "note": next(iter(spans.values()))["note"]}
+    return {"available": True, "index": index, "alpha": alpha, "min_corr": min_corr,
+            "factors": [{"key": k, "label": FACTORS[k]} for k in F.columns],
+            "spans": [{"key": str(h), "label": lab} for h, lab in SPANS], "by_span": spans}
 
 
 def fixture_factors(prices: pd.DataFrame) -> pd.DataFrame:
