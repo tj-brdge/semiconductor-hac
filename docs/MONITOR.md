@@ -513,18 +513,37 @@ co-movement beyond SPY alone.
   counts in month M + 2, when it was known (`availability.macro_release_lag_months`).
 - **Group return:** the equal-weight monthly return of the group's current
   companies, complete months only.
-- **Estimate:** ordinary least squares of that return on SPY's return and the five
-  factor changes over the last 36 complete months (at least 30), all standardised.
-  +0.40 means the group's month was 0.4 of its usual monthly move higher when the
-  factor rose by one of its usual monthly moves, holding the market and the other
-  factors fixed.
-- **"Clear":** |t| >= 2. Otherwise the page says "no clear link".
+- **Time frames (added 2026-11-16 at the owner's request):** 30, 60, 90, 180 and
+  360 days, taken as 1, 2, 3, 6 and 12 months. For each span the group's return
+  over the span is set against the **change** in each factor over the same span
+  (never its level), using every month as a starting point.
+- **History:** up to 144 complete months (twelve years), so the 360-day span has
+  about eleven non-overlapping years behind it. A span needs ten non-overlapping
+  stretches of a group's history; otherwise that cell is a dash. A basket whose
+  companies are younger uses the months it has.
+- **Estimate:** ordinary least squares of the group's return on SPY's return and
+  the five factor changes, all standardised. +0.40 means the group's return over
+  the span was 0.4 of its usual move higher when the factor rose by one of its
+  usual moves, holding the market and the other factors fixed.
+- **"Clear":** neighbouring spans share months, so ordinary significance tests
+  flag far too much at long spans (about 15% of pure noise at 360 days, measured).
+  Instead the factor history is slid against the returns by every offset of at
+  least a year, which keeps each series' own behaviour and destroys any real
+  link. A link is clear when its coefficient is larger than in 95% of those
+  offsets. Measured on noise: 4.5% flagged at 30 days, 7% at 360 days.
+- **What the factors did:** the Clusters page also shows each factor's own change
+  over each span (yields in percentage points, the rest in percent).
 
-Limits, stated on the page: about one label in twenty appears by chance; groups
-share companies, so a chance link shows up in several at once; 36 months is a
-short sample; current members are used throughout, so it describes today's
-basket, not its past holdings. It is a description of the recent past, not a
-forecast, and nothing here feeds detection, baskets or any threshold.
+Limits, stated on the page: with five factors and five spans some clear links
+appear by chance; groups share companies, so a chance link shows up in several at
+once; current members are used throughout, so it describes today's basket, not
+its past holdings; twelve years holds only about eleven independent 360-day
+spans. It is a description of the past, not a forecast, and nothing here feeds
+detection, baskets or any threshold. A failure in these tables never blocks a
+release: the section says it was not computed.
+
+Changed 2026-11-16: the first version (same day) used one span, the last 36
+months and |t| >= 2. It was replaced before any live result was seen.
 
 ### Clusters by macro sensitivity (`macro_clusters`)
 

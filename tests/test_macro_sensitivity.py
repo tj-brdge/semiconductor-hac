@@ -62,7 +62,7 @@ def test_the_unfinished_month_is_left_out():
 
 
 def test_no_series_stored_is_said_not_guessed():
-    out = macro_table(None, None, [], {}, 36, 30, "SPY")
+    out = macro_table(None, None, [], {}, "SPY")
     assert out["available"] is False and "downloaded with prices" in out["note"]
 
 
@@ -75,11 +75,77 @@ def test_refresh_publishes_sensitivities_for_clusters_and_themes(tmp_path):
     macro = json.loads((rel / "index.json").read_text())["macro"]
     assert macro["available"] and macro["end"] == "2021-06" and "themes" not in macro
     assert [f["key"] for f in macro["factors"]] == list(FACTORS)
+    assert [s["label"] for s in macro["spans"]] == ["30 days", "60 days", "90 days",
+                                                    "180 days", "360 days"]
     assert macro["clusters"]
+    assert set(macro["factor_moves"]) == set(FACTORS)
+    assert macro["factor_moves"]["us10y"]["unit"] == "pp"
     doc = json.loads(next((rel / "themes").glob("*.json")).read_text())
     g = doc["macro"]
-    assert g["months"] == 36 and set(g) == {"months", *FACTORS}
-    assert all(set(g[k]) == {"beta", "t", "clear"} for k in FACTORS)
+    assert "1" in g and "12" not in g          # six years of fixture months: no 360-day span
+    assert set(g["1"]) == {"months", *FACTORS}
+    assert all(set(g["1"][k]) == {"beta", "p", "clear"} for k in FACTORS)
+
+
+# -- time frames -------------------------------------------------------------------------
+
+def _long(seed=3, months=144):
+    rng = np.random.default_rng(seed)
+    idx = pd.period_range("2014-01", periods=months, freq="M")
+    F = pd.DataFrame(rng.standard_normal((months, 5)), index=idx, columns=list(FACTORS))
+    mkt = pd.Series(rng.standard_normal(months), index=idx)
+    return rng, idx, F, mkt
+
+
+def test_a_link_is_found_at_every_time_frame_and_noise_is_not():
+    from themegraph.monitor.macro import SPANS, span_sensitivities
+    rng, idx, F, mkt = _long()
+    Y = pd.DataFrame({"linked": 0.6 * mkt - 0.7 * F["us10y"] + 0.7 * rng.standard_normal(144),
+                      "noise": 0.6 * mkt + rng.standard_normal(144)}, index=idx)
+    for h, _ in SPANS:
+        out = span_sensitivities(Y, mkt, F, h)
+        assert out["linked"]["us10y"]["clear"] and out["linked"]["us10y"]["beta"] < -0.25, h
+        assert out["linked"]["months"] == 144
+    flagged = sum(span_sensitivities(Y, mkt, F, h)["noise"][k]["clear"]
+                  for h, _ in SPANS for k in FACTORS)
+    assert flagged <= 4                          # 25 tries on noise
+
+
+def test_long_spans_do_not_over_flag_noise():
+    """Overlapping spans make ordinary tests flag about 15% of noise at 360 days
+    (measured 2026-11-16); the slid-history comparison keeps it near 5%."""
+    from themegraph.monitor.macro import span_sensitivities
+    hits = total = 0
+    for seed in range(12):
+        rng, idx, F, mkt = _long(seed)
+        Y = pd.DataFrame({f"g{i}": 0.6 * mkt + rng.standard_normal(144) for i in range(10)},
+                         index=idx)
+        for g in span_sensitivities(Y, mkt, F, 12).values():
+            hits += sum(g[k]["clear"] for k in FACTORS)
+            total += len(FACTORS)
+    assert total == 600 and hits / total < 0.11
+
+
+def test_a_span_needs_enough_history_and_young_groups_use_their_own():
+    from themegraph.monitor.macro import span_sensitivities
+    rng, idx, F, mkt = _long()
+    young = pd.Series(rng.standard_normal(144), index=idx)
+    young.iloc[:90] = np.nan                     # 54 months of history
+    Y = pd.DataFrame({"old": rng.standard_normal(144), "young": young}, index=idx)
+    one, twelve = span_sensitivities(Y, mkt, F, 1), span_sensitivities(Y, mkt, F, 12)
+    assert one["young"]["months"] == 54 and one["old"]["months"] == 144
+    assert "old" in twelve and "young" not in twelve    # 54 months: no ten 12-month spans
+
+
+def test_factor_moves_are_changes_in_plain_units():
+    from themegraph.monitor.macro import factor_moves
+    idx = pd.period_range("2020-01", periods=12, freq="M")
+    F = pd.DataFrame({"us10y": 0.1, "wti": np.log(1.02), "cpi": np.log(1.003)}, index=idx)
+    mv = factor_moves(F)
+    assert mv["us10y"] == {"unit": "pp", "moves": {"1": 0.1, "2": 0.2, "3": 0.3, "6": 0.6,
+                                                    "12": 1.2}}
+    assert mv["wti"]["moves"]["1"] == 2.0 and mv["wti"]["moves"]["2"] == 4.04
+    assert mv["cpi"]["moves"]["12"] == round((1.003 ** 12 - 1) * 100, 2)
 
 
 # -- clusters by macro sensitivity -----------------------------------------------------

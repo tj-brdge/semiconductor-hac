@@ -561,16 +561,23 @@ def _value(reg: Registry, d: dict, mcfg: MonitorConfig, box: dict) -> str:
          if p.get("status") == "ok"},
         c.window_sessions, c.min_observations_share, c.index)
     box["forward_tests"] = forward_tests.progress(reg.data, book, reg.root)
+    # Macro tables are descriptive extras: a failure there must not block a release.
     from .macro import macro_clusters, macro_table
-    box["macro_clusters"] = macro_clusters(book, d.get("factors"), d["universe"],
-                                           d["cfg"].macro.window_months,
-                                           d["cfg"].macro.min_months, c.index)
     mc = box["market_clusters"]
-    macro = box["macro"] = macro_table(
-        book, d.get("factors"), mc.get("clusters", []) if mc.get("available") else [],
+
+    def optional(fn, *a):
+        try:
+            return fn(*a)
+        except Exception as e:  # noqa: BLE001
+            return {"available": False, "note": f"Not computed ({type(e).__name__}: {e})"}
+    box["macro_clusters"] = optional(macro_clusters, book, d.get("factors"), d["universe"],
+                                     d["cfg"].macro.window_months,
+                                     d["cfg"].macro.min_months, c.index)
+    macro = box["macro"] = optional(
+        macro_table, book, d.get("factors"),
+        mc.get("clusters", []) if mc.get("available") else [],
         {k: [x["symbol"] for x in p["constituents"]] for k, p in perfs.items()
-         if p.get("status") == "ok"},
-        d["cfg"].macro.window_months, d["cfg"].macro.min_months, c.index)
+         if p.get("status") == "ok"}, c.index)
     fam = families(reg.published(), reg.vectors, mcfg.families.min_cosine)
     from . import naming
     grp = theme_groups(reg, mcfg)  # names come from the registry; no call is made here
