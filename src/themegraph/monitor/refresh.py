@@ -39,7 +39,7 @@ from .comovement import trading_together
 from .config import MonitorConfig, load_monitor
 from .coverage import Coverage
 from .export import price_date, publish, theme_document, theme_overview, write_status
-from .families import families
+from .families import families, groups
 from .market_clusters import market_clusters
 from .profiles import DEFAULT, Profile, effective, load_profile
 from .registry import Registry
@@ -291,6 +291,8 @@ def refresh(state_dir: Path, site_dir: Path, *, fixtures: bool = False,
                                        "min_share": mcfg.market.sector_benchmark_min_share},
                     "benchmark_labels": mcfg.market.benchmark_labels,
                     "families": mcfg.families.model_dump(), "tone": mcfg.tone.model_dump(),
+                    "groups": mcfg.groups.model_dump(),
+                    "theme_groups": book_box.get("theme_groups", []),
                     "market_clusters": book_box.get("market_clusters"),
                     "forward_tests": book_box.get("forward_tests"),
                     "pending_snapshots": getattr(reg, "pending", []),
@@ -499,7 +501,23 @@ def _labels(reg: Registry, d: dict, mcfg: MonitorConfig, now: str, namer, log) -
         out["labels"] = f"{len(c['errors'])} labels failed: " + "; ".join(
             f"{k}: {v}" for k, v in list(c["errors"].items())[:3])
     log(f"labels: {({k: v for k, v in c.items() if k != 'errors'})}")
+    try:  # names for groups of themes, after the titles they are named from
+        gc = naming.name_groups(theme_groups(reg, mcfg), reg.published(),
+                                reg.data.setdefault("group_names", {}), namer, now=now,
+                                limit=mcfg.groups.max_names_per_refresh)
+        reg.save()
+        if gc["errors"]:
+            out["group_names"] = f"{len(gc['errors'])} group names failed: " + "; ".join(
+                f"{k}: {v}" for k, v in list(gc["errors"].items())[:3])
+        log(f"group names: {({k: v for k, v in gc.items() if k != 'errors'})}")
+    except Exception as e:  # noqa: BLE001
+        out["group_names"] = f"{type(e).__name__}: {e}"
     return out
+
+
+def theme_groups(reg: Registry, mcfg: MonitorConfig) -> list[dict]:
+    return groups(reg.published(), reg.vectors, mcfg.groups.min_cosine,
+                  mcfg.families.min_cosine)
 
 
 def coverage(d: dict, mcfg: MonitorConfig) -> Coverage:
@@ -531,9 +549,16 @@ def _value(reg: Registry, d: dict, mcfg: MonitorConfig, box: dict) -> str:
         c.window_sessions, c.min_observations_share, c.index)
     box["forward_tests"] = forward_tests.progress(reg.data, book, reg.root)
     fam = families(reg.published(), reg.vectors, mcfg.families.min_cosine)
+    from . import naming
+    grp = theme_groups(reg, mcfg)  # names come from the registry; no call is made here
+    naming.name_groups(grp, reg.published(), dict(reg.data.get("group_names", {})))
+    box["theme_groups"] = grp
+    group_of = {i: g for g in grp for i in g["members"]}
     for th in reg.published():
         doc = theme_document(th, perfs[th["id"]], snaps, mcfg)
         doc["family"] = fam.get(th["id"])
+        g = group_of.get(th["id"])
+        doc["group"] = {"id": g["id"], "name": g["name"], "members": g["members"]} if g else None
         doc["trading_together"] = together.get(th["id"])
         doc["overview"] = theme_overview(doc)
         docs.append(doc)

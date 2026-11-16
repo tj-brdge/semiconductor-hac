@@ -467,6 +467,39 @@ latest window only and feeds no measure.
 The research report's multi-layer graph (`report.html` in a run directory) is a
 separate, historical view with a time slider; see "Research commands for another profile" in the README.
 
+## Theme groups (`monitor/families.py`, `groups`)
+
+Added 2026-11-16. Families join near-duplicates (cosine 0.85). Groups are the same
+tree cut lower (`groups.min_cosine`, 0.6): active themes that are close in meaning
+form a broader topic, and its themes are its subthemes. Display only, text only:
+
+- every theme keeps its own ID, basket, history and forward-test events;
+- a theme that fits no group is in none (no catch-all group);
+- inactive and merged themes are not grouped;
+- groups are recomputed every refresh, so they can change as themes change.
+
+The cut of 0.6 was set before any group was seen on live data. It is a starting
+value: `themegraph monitor feed` lists the groups and how many pairs of active
+themes sit at each similarity, which is what a change to it should be argued from.
+Returns play no part.
+
+**Names.** With a writer (see "Theme labels"), each group gets a name of two to six
+words and a one-sentence summary, written only from its themes' titles and terms.
+A name is stored in the registry (`group_names`) under the group's themes and their
+titles, so it is written once and written again only when those change;
+`groups.max_names_per_refresh` (20) limits calls. Without a writer a group is
+called after its lead theme, and the page says so.
+
+On the site: "Themes by topic" on the overview, "Part of the topic" on a theme's
+page, and a Topic filter on All themes.
+
+## Market cluster names (`monitor/market_clusters.py`, `cluster_name`)
+
+Added 2026-11-16. Each cluster is named after the sector at least 60% of its
+companies are in, otherwise its two largest sectors; two clusters with the same
+make-up are told apart by their first tickers. The name describes who is in the
+cluster. It is not a reason the stocks move together, and no text or model is used.
+
 ## Theme feed (`monitor/feed.py`)
 
 `themegraph monitor feed` writes `<state>/themes_feed.md`: every published theme

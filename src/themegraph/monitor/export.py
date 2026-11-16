@@ -386,6 +386,8 @@ def summary_row(doc: dict, bench: str) -> dict:
         "recently_added": m.get("recently_added", []),
         "family": {"id": f["family"], "lead": f["lead"], "size": len(f["members"])}
         if (f := doc.get("family")) else None,
+        "group": {"id": g["id"], "name": g["name"], "size": len(g["members"])}
+        if (g := doc.get("group")) else None,
         "tone": {k: (m.get("tone") or {}).get(k) for k in
                  ("direction", "negative_share", "negative_ratio", "headwind_terms")},
         "key_constituents": [{"symbol": c["symbol"], "sector": c.get("sector")}

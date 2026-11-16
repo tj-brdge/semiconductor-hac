@@ -52,6 +52,10 @@ completeness:                  # when a month-end may be processed (docs/MONITOR
   refresh_days: 7              # a plain refresh also downloads documents when the last download is this old
   min_symbol_share: 0.9        # a download counts only if it covers this share of the companies with documents
 
+groups:                        # broader topics with subthemes (docs/MONITOR.md, "Theme groups")
+  min_cosine: 0.6              # the family tree cut lower; display only, text only
+  max_names_per_refresh: 20
+
 labels:                        # readable titles and summaries (docs/MONITOR.md, "Theme labels")
   writer: claude               # auto | claude | keywords. claude: a missing key or package is a
                                # warning in status.json and titles fall back to keywords

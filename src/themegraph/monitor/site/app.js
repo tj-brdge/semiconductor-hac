@@ -162,6 +162,29 @@ function familyLine(row) {
   return `<p class="small family"><span class="muted">Overlaps with ${rel.length === 1 ? "1 similar theme" : `${rel.length} similar themes`}:</span> ${rel.slice(0, 3).map((r) => `<a href="#/theme/${esc(r.id)}">${esc(r.title)}</a>`).join(", ")}${rel.length > 3 ? ` <span class="muted">+${rel.length - 3}</span>` : ""}</p>`;
 }
 
+// Topics (display only): active themes close in meaning, shown as one broader
+// topic with its themes as subthemes. Each theme keeps its own basket and history.
+function topicsSection() {
+  const G = S.index.theme_groups || [];
+  if (!G.length) return "";
+  const cut = S.index.groups?.min_cosine ?? 0.6;
+  return `<section class="section" aria-labelledby="h-topics"><div class="section-head"><div><h2 id="h-topics">Themes by topic</h2>
+    <p class="muted small">Active themes that are close in meaning (similarity ${esc(String(cut))} or more), grouped into a broader topic. Grouping is for reading only: each theme keeps its own basket and history, and themes that fit no group are not listed here.</p></div></div>
+    <div class="topics">${G.map((g) => `<article class="card topic" id="${esc(g.id)}">
+      <div class="card-top"><h3>${esc(g.name)}</h3><span class="small muted">${g.members.length} themes · ${g.companies.length} companies</span></div>
+      ${g.summary ? `<p class="summary">${esc(g.summary)}</p>` : ""}
+      <ul class="plain subthemes">${g.members.map((id) => S.byId[id]).filter(Boolean).map((r) => `<li><a href="#/theme/${esc(r.id)}">${esc(r.title)}</a> <span class="small muted">${esc(STATUS[r.status] || r.status)} · ${r.strength?.n_issuers ?? "—"} companies</span></li>`).join("")}</ul>
+      ${g.name_source === "lead" ? `<p class="small muted">Named after its longest-running theme (no written name yet).</p>` : ""}
+    </article>`).join("")}</div></section>`;
+}
+
+function topicLine(t) {
+  const g = t.group;
+  if (!g) return "";
+  const others = g.members.filter((id) => id !== t.id).map((id) => S.byId[id]).filter(Boolean);
+  return `<p class="small family"><span class="muted">Part of the topic</span> <b>${esc(g.name)}</b>${others.length ? `<span class="muted">, with</span> ${others.slice(0, 4).map((r) => `<a href="#/theme/${esc(r.id)}">${esc(r.title)}</a>`).join(", ")}${others.length > 4 ? ` <span class="muted">+${others.length - 4}</span>` : ""}` : ""}</p>`;
+}
+
 // One card per family on the overview: a family already shown in an earlier
 // section is not repeated; its card lists the others.
 function onePerFamily(rows, shown) {
@@ -219,6 +242,7 @@ function overview() {
         ${glance(emerging.length, "emerging", "#h-em", "new and growing")}
         ${glance(headwinds.length, "headwinds", "#h-hw", "problems described")}
         ${glance(established.length, "established", "#h-es", "long-running")}
+        ${(S.index.theme_groups || []).length ? glance(S.index.theme_groups.length, "topics", "#h-topics", "themes grouped") : ""}
         ${mc?.available ? glance(mc.clusters.length, "market clusters", "#/clusters", "stocks trading together") : ""}
       </nav>
       ${periodControl()}
@@ -235,6 +259,7 @@ function overview() {
         <p class="muted small">Discussed in at least 6 of the last 12 months by four or more companies. About discussion, not stock performance.</p></div></div>
         ${established.length ? `<div class="cards">${established.slice(0, S.allEstablished ? undefined : 6).map(card).join("")}</div>
           ${established.length > 6 ? `<p><button type="button" class="link-btn" id="more-es" aria-expanded="${!!S.allEstablished}">${S.allEstablished ? "Show fewer" : `Show all ${established.length} established themes`}</button></p>` : ""}` : `<p class="empty">No established themes yet.</p>`}</section>
+      ${topicsSection()}
       <section class="section" aria-label="Relative performance">
         <div class="section"><div><h2>Relative performance improving</h2><p class="muted small">The basket's 3-month return minus ${esc(b)}'s rose by at least 5 points since the previous month-end. This is about stock prices only.</p></div>${rowsList(lowList(L.market_gaining), "No theme's relative performance improved that much this month.")}</div>
         <div class="section"><div><h2>Relative performance weakening</h2><p class="muted small">The same measure fell by at least 5 points. A strong theme in discussion can still have a falling basket.</p></div>${rowsList(lowList(L.market_losing), "No theme's relative performance weakened that much this month.")}</div>
@@ -257,7 +282,7 @@ function glance(n, label, href, sub) {
 function allThemes(params) {
   const sectors = [...new Set(S.index.themes.flatMap((r) => r.sectors || []))].sort();
   const q = { q: params.get("q") || "", status: params.get("status") || "", sector: params.get("sector") || "",
-    route: params.get("route") || "", tone: params.get("tone") || "", sort: params.get("sort") || "return" };
+    route: params.get("route") || "", tone: params.get("tone") || "", topic: params.get("topic") || "", sort: params.get("sort") || "return" };
   const b = bench();
   const opts = (list, cur) => list.map(([v, l]) => `<option value="${esc(v)}"${v === cur ? " selected" : ""}>${esc(l)}</option>`).join("");
   $("#main").innerHTML = `
@@ -269,13 +294,14 @@ function allThemes(params) {
       <label class="field">Sector<select id="f-sector">${opts([["", "Any sector"], ...sectors.map((s) => [s, s])], q.sector)}</select></label>
       <label class="field">How it entered<select id="f-route">${opts([["", "Any"], ["emergence", "Emergence rule"], ["established", "Established (persistent)"], ["newly_covered", "Newly covered"]], q.route)}</select></label>
       <label class="field">Kind of news<select id="f-tone">${opts([["", "Any"], ["headwind", "Headwind (problems)"], ["tailwind", "Tailwind (growth)"], ["mixed", "Mixed"]], q.tone)}</select></label>
+      ${(S.index.theme_groups || []).length ? `<label class="field">Topic<select id="f-topic">${opts([["", "Any topic"], ...S.index.theme_groups.map((g) => [g.id, g.name])], q.topic)}</select></label>` : ""}
       <label class="field">Sort by<select id="f-sort">${opts([["return", "Basket return"], ["excess", `Return vs ${b}`], ["growth", "Discussion growth"], ["companies", "Companies"], ["persistence", "Months discussed"], ["recent", "Recently published"], ["name", "Name"]], q.sort)}</select></label>
     </form>
     ${periodControl()}
     <p class="count" id="count" aria-live="polite"></p>
     <div id="list"></div>`;
   const read = () => ({ q: $("#f-q").value.trim(), status: $("#f-status").value, sector: $("#f-sector").value,
-    route: $("#f-route").value, tone: $("#f-tone").value, sort: $("#f-sort").value });
+    route: $("#f-route").value, tone: $("#f-tone").value, topic: $("#f-topic")?.value || "", sort: $("#f-sort").value });
   const val = {
     return: (r) => periodReturn(r).theme, excess: (r) => periodReturn(r)[`excess_vs_${b}`],
     growth: (r) => r.emergence.growth_3m, companies: (r) => r.strength.n_issuers,
@@ -289,6 +315,7 @@ function allThemes(params) {
       if (f.sector && !(r.sectors || []).includes(f.sector)) return false;
       if (f.route && r.route !== f.route) return false;
       if (f.tone && r.tone?.direction !== f.tone) return false;
+      if (f.topic && r.group?.id !== f.topic) return false;
       const hay = [r.title, r.summary, r.name, r.id, ...(r.sectors || []), ...(r.key_constituents || []).map((c) => c.symbol)].join(" ").toLowerCase();
       return words.every((w) => hay.includes(w));
     });
@@ -305,7 +332,7 @@ function allThemes(params) {
     const p = new URLSearchParams(Object.entries(f).filter(([k, v]) => v && !(k === "sort" && v === "return")));
     history.replaceState(null, "", `#/themes${p.toString() ? "?" + p : ""}`);
   };
-  ["f-q", "f-status", "f-sector", "f-route", "f-tone", "f-sort"].forEach((id) => $("#" + id).addEventListener(id === "f-q" ? "input" : "change", draw));
+  ["f-q", "f-status", "f-sector", "f-route", "f-tone", "f-topic", "f-sort"].forEach((id) => $("#" + id)?.addEventListener(id === "f-q" ? "input" : "change", draw));
   bindPeriod($("#main"), draw);
   draw();
 }
@@ -427,6 +454,7 @@ async function themePage(id, token) {
       <p class="summary">${esc(t.summary)}</p>
       <p class="small muted">${labelNote(t)}</p>
       ${cardQuote(S.byId[t.id] || {})}
+      ${topicLine(t)}
       ${t.newly_covered ? `<p class="notice"><span><b>Newly covered.</b> This theme became visible when coverage expanded: ${t.newly_covered.new_companies.length} of its companies were added recently. Their earlier documents show the topic in ${t.newly_covered.backfill_present} of the ${t.newly_covered.of_last} months before ${esc(fmtDate(t.newly_covered.at))}; that is historical analysis, not an earlier discovery. Tracking began when it was published on ${esc(fmtDate(t.published_at))}.</span></p>` : ""}
       <p class="facts"><span>${m.n_issuers ?? "—"} companies</span><span>${esc((m.sectors || []).join(", "))}</span>
         <span>Entered ${esc(fmtDate(t.published_snapshot))} via the ${{ emergence: "emergence rule", established: "established-theme rule", newly_covered: "newly-covered rule" }[t.route] || esc(t.route)}</span></p>
@@ -816,7 +844,7 @@ function networkPage() {
     const n = by[picked];
     const price = [...nb[picked].price].sort((a, b) => b[1] - a[1]);
     const disc = [...nb[picked].disc].sort((a, b) => b[1].length - a[1].length);
-    box.innerHTML = `<h3 class="mono">${esc(n.symbol)}</h3><p class="small muted">${esc(n.sector || "")}${n.cluster ? ` · <a href="#/clusters">market cluster ${n.cluster}</a>` : ""}</p>
+    box.innerHTML = `<h3 class="mono">${esc(n.symbol)}</h3><p class="small muted">${esc(n.sector || "")}${n.cluster ? ` · <a href="#/clusters">market cluster ${n.cluster}${clusterName(S.index.market_clusters, n.cluster)}</a>` : ""}</p>
       <h4>Themes (${n.themes.length})</h4>${n.themes.length ? `<ul class="plain">${n.themes.map((id) => `<li><a href="#/theme/${esc(id)}">${esc(S.byId[id]?.title || id)}</a></li>`).join("")}</ul>` : `<p class="small muted">In no active theme.</p>`}
       <h4>Trades with (${price.length})</h4>${price.length ? `<p class="small">${price.slice(0, 12).map(([o, c]) => `<span class="mono">${esc(o)}</span> ${c.toFixed(2)}`).join(" · ")}${price.length > 12 ? ` · +${price.length - 12}` : ""}</p>` : `<p class="small muted">No price link above the cut.</p>`}
       <h4>Discusses the same themes as (${disc.length})</h4>${disc.length ? `<p class="small">${disc.slice(0, 16).map(([o, th]) => `<span class="mono">${esc(o)}</span>${th.length > 1 ? ` ×${th.length}` : ""}`).join(" · ")}${disc.length > 16 ? ` · +${disc.length - 16}` : ""}</p>` : `<p class="small muted">None this month.</p>`}`;
@@ -861,6 +889,7 @@ function drawDendrogram(host, mc) {
     svgEl("rect", { x: 0, y: top + a * rowH, width: W, height: (b - a + 1) * rowH, class: c.id % 2 ? "band" : "band alt" }, svg);
     const t = svgEl("text", { x: 4, y: yOf(a) + 4, class: "band-label" }, svg);
     t.textContent = `C${c.id}`;
+    svgEl("title", {}, t).textContent = `Cluster ${c.id}${c.name ? `: ${c.name}` : ""}`;
   });
   // axis
   const ax = svgEl("g", { class: "axis" }, svg);
@@ -887,8 +916,13 @@ function drawDendrogram(host, mc) {
   mc.leaves.forEach((l, i) => {
     const t = svgEl("text", { x: bandW, y: yOf(i) + 4, class: l.cluster ? "leaf in" : "leaf" }, svg);
     t.textContent = l.symbol;
-    svgEl("title", {}, t).textContent = `${l.symbol}${l.sector ? `, ${l.sector}` : ""}${l.cluster ? `, cluster ${l.cluster}` : ", not in a cluster"}`;
+    svgEl("title", {}, t).textContent = `${l.symbol}${l.sector ? `, ${l.sector}` : ""}${l.cluster ? `, cluster ${l.cluster}${clusterName(mc, l.cluster)}` : ", not in a cluster"}`;
   });
+}
+
+function clusterName(mc, id) {
+  const c = (mc?.clusters || []).find((x) => x.id === id);
+  return c?.name ? ` (${c.name})` : "";
 }
 
 function clustersPage() {
@@ -906,9 +940,9 @@ function clustersPage() {
       <p class="muted small">Prices only. This is a different question from the themes, which come from what companies say; where a cluster overlaps a theme's basket, it is linked below.</p></section>
     ${notices()}
     <section class="section" aria-labelledby="h-cl"><div><h2 id="h-cl">${mc.clusters.length} clusters among ${mc.companies} companies</h2>
-      <p class="muted small">Hierarchical clustering (average linkage) of each pair's correlation beyond ${esc(mc.index)}. The tree is cut at a correlation of ${mc.cut.corr.toFixed(2)}: shuffling each company's returns in time removes any co-movement, and in ${Math.round((1 - mc.cut.alpha) * 100)}% of ${mc.cut.draws} shuffles no pair of companies reached that correlation. A cluster only joins companies whose average correlation beats that. No number of clusters is chosen in advance. ${loose.length} companies are in no cluster.</p></div>
+      <p class="muted small">Hierarchical clustering (average linkage) of each pair's correlation beyond ${esc(mc.index)}. The tree is cut at a correlation of ${mc.cut.corr.toFixed(2)}: shuffling each company's returns in time removes any co-movement, and in ${Math.round((1 - mc.cut.alpha) * 100)}% of ${mc.cut.draws} shuffles no pair of companies reached that correlation. A cluster only joins companies whose average correlation beats that. No number of clusters is chosen in advance. Each cluster is named after the sector most of its companies are in (or its two largest sectors): a description of who is in it, not a reason the stocks move together. ${loose.length} companies are in no cluster.</p></div>
       <div class="cluster-list">${mc.clusters.map((c) => `<article class="card cluster" id="c${c.id}">
-        <div class="card-top"><h3>Cluster ${c.id}</h3><span class="small muted">${c.size} companies</span></div>
+        <div class="card-top"><h3>${esc(c.name || `Cluster ${c.id}`)}</h3><span class="small muted">Cluster ${c.id} · ${c.size} companies</span></div>
         <p class="tickers">${c.members.map(esc).join(" · ")}</p>
         <p class="small">${Object.entries(c.sectors).map(([k, v]) => `${esc(k)} ${v}`).join(", ")}</p>
         <p class="small muted">Average correlation beyond ${esc(mc.index)}: ${c.avg_corr.toFixed(2)} (${c.avg_corr_shrunk.toFixed(2)} after shrinkage ${mc.shrinkage.toFixed(2)})</p>

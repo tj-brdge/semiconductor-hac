@@ -276,11 +276,12 @@ def cmd_monitor(a):
         print(text)
         return
     if a.action == "feed":
+        from .monitor.config import load_monitor
         from .monitor.feed import feed
-        text = feed(Path(a.state), Path(a.site))
+        text = feed(Path(a.state), Path(a.site), mcfg=load_monitor(prof.monitor))
         out = Path(a.out) if a.out else Path(a.state) / "themes_feed.md"
         out.write_text(text)
-        print("\n".join(text.splitlines()[:8]))
+        print("\n".join(text.splitlines()[:14]))
         print(f"\nwritten to {out}")
         return
     if a.action == "review":

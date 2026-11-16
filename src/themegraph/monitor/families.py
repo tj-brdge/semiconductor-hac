@@ -77,6 +77,34 @@ def families(themes: list[dict], vectors: dict[str, np.ndarray],
     return out
 
 
+def groups(themes: list[dict], vectors: dict[str, np.ndarray], min_cosine: float,
+           family_cosine: float) -> list[dict]:
+    """Broader topics: the same tree as the families, cut lower. Each group lists
+    its themes (subthemes), most persistent first, with the family each belongs
+    to. A group of one theme is not a group and is left out. Display only."""
+    active = [t for t in themes if t["published"] and t["status"] in ACTIVE
+              and not t.get("merged_into")]
+    by = {t["id"]: t for t in active}
+    ids, S = similarity(active, vectors)
+    if len(ids) < 2:
+        return []
+    Z = linkage(squareform(1.0 - S, checks=False), method="average")
+    wide = fcluster(Z, t=1.0 - min_cosine, criterion="distance")
+    out = []
+    pos = {i: k for k, i in enumerate(ids)}
+    for lab in np.unique(wide):
+        members = sorted((ids[k] for k in np.flatnonzero(wide == lab)),
+                         key=lambda i: _lead_key(by[i]))
+        if len(members) < 2:
+            continue
+        sub = S[np.ix_([pos[i] for i in members], [pos[i] for i in members])]
+        out.append({"id": "g-" + members[0], "lead": members[0], "members": members,
+                    "avg_cosine": round(float(sub[np.triu_indices(len(members), 1)].mean()), 3),
+                    "companies": sorted({s for i in members
+                                         for s in _latest(by[i]).get("issuers", [])})})
+    return sorted(out, key=lambda g: (-len(g["members"]), g["id"]))
+
+
 def overlap_pairs(themes: list[dict], vectors: dict[str, np.ndarray],
                   floor: float = 0.5) -> list[dict]:
     """Every pair of active published themes at or above `floor` cosine, most similar
