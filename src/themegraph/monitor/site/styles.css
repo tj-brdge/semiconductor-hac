@@ -408,3 +408,6 @@ table.companies td, table.companies th { padding: 10px 14px; vertical-align: top
 .topics { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
 .topic .subthemes { margin: 8px 0 0; display: grid; gap: 6px; }
 .topic .subthemes a { font-weight: 600; }
+
+.macro { margin-top: 20px; }
+.macro h3 { margin-bottom: 4px; }

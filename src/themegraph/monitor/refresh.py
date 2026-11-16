@@ -75,10 +75,12 @@ def load_inputs(fixtures: bool, as_of: dt.date, log=print,
         cut = _cut(as_of)
         prices = prices.loc[prices["available_at"] <= cut]
         docs = docs.loc[docs["available_at"] <= cut]
+        from .macro import fixture_factors
         return {"cfg": cfg, "universe": u, "prices": prices, "docs": docs,
+                "factors": fixture_factors(prices) if len(prices) else None,
                 "embedder": HashingEmbedder(cfg.embedding.dimensions), "fixture": True}
     from ..cli import DATA, _store
-    from ..ingest import load_documents, load_prices
+    from ..ingest import load_documents, load_factors, load_prices
     from ..text.embed import make_embedder
     cfg, u = load_pipeline(profile.pipeline), load_universe(profile.universe)
     store = _store()
@@ -86,6 +88,7 @@ def load_inputs(fixtures: bool, as_of: dt.date, log=print,
     # The store is shared by profiles: read only this universe's companies.
     return {"cfg": cfg, "universe": u, "prices": load_prices(store, universe=u),
             "docs": load_documents(store, universe=u), "embedder": make_embedder(cfg.embedding),
+            "factors": load_factors(store, cfg),
             "cache": DATA / "cache", "fixture": False,
             "doc_watermark": document_watermark(store, u, mcfg.completeness.min_symbol_share)}
 
@@ -166,6 +169,13 @@ def ingest_step(kind: str, as_of: dt.date, log=print, profile: Profile | None = 
         if info.get("reloaded"):
             out += " (" + "; ".join(f"{k}: {v}" for k, v in
                                     sorted(info["reloaded"].items())[:25]) + ")"
+        # Rates, oil, CPI and the dollar, for the macro sensitivity tables. Optional:
+        # a failure is reported here and the tables keep the last stored series.
+        try:
+            I.ingest_fmp_macro(client, cfg, store, as_of)
+            out += "; macro series updated"
+        except Exception as e:  # noqa: BLE001
+            out += f"; macro series NOT updated ({type(e).__name__}: {e})"
         # A symbol the provider returned nothing for keeps its old prices: say so
         # here (status.json) instead of leaving it in the terminal log.
         return out if not failed else (
@@ -294,6 +304,8 @@ def refresh(state_dir: Path, site_dir: Path, *, fixtures: bool = False,
                     "groups": mcfg.groups.model_dump(),
                     "theme_groups": book_box.get("theme_groups", []),
                     "market_clusters": book_box.get("market_clusters"),
+                    "macro": {k: v for k, v in (book_box.get("macro") or {}).items()
+                              if k != "themes"},
                     "forward_tests": book_box.get("forward_tests"),
                     "pending_snapshots": getattr(reg, "pending", []),
                     "price_gaps": price_gaps(book_box["book"], ctxd["universe"], mcfg),
@@ -548,6 +560,13 @@ def _value(reg: Registry, d: dict, mcfg: MonitorConfig, box: dict) -> str:
          if p.get("status") == "ok"},
         c.window_sessions, c.min_observations_share, c.index)
     box["forward_tests"] = forward_tests.progress(reg.data, book, reg.root)
+    from .macro import macro_table
+    mc = box["market_clusters"]
+    macro = box["macro"] = macro_table(
+        book, d.get("factors"), mc.get("clusters", []) if mc.get("available") else [],
+        {k: [x["symbol"] for x in p["constituents"]] for k, p in perfs.items()
+         if p.get("status") == "ok"},
+        d["cfg"].macro.window_months, d["cfg"].macro.min_months, c.index)
     fam = families(reg.published(), reg.vectors, mcfg.families.min_cosine)
     from . import naming
     grp = theme_groups(reg, mcfg)  # names come from the registry; no call is made here
@@ -560,6 +579,7 @@ def _value(reg: Registry, d: dict, mcfg: MonitorConfig, box: dict) -> str:
         g = group_of.get(th["id"])
         doc["group"] = {"id": g["id"], "name": g["name"], "members": g["members"]} if g else None
         doc["trading_together"] = together.get(th["id"])
+        doc["macro"] = macro.get("themes", {}).get(th["id"])
         doc["overview"] = theme_overview(doc)
         docs.append(doc)
     box.update(book=book, docs=docs)

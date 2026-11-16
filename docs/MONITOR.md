@@ -500,6 +500,36 @@ companies are in, otherwise its two largest sectors; two clusters with the same
 make-up are told apart by their first tickers. The name describes who is in the
 cluster. It is not a reason the stocks move together, and no text or model is used.
 
+## Macro sensitivity (`monitor/macro.py`)
+
+Added 2026-11-16. Question: in months when short rates, long rates, oil, inflation
+or the dollar moved, did a group of stocks tend to move with them, beyond the
+market? Shown for every theme basket (theme page) and every market cluster
+(Clusters page). The clusters themselves are unchanged: they still come from
+co-movement beyond SPY alone.
+
+- **Factors:** monthly change in the 2-year and 10-year Treasury yields, monthly
+  log change in WTI crude and the dollar index, and CPI growth. CPI for month M
+  counts in month M + 2, when it was known (`availability.macro_release_lag_months`).
+- **Group return:** the equal-weight monthly return of the group's current
+  companies, complete months only.
+- **Estimate:** ordinary least squares of that return on SPY's return and the five
+  factor changes over the last 36 complete months (at least 30), all standardised.
+  +0.40 means the group's month was 0.4 of its usual monthly move higher when the
+  factor rose by one of its usual monthly moves, holding the market and the other
+  factors fixed.
+- **"Clear":** |t| >= 2. Otherwise the page says "no clear link".
+
+Limits, stated on the page: about one label in twenty appears by chance; groups
+share companies, so a chance link shows up in several at once; 36 months is a
+short sample; current members are used throughout, so it describes today's
+basket, not its past holdings. It is a description of the recent past, not a
+forecast, and nothing here feeds detection, baskets or any threshold.
+
+The series are downloaded with prices on each refresh (`macro series updated` in
+the prices stage of `status.json`). A failed download is reported there and the
+tables keep the last stored series; with none stored the section says so.
+
 ## Theme feed (`monitor/feed.py`)
 
 `themegraph monitor feed` writes `<state>/themes_feed.md`: every published theme
