@@ -304,7 +304,7 @@ def refresh(state_dir: Path, site_dir: Path, *, fixtures: bool = False,
                     "groups": mcfg.groups.model_dump(),
                     "theme_groups": book_box.get("theme_groups", []),
                     "market_clusters": book_box.get("market_clusters"),
-                    "macro_clusters": book_box.get("macro_clusters"),
+                    "company_macro": book_box.get("company_macro"),
                     "macro": {k: v for k, v in (book_box.get("macro") or {}).items()
                               if k != "themes"},
                     "forward_tests": book_box.get("forward_tests"),
@@ -561,16 +561,22 @@ def _value(reg: Registry, d: dict, mcfg: MonitorConfig, box: dict) -> str:
          if p.get("status") == "ok"},
         c.window_sessions, c.min_observations_share, c.index)
     box["forward_tests"] = forward_tests.progress(reg.data, book, reg.root)
-    from .macro import macro_clusters, macro_table
-    box["macro_clusters"] = macro_clusters(book, d.get("factors"), d["universe"],
-                                           d["cfg"].macro.window_months,
-                                           d["cfg"].macro.min_months, c.index)
+    # Macro tables are descriptive extras: a failure there must not block a release.
+    from .macro import company_macro, macro_table
     mc = box["market_clusters"]
-    macro = box["macro"] = macro_table(
-        book, d.get("factors"), mc.get("clusters", []) if mc.get("available") else [],
+
+    def optional(fn, *a):
+        try:
+            return fn(*a)
+        except Exception as e:  # noqa: BLE001
+            return {"available": False, "note": f"Not computed ({type(e).__name__}: {e})"}
+    box["company_macro"] = optional(company_macro, book, d.get("factors"), d["universe"],
+                                    c.index)
+    macro = box["macro"] = optional(
+        macro_table, book, d.get("factors"),
+        mc.get("clusters", []) if mc.get("available") else [],
         {k: [x["symbol"] for x in p["constituents"]] for k, p in perfs.items()
-         if p.get("status") == "ok"},
-        d["cfg"].macro.window_months, d["cfg"].macro.min_months, c.index)
+         if p.get("status") == "ok"}, c.index)
     fam = families(reg.published(), reg.vectors, mcfg.families.min_cosine)
     from . import naming
     grp = theme_groups(reg, mcfg)  # names come from the registry; no call is made here

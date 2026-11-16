@@ -513,45 +513,73 @@ co-movement beyond SPY alone.
   counts in month M + 2, when it was known (`availability.macro_release_lag_months`).
 - **Group return:** the equal-weight monthly return of the group's current
   companies, complete months only.
-- **Estimate:** ordinary least squares of that return on SPY's return and the five
-  factor changes over the last 36 complete months (at least 30), all standardised.
-  +0.40 means the group's month was 0.4 of its usual monthly move higher when the
-  factor rose by one of its usual monthly moves, holding the market and the other
-  factors fixed.
-- **"Clear":** |t| >= 2. Otherwise the page says "no clear link".
+- **Time frames (added 2026-11-16 at the owner's request):** 30, 60, 90, 180 and
+  360 days, taken as 1, 2, 3, 6 and 12 months. For each span the group's return
+  over the span is set against the **change** in each factor over the same span
+  (never its level), using every month as a starting point.
+- **History:** up to 144 complete months (twelve years), so the 360-day span has
+  about eleven non-overlapping years behind it. A span needs ten non-overlapping
+  stretches of a group's history; otherwise that cell is a dash. A basket whose
+  companies are younger uses the months it has.
+- **Estimate:** ordinary least squares of the group's return on SPY's return and
+  the five factor changes, all standardised. +0.40 means the group's return over
+  the span was 0.4 of its usual move higher when the factor rose by one of its
+  usual moves, holding the market and the other factors fixed.
+- **"Clear":** neighbouring spans share months, so ordinary significance tests
+  flag far too much at long spans (about 15% of pure noise at 360 days, measured).
+  Instead the factor history is slid against the returns by every offset of at
+  least a year, which keeps each series' own behaviour and destroys any real
+  link. A link is clear when its coefficient is larger than in 95% of those
+  offsets. Measured on noise: 4.5% flagged at 30 days, 7% at 360 days.
+- **What the factors did:** the Clusters page also shows each factor's own change
+  over each span (yields in percentage points, the rest in percent).
 
-Limits, stated on the page: about one label in twenty appears by chance; groups
-share companies, so a chance link shows up in several at once; 36 months is a
-short sample; current members are used throughout, so it describes today's
-basket, not its past holdings. It is a description of the recent past, not a
-forecast, and nothing here feeds detection, baskets or any threshold.
+Limits, stated on the page: with five factors and five spans some clear links
+appear by chance; groups share companies, so a chance link shows up in several at
+once; current members are used throughout, so it describes today's basket, not
+its past holdings; twelve years holds only about eleven independent 360-day
+spans. It is a description of the past, not a forecast, and nothing here feeds
+detection, baskets or any threshold. A failure in these tables never blocks a
+release: the section says it was not computed.
 
-### Clusters by macro sensitivity (`macro_clusters`)
+Changed 2026-11-16: the first version (same day) used one span, the last 36
+months and |t| >= 2. It was replaced before any live result was seen.
 
-Added 2026-11-16, at the owner's request: a second grouping of stocks, by how they
-have traded against the factors. It sits beside the price clusters and replaces
-nothing. The factors are monthly **changes** (yield changes, log price changes, CPI
-growth), not levels.
+### Companies against the factors (`company_macro`)
 
-1. **Per stock:** monthly return on SPY and the factor changes (same window and
-   factors as above). A stock is macro-sensitive when the factors are jointly
-   significant beyond the market (F-test, 5%). The others are not grouped: the
-   direction of a sensitivity that is not there is noise.
-2. **Similarity:** each sensitive stock's macro-driven return path (the factor
-   changes times its coefficients). Two stocks are similar when those paths
-   correlate.
-3. **Clusters:** average linkage, cut at an average correlation of 0.7. A cluster
-   is named after its strongest average sensitivity ("Falls when long-term rates
-   rise").
-4. **Chance comparison:** the factor months are shuffled 200 times, which breaks
-   any link to returns but keeps how stocks move with each other, and steps 1 to 3
-   are repeated. The page says how many stocks pass on average and in 95% of
-   shuffles. If the real count is not above that, the section is marked "not
-   distinguishable from chance".
+Changed 2026-11-16 at the owner's request, replacing the same day's first version
+(36 months, F-test, one span) before any live result was seen. The owner asked to
+see how each company trades against the factors, not against other companies;
+which companies trade against several factors at once; and clusters built from
+those individual results.
 
-The 5% level, the 0.7 cut and the 200 shuffles were set before any result on live
-data. Limits: 36 months and five factors is a small sample; today's companies are
-used throughout; companies without the full window are left out. Descriptive only.
+1. **Per company and time frame:** the company's return over the span on SPY's
+   return and each factor's change over the span, all standardised. A link to one
+   factor is clear when its coefficient beats 95% of slid factor histories (as
+   above). Each coefficient holds the market and the other factors fixed, so two
+   clear links mean the company has traded against both at once. The page counts
+   them ("Clear links") and can list only companies with two or more.
+2. **History per time frame:** 72 months for 30, 60 and 90 days, 96 for 180 days,
+   144 for 360 days. A company needs the whole window to be included, so every
+   company in a time frame is measured over the same months; the rest are counted
+   as left out. A time frame without enough stored history is disabled and says
+   what it needs.
+3. **Macro-sensitive:** the factors together account for more of the company's
+   return than in 95% of slid histories. Only these are clustered: the direction
+   of a sensitivity that is not there is noise.
+4. **Clusters:** average linkage on how alike the companies' factor-driven return
+   paths are, cut at an average correlation of 0.7. A cluster is named after its
+   strongest average sensitivity, or its two strongest when they are close
+   ("Falls when long-term rates rise and rises when oil rises").
+5. **Chance comparison:** for each slid history, the number of companies that
+   would have passed their own bar. Sliding keeps how companies move with each
+   other. The page gives the average and the 95% level, and marks the time frame
+   "not distinguishable from chance" when the real count is not above it.
+
+The 5% level and the 0.7 cut were set before any result on live data. Limits:
+today's companies are used throughout; with five factors per company some clear
+links appear by chance; the long spans rest on few independent stretches.
+Descriptive only.
 
 The series are downloaded with prices on each refresh (`macro series updated` in
 the prices stage of `status.json`). A failed download is reported there and the
