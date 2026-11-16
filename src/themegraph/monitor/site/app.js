@@ -340,6 +340,28 @@ function allThemes(params) {
 // -- one theme -----------------------------------------------------------------------
 const RANGES = [["3m", "3M", 63], ["6m", "6M", 126], ["1y", "1Y", 252], ["all", "All", null], ["live", "Live", null]];
 
+// Macro sensitivity (prices only): how a basket or cluster has moved with rates,
+// oil, inflation and the dollar, beyond the market. A description, not a forecast.
+const signed = (v) => `${v > 0 ? "+" : "−"}${Math.abs(v).toFixed(2)}`;
+function macroLine(g) {
+  const M = S.index.macro;
+  if (!M?.available || !g) return "";
+  const clear = M.factors.filter((f) => g[f.key]?.clear);
+  const short = (f) => f.label.split(" (")[0].toLowerCase();
+  if (!clear.length) return `<p class="small muted">Macro: no clear link to ${M.factors.map(short).join(", ")} over ${g.months} months.</p>`;
+  return `<p class="small">Macro (last ${g.months} months, beyond ${esc(M.index)}): ${clear.map((f) => `${g[f.key].beta > 0 ? "rose" : "fell"} when ${esc(short(f))} rose (${signed(g[f.key].beta)})`).join("; ")}.</p>`;
+}
+function macroHTML(g) {
+  const M = S.index.macro;
+  if (!M?.available) return "";
+  if (!g) return `<div class="macro"><h3>Rates, oil, inflation and the dollar</h3><p class="small muted">Not enough complete months of prices for this basket (at least ${M.min_months} needed).</p></div>`;
+  return `<div class="macro"><h3>Rates, oil, inflation and the dollar</h3>
+    <p class="small muted">In months when each of these rose, did this basket tend to rise or fall, beyond what ${esc(M.index)} and the other factors explain? ${g.months} months to ${esc(M.end)}, current companies, equal weight. A value of +0.40 means the basket's month was 0.4 of its usual monthly move higher when the factor rose by one of its usual monthly moves.</p>
+    <div class="table-wrap"><table class="stack"><thead><tr><th>Factor</th><th class="num">Sensitivity</th><th>Reading</th></tr></thead>
+    <tbody>${M.factors.map((f) => { const x = g[f.key]; return x ? `<tr><td>${esc(f.label)}</td><td class="num">${signed(x.beta)}</td><td>${x.clear ? `<b>${x.beta > 0 ? "Rose" : "Fell"} when it rose</b>` : `<span class="muted">No clear link</span>`}</td></tr>` : ""; }).join("")}</tbody></table></div>
+    <p class="small muted">"Clear" means the link is at least twice its own uncertainty (|t| ≥ ${M.t_clear}). Across five factors and many baskets about one in twenty such labels appears by chance, baskets that share companies tend to show the same chance link together, and ${g.months} months is a short sample: a description of the recent past, not a forecast.${M.missing.length ? ` Not available: ${esc(M.missing.join(", "))}.` : ""}</p></div>`;
+}
+
 function togetherHTML(tt) {
   if (!tt) return "";
   const names = S.index.benchmark_labels || {};
@@ -498,7 +520,8 @@ async function themePage(id, token) {
           <tbody>${retRow("3m", "3 months")}${retRow("6m", "6 months")}${retRow("12m", "12 months")}${rec ? retRow("reconstructed", "Simulated period") : ""}${live ? retRow("live", "Live period") : ""}${retRow("full_period", "Whole history")}</tbody></table></div>
           <p class="small muted">pts: percentage points (basket return minus benchmark return).
           ${trend.trend ? `Relative performance is <b>${esc(trend.trend === "gaining" ? "improving" : trend.trend === "losing" ? "weakening" : "steady")}</b>: the 3-month return vs ${esc(B[0])} is ${num(trend.excess_3m_pp, 1)} pts, ${num(trend.change_pp_1m, 1)} pts from the previous month-end.` : ""}</p>
-          ${togetherHTML(t.trading_together)}`
+          ${togetherHTML(t.trading_together)}
+          ${macroHTML(t.macro)}`
         : `<p class="empty">${esc(p.note || "No prices yet.")}</p>`}
       </section>
     ${p.status === "ok" ? `<section class="panel" aria-labelledby="h-cons"><h2 id="h-cons">Companies in the basket</h2>
@@ -940,12 +963,13 @@ function clustersPage() {
       <p class="muted small">Prices only. This is a different question from the themes, which come from what companies say; where a cluster overlaps a theme's basket, it is linked below.</p></section>
     ${notices()}
     <section class="section" aria-labelledby="h-cl"><div><h2 id="h-cl">${mc.clusters.length} clusters among ${mc.companies} companies</h2>
-      <p class="muted small">Hierarchical clustering (average linkage) of each pair's correlation beyond ${esc(mc.index)}. The tree is cut at a correlation of ${mc.cut.corr.toFixed(2)}: shuffling each company's returns in time removes any co-movement, and in ${Math.round((1 - mc.cut.alpha) * 100)}% of ${mc.cut.draws} shuffles no pair of companies reached that correlation. A cluster only joins companies whose average correlation beats that. No number of clusters is chosen in advance. Each cluster is named after the sector most of its companies are in (or its two largest sectors): a description of who is in it, not a reason the stocks move together. ${loose.length} companies are in no cluster.</p></div>
+      <p class="muted small">Hierarchical clustering (average linkage) of each pair's correlation beyond ${esc(mc.index)}. The tree is cut at a correlation of ${mc.cut.corr.toFixed(2)}: shuffling each company's returns in time removes any co-movement, and in ${Math.round((1 - mc.cut.alpha) * 100)}% of ${mc.cut.draws} shuffles no pair of companies reached that correlation. A cluster only joins companies whose average correlation beats that. No number of clusters is chosen in advance. Each cluster is named after the sector most of its companies are in (or its two largest sectors): a description of who is in it, not a reason the stocks move together.${S.index.macro?.available ? ` The "Macro" line on each cluster says how it moved in months when rates, oil, inflation or the dollar rose, beyond ${esc(mc.index)} (${S.index.macro.window_months} months; only links at least twice their uncertainty are named).` : ""} ${loose.length} companies are in no cluster.</p></div>
       <div class="cluster-list">${mc.clusters.map((c) => `<article class="card cluster" id="c${c.id}">
         <div class="card-top"><h3>${esc(c.name || `Cluster ${c.id}`)}</h3><span class="small muted">Cluster ${c.id} · ${c.size} companies</span></div>
         <p class="tickers">${c.members.map(esc).join(" · ")}</p>
         <p class="small">${Object.entries(c.sectors).map(([k, v]) => `${esc(k)} ${v}`).join(", ")}</p>
         <p class="small muted">Average correlation beyond ${esc(mc.index)}: ${c.avg_corr.toFixed(2)} (${c.avg_corr_shrunk.toFixed(2)} after shrinkage ${mc.shrinkage.toFixed(2)})</p>
+        ${macroLine(S.index.macro?.clusters?.[String(c.id)])}
         ${c.themes.length ? `<p class="small">In theme baskets: ${c.themes.map((t) => `<a href="#/theme/${esc(t.id)}">${esc(S.byId[t.id]?.title || t.id)}</a> (${t.shared})`).join(", ")}</p>` : `<p class="small muted">No theme basket holds two or more of these companies.</p>`}
       </article>`).join("")}</div></section>
     <section class="panel" aria-labelledby="h-tree"><h2 id="h-tree">The tree</h2>
