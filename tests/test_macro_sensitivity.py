@@ -5,6 +5,7 @@ import json
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from themegraph.monitor import refresh as M
 from themegraph.monitor.macro import FACTORS, macro_table, monthly_returns, sensitivities
@@ -223,3 +224,32 @@ def test_company_macro_needs_series_and_history():
     assert company_macro(book, None, u, "SPY")["available"] is False
     out = company_macro(book, F, u, "SPY")
     assert out["available"] is False and "72 complete months" in out["note"]
+
+
+def test_a_month_with_no_cpi_figure_counts_as_nothing_published():
+    """The October 2025 CPI was never published. Before: that left two months of
+    the factor missing, and the monitor reported 9 complete months (Feb to Oct
+    2026) although years of data were stored."""
+    from themegraph.market.macro import build_factors
+    idx = pd.date_range("2025-06-01", periods=8, freq="MS")
+    level = pd.Series([100.0, 100.2, 100.5, 100.8, np.nan, 101.4, 101.6, 101.9], index=idx)
+    level = level.dropna()                       # October has no row at all
+    strict = build_factors({}, {}, level, 2)["cpi"]
+    assert strict.isna().sum() == 3              # the first month and both sides of the gap
+    filled = build_factors({}, {}, level, 2, fill_unpublished=3)["cpi"]
+    by = {str(k)[:7]: v for k, v in filled.items()}
+    assert by["2025-12"] == 0.0                  # October's slot: nothing was published
+    assert by["2026-01"] == pytest.approx(np.log(101.4 / 100.8))   # all of it, on arrival
+    assert filled.isna().sum() == 1
+    # A longer silence than the limit stays missing.
+    long = level.drop(idx[[5, 6]])
+    assert build_factors({}, {}, long, 2, fill_unpublished=1)["cpi"].isna().sum() > 1
+
+
+def test_a_short_run_says_which_factor_broke_it():
+    from themegraph.monitor.macro import company_macro
+    book, F, u = _book(1, months=80)
+    F.iloc[60, F.columns.get_loc("cpi")] = np.nan
+    out = company_macro(book, F, u, "SPY")
+    assert out["available"] is False
+    assert "broken at" in out["note"] and "Inflation (CPI" in out["note"]

@@ -258,8 +258,8 @@ def load_documents(store: Store, upto: str | None = None,
     return pd.concat(frames, ignore_index=True)
 
 
-def load_factors(store: Store, cfg: PipelineConfig,
-                 upto: str | None = None) -> pd.DataFrame | None:
+def load_factors(store: Store, cfg: PipelineConfig, upto: str | None = None,
+                 fill_unpublished: int = 0) -> pd.DataFrame | None:
     if not store.vintages("macro"):
         return None
     m = store.read("macro", upto=upto)
@@ -271,7 +271,8 @@ def load_factors(store: Store, cfg: PipelineConfig,
         else:
             daily[name] = s
             kinds[name] = "diff" if g["kind"].iloc[0] == "treasury" else "logret"
-    return build_factors(daily, kinds, cpi, cfg.availability.macro_release_lag_months)
+    return build_factors(daily, kinds, cpi, cfg.availability.macro_release_lag_months,
+                         fill_unpublished)
 
 
 def coverage(store: Store, universe: UniverseConfig) -> pd.DataFrame:

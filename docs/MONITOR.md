@@ -581,6 +581,16 @@ today's companies are used throughout; with five factors per company some clear
 links appear by chance; the long spans rest on few independent stretches.
 Descriptive only.
 
+**A month with no CPI figure (changed 2026-11-17).** The October 2025 CPI was never
+published. With gaps left missing, CPI growth was absent for two months, and
+because every calculation here uses the latest unbroken run of complete months,
+a live refresh reported "9 stored" (February to October 2026) with years of data
+on disk. In the monitor, a run of up to three months without a figure now counts
+as "nothing published": zero change in those months and the whole change in the
+month the next figure arrived. Nothing is invented and nothing is used early.
+The research pipeline is unchanged (gaps stay missing there). When a run is still
+too short, the message names the month and the series that broke it.
+
 The series are downloaded with prices on each refresh (`macro series updated` in
 the prices stage of `status.json`). A failed download is reported there and the
 tables keep the last stored series; with none stored the section says so.
