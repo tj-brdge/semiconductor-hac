@@ -75,6 +75,8 @@ def test_refresh_publishes_sensitivities_for_clusters_and_themes(tmp_path):
     rel = data / json.loads((data / "latest.json").read_text())["path"]
     macro = json.loads((rel / "index.json").read_text())["macro"]
     assert macro["available"] and macro["end"] == "2021-06" and "themes" not in macro
+    index = json.loads((rel / "index.json").read_text())
+    assert index["company_names"] == {}        # the synthetic universe has no names
     assert [f["key"] for f in macro["factors"]] == list(FACTORS)
     assert [s["label"] for s in macro["spans"]] == ["30 days", "60 days", "90 days",
                                                     "180 days", "360 days"]

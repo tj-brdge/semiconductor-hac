@@ -203,3 +203,14 @@ def test_full_history_build_counts_every_company_from_the_start(tmp_path):
     from themegraph.monitor.review import review_report
     text = review_report(tmp_path / "state", load_monitor(TECH.monitor))
     assert "## Most similar pairs" in text and "## Tone" in text
+
+
+def test_every_company_in_every_profile_has_a_display_name():
+    """The site shows names with tickers. The name lives on the issuer, so a company
+    cannot be added to coverage without one."""
+    from themegraph.config import load_universe
+    from themegraph.monitor.profiles import load_profile
+    for prof in ("semis", "tech-v2"):
+        u = load_universe(load_profile(prof).universe)
+        missing = [i.symbol for i in u.issuers if not (i.name or "").strip()]
+        assert not missing, (prof, missing)

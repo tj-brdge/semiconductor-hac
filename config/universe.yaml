@@ -41,93 +41,93 @@ changes:
 
 issuers:
   # --- memory / storage
-  - {symbol: MU, segment: memory, role: core}
-  - {symbol: 005930.KS, segment: memory, role: core, currency: KRW, sec_filer: false}
-  - {symbol: 000660.KS, segment: memory, role: core, currency: KRW, sec_filer: false}
-  - {symbol: WDC, segment: memory, role: core}
-  - {symbol: SNDK, segment: memory, role: core, listed: 2025-02-24}  # verify
-  - {symbol: 2408.TW, segment: memory, role: core, currency: TWD, sec_filer: false}
+  - {symbol: MU, name: "Micron Technology", segment: memory, role: core}
+  - {symbol: 005930.KS, name: "Samsung Electronics", segment: memory, role: core, currency: KRW, sec_filer: false}
+  - {symbol: 000660.KS, name: "SK hynix", segment: memory, role: core, currency: KRW, sec_filer: false}
+  - {symbol: WDC, name: "Western Digital", segment: memory, role: core}
+  - {symbol: SNDK, name: "SanDisk", segment: memory, role: core, listed: 2025-02-24}  # verify
+  - {symbol: 2408.TW, name: "Nanya Technology", segment: memory, role: core, currency: TWD, sec_filer: false}
   # --- compute / logic
-  - {symbol: NVDA, segment: compute, role: core}
-  - {symbol: AMD, segment: compute, role: core}
-  - {symbol: INTC, segment: compute, role: core}
-  - {symbol: AVGO, segment: compute, role: core}
-  - {symbol: QCOM, segment: compute, role: core}
-  - {symbol: MRVL, segment: compute, role: core}
-  - {symbol: ARM, segment: compute, role: core, listed: 2023-09-14}  # verify
-  - {symbol: XLNX, segment: compute, role: core, delisted: 2022-02-14, cik: 743988,
+  - {symbol: NVDA, name: "Nvidia", segment: compute, role: core}
+  - {symbol: AMD, name: "Advanced Micro Devices", segment: compute, role: core}
+  - {symbol: INTC, name: "Intel", segment: compute, role: core}
+  - {symbol: AVGO, name: "Broadcom", segment: compute, role: core}
+  - {symbol: QCOM, name: "Qualcomm", segment: compute, role: core}
+  - {symbol: MRVL, name: "Marvell Technology", segment: compute, role: core}
+  - {symbol: ARM, name: "Arm Holdings", segment: compute, role: core, listed: 2023-09-14}  # verify
+  - {symbol: XLNX, name: "Xilinx", segment: compute, role: core, delisted: 2022-02-14, cik: 743988,
      successor: {symbol: AMD, shares: 1.7234, source: "https://www.sec.gov/Archives/edgar/data/743988/000110465922021762/tm226258d1_8k.htm"}}
   # --- foundry / packaging
-  - {symbol: TSM, segment: foundry, role: core}
-  - {symbol: UMC, segment: foundry, role: core}
-  - {symbol: GFS, segment: foundry, role: core, listed: 2021-10-28}  # verify
-  - {symbol: AMKR, segment: foundry, role: core}
+  - {symbol: TSM, name: "Taiwan Semiconductor (TSMC)", segment: foundry, role: core}
+  - {symbol: UMC, name: "United Microelectronics", segment: foundry, role: core}
+  - {symbol: GFS, name: "GlobalFoundries", segment: foundry, role: core, listed: 2021-10-28}  # verify
+  - {symbol: AMKR, name: "Amkor Technology", segment: foundry, role: core}
   # --- analog / power / mixed signal
-  - {symbol: TXN, segment: analog, role: core}
-  - {symbol: ADI, segment: analog, role: core}
-  - {symbol: MCHP, segment: analog, role: core}
-  - {symbol: NXPI, segment: analog, role: core}
-  - {symbol: "ON", segment: analog, role: core}
-  - {symbol: STM, segment: analog, role: core}
-  - {symbol: WOLF, segment: analog, role: core}
-  - {symbol: MPWR, segment: analog, role: core}
-  - {symbol: POWI, segment: analog, role: core}
-  - {symbol: SWKS, segment: analog, role: core}
-  - {symbol: QRVO, segment: analog, role: core}
-  - {symbol: LSCC, segment: analog, role: core}
-  - {symbol: SLAB, segment: analog, role: core}
-  - {symbol: MXIM, segment: analog, role: core, delisted: 2021-08-26, cik: 743316,
+  - {symbol: TXN, name: "Texas Instruments", segment: analog, role: core}
+  - {symbol: ADI, name: "Analog Devices", segment: analog, role: core}
+  - {symbol: MCHP, name: "Microchip Technology", segment: analog, role: core}
+  - {symbol: NXPI, name: "NXP Semiconductors", segment: analog, role: core}
+  - {symbol: "ON", name: "onsemi", segment: analog, role: core}
+  - {symbol: STM, name: "STMicroelectronics", segment: analog, role: core}
+  - {symbol: WOLF, name: "Wolfspeed", segment: analog, role: core}
+  - {symbol: MPWR, name: "Monolithic Power Systems", segment: analog, role: core}
+  - {symbol: POWI, name: "Power Integrations", segment: analog, role: core}
+  - {symbol: SWKS, name: "Skyworks Solutions", segment: analog, role: core}
+  - {symbol: QRVO, name: "Qorvo", segment: analog, role: core}
+  - {symbol: LSCC, name: "Lattice Semiconductor", segment: analog, role: core}
+  - {symbol: SLAB, name: "Silicon Laboratories", segment: analog, role: core}
+  - {symbol: MXIM, name: "Maxim Integrated", segment: analog, role: core, delisted: 2021-08-26, cik: 743316,
      successor: {symbol: ADI, shares: 0.63, source: "https://www.sec.gov/Archives/edgar/data/743316/000119312521257603/d203144d8k.htm"}}
-  - {symbol: LLTC, segment: analog, role: core, delisted: 2017-03-10, cik: 791907,
+  - {symbol: LLTC, name: "Linear Technology", segment: analog, role: core, delisted: 2017-03-10, cik: 791907,
      successor: {symbol: ADI, shares: 0.2321, cash: 46.0, source: "https://www.sec.gov/Archives/edgar/data/791907/000119312517078946/d340243d8k.htm"}}
   # --- equipment / materials / test
-  - {symbol: AMAT, segment: equipment, role: core}
-  - {symbol: LRCX, segment: equipment, role: core}
-  - {symbol: KLAC, segment: equipment, role: core}
-  - {symbol: ASML, segment: equipment, role: core}
-  - {symbol: TER, segment: equipment, role: core}
-  - {symbol: 8035.T, segment: equipment, role: core, currency: JPY, sec_filer: false}
-  - {symbol: 6857.T, segment: equipment, role: core, currency: JPY, sec_filer: false}
-  - {symbol: ENTG, segment: equipment, role: core}
-  - {symbol: MKSI, segment: equipment, role: core}
-  - {symbol: ONTO, segment: equipment, role: core}
-  - {symbol: CAMT, segment: equipment, role: core}
+  - {symbol: AMAT, name: "Applied Materials", segment: equipment, role: core}
+  - {symbol: LRCX, name: "Lam Research", segment: equipment, role: core}
+  - {symbol: KLAC, name: "KLA", segment: equipment, role: core}
+  - {symbol: ASML, name: "ASML Holding", segment: equipment, role: core}
+  - {symbol: TER, name: "Teradyne", segment: equipment, role: core}
+  - {symbol: 8035.T, name: "Tokyo Electron", segment: equipment, role: core, currency: JPY, sec_filer: false}
+  - {symbol: 6857.T, name: "Advantest", segment: equipment, role: core, currency: JPY, sec_filer: false}
+  - {symbol: ENTG, name: "Entegris", segment: equipment, role: core}
+  - {symbol: MKSI, name: "MKS Instruments", segment: equipment, role: core}
+  - {symbol: ONTO, name: "Onto Innovation", segment: equipment, role: core}
+  - {symbol: CAMT, name: "Camtek", segment: equipment, role: core}
   # --- EDA / IP
-  - {symbol: SNPS, segment: eda, role: core}
-  - {symbol: CDNS, segment: eda, role: core}
+  - {symbol: SNPS, name: "Synopsys", segment: eda, role: core}
+  - {symbol: CDNS, name: "Cadence Design Systems", segment: eda, role: core}
 
   # --- adjacency ring: cloud / platforms
-  - {symbol: MSFT, segment: cloud, role: adjacent}
-  - {symbol: GOOGL, segment: cloud, role: adjacent}
-  - {symbol: AMZN, segment: cloud, role: adjacent}
-  - {symbol: META, segment: cloud, role: adjacent}
-  - {symbol: ORCL, segment: cloud, role: adjacent}
-  - {symbol: AAPL, segment: devices, role: adjacent}
+  - {symbol: MSFT, name: "Microsoft", segment: cloud, role: adjacent}
+  - {symbol: GOOGL, name: "Alphabet", segment: cloud, role: adjacent}
+  - {symbol: AMZN, name: "Amazon", segment: cloud, role: adjacent}
+  - {symbol: META, name: "Meta Platforms", segment: cloud, role: adjacent}
+  - {symbol: ORCL, name: "Oracle", segment: cloud, role: adjacent}
+  - {symbol: AAPL, name: "Apple", segment: devices, role: adjacent}
   # --- networking / optics
-  - {symbol: ANET, segment: networking, role: adjacent}
-  - {symbol: CSCO, segment: networking, role: adjacent}
-  - {symbol: CIEN, segment: networking, role: adjacent}
-  - {symbol: COHR, segment: networking, role: adjacent}
-  - {symbol: LITE, segment: networking, role: adjacent}
-  - {symbol: FN, segment: networking, role: adjacent}
-  - {symbol: CRDO, segment: networking, role: adjacent, listed: 2022-01-27}  # verify
-  - {symbol: ALAB, segment: networking, role: adjacent, listed: 2024-03-20}  # verify
+  - {symbol: ANET, name: "Arista Networks", segment: networking, role: adjacent}
+  - {symbol: CSCO, name: "Cisco Systems", segment: networking, role: adjacent}
+  - {symbol: CIEN, name: "Ciena", segment: networking, role: adjacent}
+  - {symbol: COHR, name: "Coherent", segment: networking, role: adjacent}
+  - {symbol: LITE, name: "Lumentum", segment: networking, role: adjacent}
+  - {symbol: FN, name: "Fabrinet", segment: networking, role: adjacent}
+  - {symbol: CRDO, name: "Credo Technology", segment: networking, role: adjacent, listed: 2022-01-27}  # verify
+  - {symbol: ALAB, name: "Astera Labs", segment: networking, role: adjacent, listed: 2024-03-20}  # verify
   # --- servers / hardware
-  - {symbol: SMCI, segment: servers, role: adjacent}
-  - {symbol: DELL, segment: servers, role: adjacent}
-  - {symbol: HPE, segment: servers, role: adjacent}
-  - {symbol: CLS, segment: servers, role: adjacent}
-  - {symbol: APH, segment: servers, role: adjacent}
-  - {symbol: GLW, segment: servers, role: adjacent}
+  - {symbol: SMCI, name: "Super Micro Computer", segment: servers, role: adjacent}
+  - {symbol: DELL, name: "Dell Technologies", segment: servers, role: adjacent}
+  - {symbol: HPE, name: "Hewlett Packard Enterprise", segment: servers, role: adjacent}
+  - {symbol: CLS, name: "Celestica", segment: servers, role: adjacent}
+  - {symbol: APH, name: "Amphenol", segment: servers, role: adjacent}
+  - {symbol: GLW, name: "Corning", segment: servers, role: adjacent}
   # --- power / electrification
-  - {symbol: VRT, segment: power, role: adjacent}
-  - {symbol: ETN, segment: power, role: adjacent}
-  - {symbol: GEV, segment: power, role: adjacent, listed: 2024-04-02}  # verify
-  - {symbol: CEG, segment: power, role: adjacent, listed: 2022-02-02}  # verify
-  - {symbol: VST, segment: power, role: adjacent}
-  - {symbol: NVT, segment: power, role: adjacent}
+  - {symbol: VRT, name: "Vertiv", segment: power, role: adjacent}
+  - {symbol: ETN, name: "Eaton", segment: power, role: adjacent}
+  - {symbol: GEV, name: "GE Vernova", segment: power, role: adjacent, listed: 2024-04-02}  # verify
+  - {symbol: CEG, name: "Constellation Energy", segment: power, role: adjacent, listed: 2022-02-02}  # verify
+  - {symbol: VST, name: "Vistra", segment: power, role: adjacent}
+  - {symbol: NVT, name: "nVent Electric", segment: power, role: adjacent}
   # --- EV / auto / energy
-  - {symbol: TSLA, segment: ev, role: adjacent}
-  - {symbol: GM, segment: ev, role: adjacent}
-  - {symbol: RIVN, segment: ev, role: adjacent, listed: 2021-11-10}  # verify
-  - {symbol: ENPH, segment: ev, role: adjacent}
+  - {symbol: TSLA, name: "Tesla", segment: ev, role: adjacent}
+  - {symbol: GM, name: "General Motors", segment: ev, role: adjacent}
+  - {symbol: RIVN, name: "Rivian", segment: ev, role: adjacent, listed: 2021-11-10}  # verify
+  - {symbol: ENPH, name: "Enphase Energy", segment: ev, role: adjacent}
