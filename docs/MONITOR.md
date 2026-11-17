@@ -591,6 +591,17 @@ month the next figure arrived. Nothing is invented and nothing is used early.
 The research pipeline is unchanged (gaps stay missing there). When a run is still
 too short, the message names the month and the series that broke it.
 
+**Short CPI history (added 2026-11-17).** After the gap fix a live refresh still
+reported 21 complete months, broken at 2025-01 with no CPI value: the price
+provider had returned under two years of CPI. When the provider returns well
+under the months asked for (less than 80%), the monitor now takes the whole CPI
+series from FRED's public CSV (`CPIAUCSL`; no key, the request carries only the
+series id and dates), never a splice of two sources, and says so in the prices
+stage of `status.json`. FRED values are the current revised figures, not first
+prints; the same two-month publication lag is applied. The research commands do
+not use the fallback. The FRED request was not exercised against the live
+service when this was written.
+
 The series are downloaded with prices on each refresh (`macro series updated` in
 the prices stage of `status.json`). A failed download is reported there and the
 tables keep the last stored series; with none stored the section says so.
