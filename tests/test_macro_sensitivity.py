@@ -255,3 +255,48 @@ def test_a_short_run_says_which_factor_broke_it():
     out = company_macro(book, F, u, "SPY")
     assert out["available"] is False
     assert "broken at" in out["note"] and "Inflation (CPI" in out["note"]
+
+
+def test_fred_csv_is_parsed_and_months_without_a_figure_stay_missing():
+    from themegraph.data.fred import parse_csv
+    body = b"observation_date,CPIAUCSL\n2025-09-01,324.368\n2025-10-01,.\n2025-11-01,325.031\n"
+    assert parse_csv(body) == [{"date": "2025-09-01", "value": 324.368},
+                               {"date": "2025-11-01", "value": 325.031}]
+    assert parse_csv(b"DATE,CPIAUCSL\n2020-01-01,258.9\n2020-02-01,\n") == \
+        [{"date": "2020-01-01", "value": 258.9}]
+
+
+def test_short_cpi_history_is_replaced_whole_by_the_fallback(tmp_path):
+    """A live refresh had 21 months of CPI from the price provider (the run broke
+    at 2025-01). The monitor then takes the whole series from FRED and says so;
+    without a fallback (the research commands) nothing changes."""
+    import datetime as dt2
+    from types import SimpleNamespace as NS
+
+    from themegraph import ingest as I
+    from themegraph.config import load_pipeline
+    from themegraph.data.store import Store
+    from themegraph.monitor.profiles import load_profile
+
+    cfg = load_pipeline(load_profile("semis").pipeline)
+    cfg = cfg.model_copy(update={"macro": cfg.macro.model_copy(update={"factors": ["cpi"]})})
+    end = dt2.date(2026, 10, 31)
+    months = pd.date_range("2010-01-01", end, freq="MS")
+    full = [{"date": d.date().isoformat(), "value": 200.0 + i * 0.5} for i, d in enumerate(months)]
+    client = NS(treasury=lambda a, b: [], economic=lambda n, a, b: full[-22:],
+                prices=lambda *a: [])
+    fred = NS(series=lambda sid, a, b: [r for r in full if r["date"] >= a.isoformat()])
+
+    info: dict = {}
+    I.ingest_fmp_macro(client, cfg, Store(tmp_path / "a"), end, fallback=fred, info=info)
+    got = Store(tmp_path / "a").read("macro")
+    assert len(got) > 100 and "taken from FRED (CPIAUCSL" in info["cpi"]
+
+    I.ingest_fmp_macro(client, cfg, Store(tmp_path / "b"), end)       # research: no fallback
+    assert len(Store(tmp_path / "b").read("macro")) == 22
+
+    def down(*a):
+        raise OSError("offline")
+    info = {}
+    I.ingest_fmp_macro(client, cfg, Store(tmp_path / "c"), end, fallback=NS(series=down), info=info)
+    assert len(Store(tmp_path / "c").read("macro")) == 22 and "fallback failed" in info["cpi"]

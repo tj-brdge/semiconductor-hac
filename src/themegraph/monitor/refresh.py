@@ -173,8 +173,11 @@ def ingest_step(kind: str, as_of: dt.date, log=print, profile: Profile | None = 
         # Rates, oil, CPI and the dollar, for the macro sensitivity tables. Optional:
         # a failure is reported here and the tables keep the last stored series.
         try:
-            I.ingest_fmp_macro(client, cfg, store, as_of)
-            out += "; macro series updated"
+            from ..data.fred import FredClient
+            minfo: dict = {}
+            I.ingest_fmp_macro(client, cfg, store, as_of,
+                               fallback=FredClient(DATA / "raw" / "fred"), info=minfo)
+            out += "; macro series updated" + (f" ({minfo['cpi']})" if minfo.get("cpi") else "")
         except Exception as e:  # noqa: BLE001
             out += f"; macro series NOT updated ({type(e).__name__}: {e})"
         # A symbol the provider returned nothing for keeps its old prices: say so

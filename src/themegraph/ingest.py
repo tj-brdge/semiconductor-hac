@@ -141,8 +141,14 @@ def ingest_fmp_prices(client: F.FMPClient, cfg: PipelineConfig, universe: Univer
     return store.write("prices", _stamp(_combine(frames, "prices")), vintage_id())
 
 
+CPI_FALLBACK = "CPIAUCSL"  # FRED: consumer price index, all urban consumers, seasonally adjusted
+
+
 def ingest_fmp_macro(client: F.FMPClient, cfg: PipelineConfig, store: Store,
-                     end: dt.date) -> Path:
+                     end: dt.date, fallback=None, info: dict | None = None) -> Path:
+    """`fallback` (a data.fred.FredClient; the monitor passes one, the research
+    commands do not) supplies the whole CPI series when the provider returns well
+    under the months asked for. `info["cpi"]` then says so."""
     start = cfg.periods.start - dt.timedelta(days=cfg.macro.window_months * 31 + 400)
     frames = []
     treasury = client.treasury(start, end)
@@ -154,6 +160,22 @@ def ingest_fmp_macro(client: F.FMPClient, cfg: PipelineConfig, store: Store,
         elif kind == "economic":
             df = F.normalise_monthly_economic(client.economic(ident, start, end),
                                               cfg.availability)
+            asked = (end.year - start.year) * 12 + end.month - start.month
+            if name == "cpi" and fallback is not None and len(df) < 0.8 * asked:
+                try:
+                    alt = F.normalise_monthly_economic(
+                        fallback.series(CPI_FALLBACK, start, end), cfg.availability)
+                    if len(alt) > len(df):
+                        msg = (f"CPI taken from FRED ({CPI_FALLBACK}, {len(alt)} months): "
+                               f"the price provider returned {len(df)} of about {asked}")
+                        df = alt  # one source for the whole series, never a splice
+                    else:
+                        msg = f"CPI history is short ({len(df)} months) and FRED had no more"
+                except Exception as e:  # noqa: BLE001
+                    msg = (f"CPI history is short ({len(df)} of about {asked} months) and "
+                           f"the FRED fallback failed ({type(e).__name__}: {e})")
+                if info is not None:
+                    info["cpi"] = msg
         else:
             df = F.normalise_prices(client.prices(ident, start, end), ident, cfg.availability)
             df = df.rename(columns={"close": "value"}).drop(columns="symbol")
