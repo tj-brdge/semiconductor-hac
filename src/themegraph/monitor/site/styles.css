@@ -415,3 +415,34 @@ table.companies td, table.companies th { padding: 10px 14px; vertical-align: top
 #mc-host h3 { margin: 22px 0 6px; }
 #mc-host .check { display: flex; align-items: center; gap: 8px; margin: 8px 0; min-height: 32px; }
 #mc-host .seg button[disabled] { opacity: .45; cursor: not-allowed; }
+
+/* Redesign 2026-11-17: important things first, the rest in layers. */
+.tk { font-family: var(--mono); font-size: .78em; color: var(--muted); margin-left: 4px; white-space: nowrap; }
+.tk.solo { color: var(--ink); margin-left: 0; font-size: .85em; font-weight: 600; }
+.card .summary { -webkit-line-clamp: 3; }
+.card .who { margin-top: -2px; }
+.card .metric .v { font-size: 1.35rem; }
+.more { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center; font-size: .95rem; font-weight: 600; }
+.glance.three { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+.glance.three .glance-item .n { font-size: 1.7rem; }
+.glance.three .glance-item .s { font-size: .86rem; line-height: 1.4; }
+.notes { display: grid; gap: 6px; max-width: 86ch; }
+.notes li { padding-left: 14px; position: relative; }
+.notes li::before { content: "·"; position: absolute; left: 2px; font-weight: 700; }
+.section-head.sub { border-top: 1px solid var(--line); padding-top: 16px; margin-top: 4px; }
+.names { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 6px 18px; }
+.panel h3 { margin-top: 6px; }
+.evidence .quote { border-left-color: var(--line-strong); background: transparent; }
+.evidence .quote blockquote { font-size: .92rem; }
+.topics-wrap { display: grid; gap: 12px; }
+details > summary .small { font-weight: 500; margin-left: auto; margin-right: 12px; }
+#h-more + *, .section > details { margin-top: 0; }
+@media (max-width: 560px) {
+  .cards { grid-template-columns: 1fr; }
+  .glance.three { grid-template-columns: 1fr; }
+  .names { grid-template-columns: 1fr; }
+}
+@media (max-width: 560px) {
+  table.companies td:last-child { display: block; width: 100%; }
+  table.companies .ctag { border-radius: 10px; }
+}

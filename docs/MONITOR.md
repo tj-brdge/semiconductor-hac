@@ -654,6 +654,41 @@ per-refresh cap). Fixture runs never call Claude.
 
 ## Dashboard (`monitor/site/`)
 
+**Redesign, 2026-11-17 (presentation only).** The aim is that a first-time reader
+can say, in a few seconds, which themes are emerging or strengthening, what the
+companies are discussing, how many and which companies, and how the stocks have
+done. No detection rule, membership, basket, return or threshold changed.
+
+- **Overview:** leads with up to six emerging and strengthening themes (one per
+  family), then themes where companies describe problems, then long-running
+  themes as a compact list. Topics, newly covered themes, relative performance
+  and cooling or inactive themes are in expandable sections. The old count tiles
+  are gone.
+- **Theme card:** title, status, the first sentence of the summary, and two
+  separate boxes: Discussion (growing, steady or shrinking, with the ratio and the
+  number of companies) and Stocks (basket return for the chosen period, the
+  benchmark's return, and the difference in points with the word "ahead" or
+  "behind", plus the Simulated or Live tag). Sparklines and the quote were removed
+  from cards; both remain on the theme page.
+- **Theme page, in layers:** summary and three boxes (Discussion, Companies,
+  Stocks); returns table and chart; companies, split into those held in the
+  basket and those discussing the theme without being held; three quoted
+  passages with the rest expandable; discussion over time; then "More detail"
+  (plain-language background, overlapping themes, trading together, macro
+  sensitivities, method, membership history, monthly record, diagnostics), all
+  closed by default.
+- **Caveats kept where the numbers are:** status describes discussion, not prices;
+  the period and the date prices run through; simulated versus live; equal money
+  per company at the start and no rebalancing, so weights drift; differences
+  labelled as percentage points against a named benchmark.
+- **Company names:** `Issuer.name` in the coverage lists, exported as
+  `company_names` in `index.json`. Pages show "Micron Technology MU" and fall
+  back to the ticker. A test requires a name for every company in every profile.
+  The names were written by hand on 2026-11-17 (the software companies' against
+  the registrant names already in the file); they are display text and are not
+  used for any lookup.
+
+
 Plain HTML, CSS and two small ES modules; no framework, no build step and no
 third-party scripts, so the `site/` directory can be copied to any static host.
 Views: overview (emerging themes, headwinds and established themes as cards, one per

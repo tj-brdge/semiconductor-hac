@@ -139,6 +139,9 @@ class Successor(_Strict):
 
 class Issuer(_Strict):
     symbol: str
+    # Display name for the website ("Micron Technology"). Kept on the issuer so a
+    # company and its name are added together; pages fall back to the ticker.
+    name: str | None = None
     segment: str
     role: Literal["core", "adjacent"]
     currency: str = "USD"
