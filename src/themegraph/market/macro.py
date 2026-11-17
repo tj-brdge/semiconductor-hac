@@ -52,14 +52,20 @@ def exposure_similarity(expo: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_factors(daily: dict[str, pd.Series], kinds: dict[str, str],
-                  cpi_monthly: pd.Series | None, lag_months: int) -> pd.DataFrame:
+                  cpi_monthly: pd.Series | None, lag_months: int,
+                  fill_unpublished: int = 0) -> pd.DataFrame:
     """Month-end factor table.
 
     daily: name -> daily series (levels) indexed by date.
     kinds: name -> "diff" (yields: change in level) or "logret" (prices).
     cpi_monthly: CPI level indexed by reference month start. The growth for
     reference month M is placed in month M + lag_months, i.e. the month in which it
-    was first known. Missing months stay missing.
+    was first known. Missing months stay missing, unless `fill_unpublished` is
+    set: then a run of up to that many months with no CPI figure (the October
+    2025 figure was never published) counts as "nothing published": zero change
+    in those months, and the whole change in the month the next figure arrived.
+    Nothing is invented and nothing is used early. The research pipeline leaves
+    this at 0.
     """
     cols = {}
     for name, s in daily.items():
@@ -70,6 +76,8 @@ def build_factors(daily: dict[str, pd.Series], kinds: dict[str, str],
         idx = s.index.to_period("M")
         s = pd.Series(s.to_numpy(), index=idx)
         full = s.reindex(pd.period_range(idx.min(), idx.max(), freq="M"))
+        if fill_unpublished:
+            full = full.ffill(limit=fill_unpublished)  # no figure: level unchanged
         growth = np.log(full).diff()  # a gap makes both adjacent growths missing
         growth.index = (growth.index + lag_months).to_timestamp(how="end").normalize()
         cols["cpi"] = growth

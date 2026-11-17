@@ -88,7 +88,8 @@ def load_inputs(fixtures: bool, as_of: dt.date, log=print,
     # The store is shared by profiles: read only this universe's companies.
     return {"cfg": cfg, "universe": u, "prices": load_prices(store, universe=u),
             "docs": load_documents(store, universe=u), "embedder": make_embedder(cfg.embedding),
-            "factors": load_factors(store, cfg),
+            # A month with no CPI figure counts as "nothing published" (macro.py).
+            "factors": load_factors(store, cfg, fill_unpublished=3),
             "cache": DATA / "cache", "fixture": False,
             "doc_watermark": document_watermark(store, u, mcfg.completeness.min_symbol_share)}
 

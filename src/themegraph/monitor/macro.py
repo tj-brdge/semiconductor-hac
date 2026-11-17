@@ -249,6 +249,16 @@ def _name(mean: dict[str, float], members: list[str], taken: set[str]) -> str:
     return name
 
 
+def _gap_note(r: pd.DataFrame, F: pd.DataFrame, index: str, pos: int) -> str:
+    """What is missing in the month that breaks the run of complete months."""
+    if pos < 0:
+        return " The stored history starts there."
+    gone = [FACTORS[c] for c in F.columns if pd.isna(F[c].iloc[pos])]
+    if pd.isna(r[index].iloc[pos]):
+        gone.append(f"{index} prices")
+    return f" The run is broken at {r.index[pos]}: no value for {', '.join(gone)}." if gone else ""
+
+
 def _company_span(r: pd.DataFrame, F: pd.DataFrame, sector: dict[str, str], index: str,
                   h: int, alpha: float, min_corr: float) -> dict:
     W = SPAN_WINDOW[h]
@@ -263,7 +273,8 @@ def _company_span(r: pd.DataFrame, F: pd.DataFrame, sector: dict[str, str], inde
     end = len(ok) - int(np.argmax(ok[::-1]))
     if run < W:
         return {"available": False,
-                "note": f"Needs {W} complete months of prices and factors; {run} stored."}
+                "note": f"Needs {W} complete months of prices and factors; {run} stored."
+                        + _gap_note(r, F, index, end - run - 1)}
     rows = slice(end - W, end)
     rw, Fw = r.iloc[rows], F.iloc[rows].to_numpy()
     syms = [s for s in sector if s in rw.columns and rw[s].notna().all() and rw[s].std() > 0]
