@@ -236,9 +236,16 @@ def refresh(state_dir: Path, site_dir: Path, *, fixtures: bool = False,
         finally:
             steps[name]["seconds"] = round(time.perf_counter() - clock, 2)
 
+    macro_note = ""
     if not fixtures and ingest_prices:
         run("ingest_prices", lambda: ingest_step("prices", as_of, log, profile,
                                                  full=full_prices))
+        # A macro problem is easy to miss inside the prices detail: lift it out, so it
+        # is in the command's printed result and in status.json's warnings.
+        note = (steps.get("ingest_prices") or {}).get("detail") or ""
+        for part in note.split("; "):
+            if "macro series NOT updated" in part or "CPI" in part:
+                macro_note = part
     why_docs = None
     if not fixtures and ingest_prices and ingest_documents is None:
         # Automatic: one command keeps prices and documents current, so themes are
@@ -270,6 +277,8 @@ def refresh(state_dir: Path, site_dir: Path, *, fixtures: bool = False,
     # failure discards the in-memory registry (it is saved only at the end).
     skipped: dict[str, str] = {}
     warnings: dict[str, str] = {}
+    if macro_note:
+        warnings["macro"] = macro_note
 
     def gate(name, fn):
         bad = [k for k, v in steps.items() if not v["ok"]]

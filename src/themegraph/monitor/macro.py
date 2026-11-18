@@ -156,6 +156,29 @@ def span_sensitivities(Y: pd.DataFrame, market: pd.Series, factors: pd.DataFrame
     return out
 
 
+def _run(ok: np.ndarray) -> int:
+    """Length of the latest unbroken run of True values."""
+    n = 0
+    for v in ok[::-1]:
+        if not v:
+            if n:
+                break
+            continue
+        n += 1
+    return n
+
+
+def usable_factors(F: pd.DataFrame, need: int) -> tuple[pd.DataFrame, list[str]]:
+    """Factors with at least `need` months in their latest unbroken run, and a note
+    for each one left out. One factor with a short history (the price provider has
+    returned under two years of CPI) must not cut every calculation down to that
+    history: it is left out and named instead."""
+    runs = {c: _run(F[c].notna().to_numpy()) for c in F.columns}
+    keep = [c for c in F.columns if runs[c] >= need]
+    out = [f"{FACTORS[c]}: only {runs[c]} months stored" for c in F.columns if c not in keep]
+    return F[keep], out
+
+
 UNITS = {"us2y": "pp", "us10y": "pp", "wti": "%", "cpi": "%", "dxy": "%"}
 
 
@@ -191,6 +214,9 @@ def macro_table(book, factors: pd.DataFrame | None, clusters: list[dict],
     F = F[[c for c in FACTORS if c in F.columns and F[c].notna().sum() >= MIN_BLOCKS]]
     if not F.shape[1]:
         return {"available": False, "note": "No macro series cover the price history."}
+    absent = [FACTORS[k] for k in FACTORS if k not in F.columns]
+    best = max(_run(F[c].notna().to_numpy()) for c in F.columns)
+    F, short = usable_factors(F, min(best, 72))
     groups = {f"c:{c['id']}": c["members"] for c in clusters}
     groups.update({f"t:{tid}": b for tid, b in baskets.items()})
     cols = {g: [s for s in mem if s in r.columns] for g, mem in groups.items()}
@@ -206,7 +232,7 @@ def macro_table(book, factors: pd.DataFrame | None, clusters: list[dict],
             "start": str(r.index[0]), "end": str(done.index[-1]) if len(done) else None,
             "spans": [{"key": str(h), "label": lab, "months": h} for h, lab in SPANS],
             "factors": [{"key": k, "label": FACTORS[k]} for k in F.columns],
-            "missing": [FACTORS[k] for k in FACTORS if k not in F.columns],
+            "missing": absent + short,
             "factor_moves": factor_moves(F),
             "clusters": {g[2:]: v for g, v in per.items() if g.startswith("c:")},
             "themes": {g[2:]: v for g, v in per.items() if g.startswith("t:")}}
@@ -262,14 +288,16 @@ def _gap_note(r: pd.DataFrame, F: pd.DataFrame, index: str, pos: int) -> str:
 def _company_span(r: pd.DataFrame, F: pd.DataFrame, sector: dict[str, str], index: str,
                   h: int, alpha: float, min_corr: float) -> dict:
     W = SPAN_WINDOW[h]
+    if _run(r[index].notna().to_numpy()) < W:
+        return {"available": False,
+                "note": f"Needs {W} complete months of prices; "
+                        f"{_run(r[index].notna().to_numpy())} stored."}
+    F, left = usable_factors(F, W)
+    if not F.shape[1]:
+        return {"available": False, "note": f"Needs {W} complete months of factors. "
+                                            + "; ".join(left) + "."}
     ok = (r[index].notna() & F.notna().all(axis=1)).to_numpy()
-    run = 0
-    for v in ok[::-1]:                       # the latest unbroken run of complete months
-        if not v:
-            if run:
-                break
-            continue
-        run += 1
+    run = _run(ok)
     end = len(ok) - int(np.argmax(ok[::-1]))
     if run < W:
         return {"available": False,
@@ -331,7 +359,7 @@ def _company_span(r: pd.DataFrame, F: pd.DataFrame, sector: dict[str, str], inde
     companies.sort(key=lambda c: (-c["sensitive"], -c["n_clear"], c["joint_p"], c["symbol"]))
     return {"available": True, "months": W, "start": str(rw.index[0]), "end": str(rw.index[-1]),
             "n_companies": len(syms), "left_out": len(sector) - len(syms),
-            "sensitive": int(len(sens)),
+            "sensitive": int(len(sens)), "factors": keys, "factors_left_out": left,
             "multi": sum(c["n_clear"] >= 2 for c in companies),
             "null": {"mean": round(float(counts.mean()), 1),
                      "p95": float(np.quantile(counts, 0.95)), "offsets": len(counts)},

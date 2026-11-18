@@ -602,6 +602,16 @@ prints; the same two-month publication lag is applied. The research commands do
 not use the fallback. The FRED request was not exercised against the live
 service when this was written.
 
+**A short factor is left out, not allowed to cut the rest (2026-11-19).** The same
+"21 stored" message came back after the fallback was merged, so the fallback had
+not taken effect on the live machine (the reason was not visible from here).
+Whatever the cause, one factor's short history must not disable the others: a
+factor without enough months for a time frame is now left out of that time frame
+and named on the page ("Inflation (CPI, when published): only 21 months
+stored"), and the remaining factors are estimated. A macro download problem is
+also copied into `warnings.macro` in `status.json`, which the refresh command
+prints. The FRED request now follows redirects and sends a plain client name.
+
 The series are downloaded with prices on each refresh (`macro series updated` in
 the prices stage of `status.json`). A failed download is reported there and the
 tables keep the last stored series; with none stored the section says so.
