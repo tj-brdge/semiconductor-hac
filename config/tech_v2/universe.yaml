@@ -51,7 +51,7 @@ issuers:
   - {symbol: SAP, name: "SAP", segment: app_software, role: core, cik: 1000184}  # SAP SE; NYSE; SIC 7372; 20-F since 1999-05-18
   - {symbol: TEAM, name: "Atlassian", segment: app_software, role: core, cik: 1650372}  # Atlassian Corp; Nasdaq; SIC 7372; 10-K+10-Q+20-F since 2016-08-18
   - {symbol: HUBS, name: "HubSpot", segment: app_software, role: core, cik: 1404655}  # HUBSPOT INC; NYSE; SIC 7372; 10-K+10-Q since 2014-11-13
-  - {symbol: DOCU, name: "DocuSign", segment: app_software, role: core, cik: 1261333}  # DOCUSIGN, INC.; Nasdaq; SIC 7372; 10-K+10-Q since 2018-06-08
+  - {symbol: DOCU, name: "DocuSign", aliases: ["Docusign"], segment: app_software, role: core, cik: 1261333}  # DOCUSIGN, INC.; Nasdaq; SIC 7372; 10-K+10-Q since 2018-06-08
   - {symbol: ZM, name: "Zoom", segment: app_software, role: core, cik: 1585521}  # Zoom Communications, Inc.; Nasdaq; SIC 7370; 10-K+10-Q since 2019-06-07
   - {symbol: PAYC, name: "Paycom", segment: app_software, role: core, cik: 1590955}  # Paycom Software, Inc.; NYSE; SIC 7372; 10-K+10-Q since 2014-05-21
   - {symbol: PCTY, name: "Paylocity", segment: app_software, role: core, cik: 1591698}  # Paylocity Holding Corp; Nasdaq; SIC 7372; 10-K+10-Q since 2014-05-14
@@ -92,6 +92,6 @@ issuers:
   - {symbol: FROG, name: "JFrog", segment: data_cloud, role: core, cik: 1800667}  # JFrog Ltd; Nasdaq; SIC 7372; 10-K+10-Q since 2020-11-05
   - {symbol: DOCN, name: "DigitalOcean", segment: data_cloud, role: core, cik: 1582961}  # DigitalOcean Holdings, Inc.; NYSE; SIC 7370; 10-K+10-Q since 2021-05-07
   - {symbol: FSLY, name: "Fastly", segment: data_cloud, role: core, cik: 1517413}  # Fastly, Inc.; Nasdaq; SIC 7372; 10-K+10-Q since 2019-08-09
-  - {symbol: IBM, name: "IBM", segment: data_cloud, role: core, cik: 51143}  # INTERNATIONAL BUSINESS MACHINES CORP; NYSE; SIC 3570; 10-K+10-Q since 1994-03-28
+  - {symbol: IBM, name: "IBM", aliases: ["International Business Machines"], segment: data_cloud, role: core, cik: 51143}  # INTERNATIONAL BUSINESS MACHINES CORP; NYSE; SIC 3570; 10-K+10-Q since 1994-03-28
   - {symbol: TDC, name: "Teradata", segment: data_cloud, role: core, cik: 816761}  # TERADATA CORP /DE/; NYSE; SIC 7372; 10-K+10-Q since 2007-11-13
-  - {symbol: AI, name: "C3.ai", segment: data_cloud, role: core, cik: 1577526}  # C3.ai, Inc.; NYSE; SIC 7372; 10-K+10-Q since 2021-03-02
+  - {symbol: AI, name: "C3.ai", aliases: ["C3 AI"], segment: data_cloud, role: core, cik: 1577526}  # C3.ai, Inc.; NYSE; SIC 7372; 10-K+10-Q since 2021-03-02

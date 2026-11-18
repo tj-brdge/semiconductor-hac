@@ -39,8 +39,12 @@ class FredClient:
     def __init__(self, cache_dir: Path, fetcher: CachedFetcher | None = None,
                  vintage: str | None = None, offline: bool = False):
         self.vintage = vintage or dt.datetime.now(dt.UTC).date().isoformat()
-        self.f = fetcher or CachedFetcher("fred", RawCache(cache_dir), min_interval=0.5,
-                                          offline=offline)
+        import httpx
+        self.f = fetcher or CachedFetcher(
+            "fred", RawCache(cache_dir), min_interval=0.5, offline=offline,
+            client=httpx.Client(follow_redirects=True, timeout=60.0,
+                                headers={"User-Agent": "themegraph/0.1",
+                                         "Accept": "text/csv,*/*"}))
 
     def series(self, series_id: str, start: dt.date, end: dt.date) -> list[dict]:
         resp = self.f.fetch(URL, params={"id": series_id, "cosd": start.isoformat(),

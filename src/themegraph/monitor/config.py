@@ -89,6 +89,12 @@ class Groups(_S):
     max_names_per_refresh: int = 20
 
 
+class Relations(_S):
+    """Named business relationships (monitor/relations.py). Reading costs one
+    Claude call per pair of companies with new passages."""
+    max_per_refresh: int = 50    # the backlog is read with `themegraph monitor relations`
+
+
 class Tone(_S):
     """Headwind/tailwind direction from business language (monitor/tone.py).
     Declared 2026-10-29 from the text alone, before any return was looked at."""
@@ -146,6 +152,7 @@ class MonitorConfig(_S):
     tone: Tone = Tone()
     families: Families = Families()
     groups: Groups = Groups()
+    relations: Relations = Relations()
     completeness: Completeness = Completeness()
 
 

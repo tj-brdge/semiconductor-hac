@@ -142,6 +142,9 @@ class Issuer(_Strict):
     # Display name for the website ("Micron Technology"). Kept on the issuer so a
     # company and its name are added together; pages fall back to the ticker.
     name: str | None = None
+    # Other names the company goes by in documents ("TSMC", "AWS"), for finding where
+    # companies name each other (monitor/relations.py). Never the ticker.
+    aliases: list[str] = []
     segment: str
     role: Literal["core", "adjacent"]
     currency: str = "USD"

@@ -43,13 +43,13 @@ issuers:
   # --- memory / storage
   - {symbol: MU, name: "Micron Technology", segment: memory, role: core}
   - {symbol: 005930.KS, name: "Samsung Electronics", segment: memory, role: core, currency: KRW, sec_filer: false}
-  - {symbol: 000660.KS, name: "SK hynix", segment: memory, role: core, currency: KRW, sec_filer: false}
+  - {symbol: 000660.KS, name: "SK hynix", aliases: ["SK Hynix", "Hynix"], segment: memory, role: core, currency: KRW, sec_filer: false}
   - {symbol: WDC, name: "Western Digital", segment: memory, role: core}
-  - {symbol: SNDK, name: "SanDisk", segment: memory, role: core, listed: 2025-02-24}  # verify
+  - {symbol: SNDK, name: "SanDisk", aliases: ["Sandisk"], segment: memory, role: core, listed: 2025-02-24}  # verify
   - {symbol: 2408.TW, name: "Nanya Technology", segment: memory, role: core, currency: TWD, sec_filer: false}
   # --- compute / logic
-  - {symbol: NVDA, name: "Nvidia", segment: compute, role: core}
-  - {symbol: AMD, name: "Advanced Micro Devices", segment: compute, role: core}
+  - {symbol: NVDA, name: "Nvidia", aliases: ["NVIDIA"], segment: compute, role: core}
+  - {symbol: AMD, name: "Advanced Micro Devices", aliases: ["AMD"], segment: compute, role: core}
   - {symbol: INTC, name: "Intel", segment: compute, role: core}
   - {symbol: AVGO, name: "Broadcom", segment: compute, role: core}
   - {symbol: QCOM, name: "Qualcomm", segment: compute, role: core}
@@ -59,15 +59,15 @@ issuers:
      successor: {symbol: AMD, shares: 1.7234, source: "https://www.sec.gov/Archives/edgar/data/743988/000110465922021762/tm226258d1_8k.htm"}}
   # --- foundry / packaging
   - {symbol: TSM, name: "Taiwan Semiconductor (TSMC)", segment: foundry, role: core}
-  - {symbol: UMC, name: "United Microelectronics", segment: foundry, role: core}
+  - {symbol: UMC, name: "United Microelectronics", aliases: ["UMC"], segment: foundry, role: core}
   - {symbol: GFS, name: "GlobalFoundries", segment: foundry, role: core, listed: 2021-10-28}  # verify
   - {symbol: AMKR, name: "Amkor Technology", segment: foundry, role: core}
   # --- analog / power / mixed signal
   - {symbol: TXN, name: "Texas Instruments", segment: analog, role: core}
-  - {symbol: ADI, name: "Analog Devices", segment: analog, role: core}
+  - {symbol: ADI, name: "Analog Devices", aliases: ["ADI"], segment: analog, role: core}
   - {symbol: MCHP, name: "Microchip Technology", segment: analog, role: core}
   - {symbol: NXPI, name: "NXP Semiconductors", segment: analog, role: core}
-  - {symbol: "ON", name: "onsemi", segment: analog, role: core}
+  - {symbol: "ON", name: "onsemi", aliases: ["ON Semiconductor"], segment: analog, role: core}
   - {symbol: STM, name: "STMicroelectronics", segment: analog, role: core}
   - {symbol: WOLF, name: "Wolfspeed", segment: analog, role: core}
   - {symbol: MPWR, name: "Monolithic Power Systems", segment: analog, role: core}
@@ -82,40 +82,40 @@ issuers:
      successor: {symbol: ADI, shares: 0.2321, cash: 46.0, source: "https://www.sec.gov/Archives/edgar/data/791907/000119312517078946/d340243d8k.htm"}}
   # --- equipment / materials / test
   - {symbol: AMAT, name: "Applied Materials", segment: equipment, role: core}
-  - {symbol: LRCX, name: "Lam Research", segment: equipment, role: core}
-  - {symbol: KLAC, name: "KLA", segment: equipment, role: core}
+  - {symbol: LRCX, name: "Lam Research", aliases: ["Lam"], segment: equipment, role: core}
+  - {symbol: KLAC, name: "KLA", aliases: ["KLA-Tencor"], segment: equipment, role: core}
   - {symbol: ASML, name: "ASML Holding", segment: equipment, role: core}
   - {symbol: TER, name: "Teradyne", segment: equipment, role: core}
   - {symbol: 8035.T, name: "Tokyo Electron", segment: equipment, role: core, currency: JPY, sec_filer: false}
   - {symbol: 6857.T, name: "Advantest", segment: equipment, role: core, currency: JPY, sec_filer: false}
   - {symbol: ENTG, name: "Entegris", segment: equipment, role: core}
-  - {symbol: MKSI, name: "MKS Instruments", segment: equipment, role: core}
-  - {symbol: ONTO, name: "Onto Innovation", segment: equipment, role: core}
+  - {symbol: MKSI, name: "MKS Instruments", aliases: ["MKS"], segment: equipment, role: core}
+  - {symbol: ONTO, name: "Onto Innovation", aliases: ["Onto"], segment: equipment, role: core}
   - {symbol: CAMT, name: "Camtek", segment: equipment, role: core}
   # --- EDA / IP
   - {symbol: SNPS, name: "Synopsys", segment: eda, role: core}
-  - {symbol: CDNS, name: "Cadence Design Systems", segment: eda, role: core}
+  - {symbol: CDNS, name: "Cadence Design Systems", aliases: ["Cadence"], segment: eda, role: core}
 
   # --- adjacency ring: cloud / platforms
-  - {symbol: MSFT, name: "Microsoft", segment: cloud, role: adjacent}
-  - {symbol: GOOGL, name: "Alphabet", segment: cloud, role: adjacent}
-  - {symbol: AMZN, name: "Amazon", segment: cloud, role: adjacent}
-  - {symbol: META, name: "Meta Platforms", segment: cloud, role: adjacent}
+  - {symbol: MSFT, name: "Microsoft", aliases: ["Azure"], segment: cloud, role: adjacent}
+  - {symbol: GOOGL, name: "Alphabet", aliases: ["Google", "Google Cloud"], segment: cloud, role: adjacent}
+  - {symbol: AMZN, name: "Amazon", aliases: ["AWS", "Amazon Web Services"], segment: cloud, role: adjacent}
+  - {symbol: META, name: "Meta Platforms", aliases: ["Facebook"], segment: cloud, role: adjacent}
   - {symbol: ORCL, name: "Oracle", segment: cloud, role: adjacent}
   - {symbol: AAPL, name: "Apple", segment: devices, role: adjacent}
   # --- networking / optics
   - {symbol: ANET, name: "Arista Networks", segment: networking, role: adjacent}
   - {symbol: CSCO, name: "Cisco Systems", segment: networking, role: adjacent}
   - {symbol: CIEN, name: "Ciena", segment: networking, role: adjacent}
-  - {symbol: COHR, name: "Coherent", segment: networking, role: adjacent}
+  - {symbol: COHR, name: "Coherent", aliases: ["II-VI"], segment: networking, role: adjacent}
   - {symbol: LITE, name: "Lumentum", segment: networking, role: adjacent}
   - {symbol: FN, name: "Fabrinet", segment: networking, role: adjacent}
   - {symbol: CRDO, name: "Credo Technology", segment: networking, role: adjacent, listed: 2022-01-27}  # verify
   - {symbol: ALAB, name: "Astera Labs", segment: networking, role: adjacent, listed: 2024-03-20}  # verify
   # --- servers / hardware
-  - {symbol: SMCI, name: "Super Micro Computer", segment: servers, role: adjacent}
+  - {symbol: SMCI, name: "Super Micro Computer", aliases: ["Supermicro", "Super Micro"], segment: servers, role: adjacent}
   - {symbol: DELL, name: "Dell Technologies", segment: servers, role: adjacent}
-  - {symbol: HPE, name: "Hewlett Packard Enterprise", segment: servers, role: adjacent}
+  - {symbol: HPE, name: "Hewlett Packard Enterprise", aliases: ["HPE"], segment: servers, role: adjacent}
   - {symbol: CLS, name: "Celestica", segment: servers, role: adjacent}
   - {symbol: APH, name: "Amphenol", segment: servers, role: adjacent}
   - {symbol: GLW, name: "Corning", segment: servers, role: adjacent}
