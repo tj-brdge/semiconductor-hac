@@ -312,6 +312,7 @@ def refresh(state_dir: Path, site_dir: Path, *, fixtures: bool = False,
                     "theme_groups": book_box.get("theme_groups", []),
                     "market_clusters": book_box.get("market_clusters"),
                     "company_macro": book_box.get("company_macro"),
+                    "business": _business(reg, ctxd),
                     "macro": {k: v for k, v in (book_box.get("macro") or {}).items()
                               if k != "themes"},
                     "forward_tests": book_box.get("forward_tests"),
@@ -532,7 +533,53 @@ def _labels(reg: Registry, d: dict, mcfg: MonitorConfig, now: str, namer, log) -
         log(f"group names: {({k: v for k, v in gc.items() if k != 'errors'})}")
     except Exception as e:  # noqa: BLE001
         out["group_names"] = f"{type(e).__name__}: {e}"
+    out.update(_relations(reg, d, mcfg, now, namer, log))
     return out
+
+
+def _relations(reg: Registry, d: dict, mcfg: MonitorConfig, now: str, namer, log,
+               limit: int | None = -1) -> dict:
+    """Read new statements companies make about each other (monitor/relations.py).
+    Optional: a failure is a warning. `limit` -1 means the configured per-refresh
+    number; None means everything waiting."""
+    from . import relations as R
+    try:
+        cands = relation_candidates(d)
+        store = R.Relations(reg.root)
+        names = {i.symbol: i.name for i in d["universe"].issuers if i.name}
+        c = R.read_pairs(store, cands, names, namer, now, log=log,
+                         limit=mcfg.relations.max_per_refresh if limit == -1 else limit)
+        d["relations_counts"] = c
+        log(f"relations: {({k: v for k, v in c.items() if k != 'errors'})}")
+        if c["errors"]:
+            return {"relations": f"{len(c['errors'])} pairs failed: " + "; ".join(
+                f"{k}: {v}" for k, v in list(c["errors"].items())[:3])}
+    except Exception as e:  # noqa: BLE001
+        return {"relations": f"{type(e).__name__}: {e}"}
+    return {}
+
+
+def relation_candidates(d: dict) -> dict:
+    """Passages in which one covered company names another, up to the newest
+    document in the data (so a replay at an earlier date reads that date's text)."""
+    from . import relations as R
+    docs = d["docs"]
+    if not len(docs):
+        return {}
+    newest = pd.to_datetime(docs["published_at"], utc=True).max()
+    return R.candidates(docs, d["universe"], newest, d["cfg"].text.chunk_words,
+                        d["cfg"].text.min_chunk_words)
+
+
+def _business(reg: Registry, d: dict) -> dict:
+    """Business links for the release, from what has been read so far."""
+    from . import relations as R
+    store = R.Relations(reg.root)
+    covered = {i.symbol for i in d["universe"].issuers}
+    c = d.get("relations_counts") or {}
+    read = sum(1 for k in store.pairs if set(k.split(">")) <= covered)
+    return {"links": R.links(store, covered), "pairs_read": read,
+            "pairs_waiting": c.get("waiting"), "lookback_months": R.LOOKBACK_MONTHS}
 
 
 def theme_groups(reg: Registry, mcfg: MonitorConfig) -> list[dict]:

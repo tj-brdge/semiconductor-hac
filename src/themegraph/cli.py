@@ -275,6 +275,34 @@ def cmd_monitor(a):
         (Path(a.state) / "forward_tests.md").write_text(text)
         print(text)
         return
+    if a.action == "relations":
+        # Business relationships companies state about each other. --count shows how
+        # many pairs are waiting (no calls); otherwise they are read, newest first.
+        from .monitor import naming
+        from .monitor import relations as R
+        from .monitor.config import load_monitor
+        mcfg = load_monitor(prof.monitor)
+        as_of = dt.date.fromisoformat(a.as_of) if a.as_of else dt.date.today()
+        d = M.load_inputs(a.fixtures, as_of, profile=prof)
+        cands = M.relation_candidates(d)
+        store = R.Relations(Path(a.state))
+        todo = store.todo(cands)
+        words = sum(len(r["text"].split()) for p in todo for r in cands[p])
+        print(f"{len(cands)} pairs of companies name each other in the last "
+              f"{R.LOOKBACK_MONTHS} months; {len(todo)} are waiting to be read "
+              f"(about {words:,} words of passages, one Claude call per pair).")
+        if a.count or not todo:
+            return
+        now = dt.datetime.now(dt.UTC).isoformat(timespec="seconds")
+        names = {i.symbol: i.name for i in d["universe"].issuers if i.name}
+        c = R.read_pairs(store, cands, names, naming.ClaudeNamer(mcfg.labels.model), now,
+                         limit=a.limit, log=print)
+        print(json.dumps({k: v for k, v in c.items() if k != "errors"}))
+        for k, v in list(c["errors"].items())[:10]:
+            print(f"failed {k}: {v}")
+        print(f"{len(R.links(store, {i.symbol for i in d['universe'].issuers}))} links so far. "
+              "Run `themegraph monitor refresh --no-ingest` to publish them.")
+        return
     if a.action == "feed":
         from .monitor.config import load_monitor
         from .monitor.feed import feed
@@ -434,7 +462,8 @@ def main(argv=None):
     s.add_argument("--no-browser", action="store_true")
     s.set_defaults(fn=cmd_review)
     s = sub.add_parser("monitor", help="theme monitor: refresh the data feed or serve it")
-    s.add_argument("action", choices=["refresh", "serve", "compare", "review", "forward", "feed"])
+    s.add_argument("action", choices=["refresh", "serve", "compare", "review", "forward", "feed",
+                                     "relations"])
     s.add_argument("--read", choices=["headwind", "emergence", "tailwind"],
                    help="forward: read this test's result (once; refused until 20 events "
                         "have a completed 126-session window)")
@@ -463,6 +492,10 @@ def main(argv=None):
     s.add_argument("--full-prices", action="store_true",
                    help="download every symbol's full price history again (by default "
                         "stored history is reused unless the provider restated it)")
+    s.add_argument("--count", action="store_true",
+                   help="relations: only count the pairs waiting to be read (no calls)")
+    s.add_argument("--limit", type=int,
+                   help="relations: read at most this many pairs (default: all waiting)")
     s.add_argument("--port", type=int, default=8780)
     s.set_defaults(fn=cmd_monitor)
     s = sub.add_parser("questions", help="share of analyst questions in a run's text")

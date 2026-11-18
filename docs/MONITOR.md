@@ -606,6 +606,47 @@ The series are downloaded with prices on each refresh (`macro series updated` in
 the prices stage of `status.json`). A failed download is reported there and the
 tables keep the last stored series; with none stored the section says so.
 
+## Business relationships (`monitor/relations.py`)
+
+Added 2026-11-18 at the owner's request: which covered companies say they do
+business with which others, shown on the Network page. Scope set by the owner:
+the covered companies only, and no lenders or banks.
+
+1. **Candidates.** In each company's own statements (prepared remarks,
+   management answers and filings; analysts' questions are left out) from the last
+   24 months, passages that name another covered company. Names are `Issuer.name`,
+   its short form ("Micron Technology" gives "Micron") and `Issuer.aliases`
+   ("TSMC", "AWS", "NVIDIA"). Matching is case-sensitive and on whole words, and
+   tickers are never matched. A few short forms that are ordinary words are
+   excluded.
+2. **Reading.** For each pair (speaker, named company) Claude reads the three most
+   recent passages, each from a different document and cut to about 110 words
+   either side of the name, and answers from the speaker's side: supplies, buys
+   from, partner, competitor, owns a stake in, owned by, or none. It may use only
+   the passages, and is told to answer "none" for a mere mention, a hypothetical,
+   a denial or an ordinary word with the same spelling.
+3. **Check.** An answer must cite one of the passages it was shown; otherwise it is
+   recorded as "none". The cited passage is kept as the evidence.
+4. **Links.** Statements are joined into one link per pair and kind. "A buys from
+   B" and "B supplies A" are the same link (B supplies A). A link keeps who said it
+   and when, and says when both companies said it.
+
+Results are kept in `<state>/relations.json`. A pair is read once and again only
+when a newer passage about it appears, so the cost is one Claude call per pair
+with new text. The first run is the large one:
+
+    themegraph monitor relations --count     # how many pairs are waiting; no calls
+    themegraph monitor relations             # read them (add --limit N to cap)
+    themegraph monitor refresh --no-ingest   # publish
+
+After that each refresh reads up to `relations.max_per_refresh` (50) new pairs.
+The page says how many pairs are still waiting.
+
+Limits, stated on the page: a counterparty that is not named cannot be found; a
+statement can be out of date (its date is shown); only covered companies are
+considered. This describes what companies have said. It feeds nothing in
+detection, baskets or any measure, and a failure here never blocks a release.
+
 ## Theme feed (`monitor/feed.py`)
 
 `themegraph monitor feed` writes `<state>/themes_feed.md`: every published theme

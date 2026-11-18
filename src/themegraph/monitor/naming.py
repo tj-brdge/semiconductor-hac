@@ -190,6 +190,10 @@ class ClaudeNamer:
     def __call__(self, prompt: str) -> tuple[dict, str]:
         return self._ask(prompt, SCHEMA)
 
+    def relation(self, prompt: str) -> tuple[dict, str]:
+        from .relations import SCHEMA as RELATION_SCHEMA
+        return self._ask(prompt, RELATION_SCHEMA)
+
     def group(self, prompt: str) -> tuple[dict, str]:
         return self._ask(prompt, GROUP_SCHEMA)
 

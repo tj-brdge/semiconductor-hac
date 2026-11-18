@@ -820,6 +820,51 @@ function companiesPage(params) {
   draw();
 }
 
+// -- business relationships ----------------------------------------------------------------
+// What covered companies say about doing business with each other, each backed by a
+// quoted passage. Direction is in the wording, never in colour alone.
+const BIZ = { supply: "Supplier and customer", partner: "Partners", competitor: "Competitors", ownership: "Ownership" };
+function bizSentence(l) {
+  const a = esc(nameOf(l.a)), b = esc(nameOf(l.b));
+  return { supply: `<b>${a}</b> supplies <b>${b}</b>`, partner: `<b>${a}</b> and <b>${b}</b> work together`,
+    competitor: `<b>${a}</b> and <b>${b}</b> compete`, ownership: `<b>${a}</b> owns all or part of <b>${b}</b>` }[l.kind] || `${a} – ${b}`;
+}
+function bizItem(l) {
+  const st = l.statements[0];
+  return `<li class="biz"><p>${bizSentence(l)} <span class="small muted">· said by ${l.both_sides ? "both companies" : esc(nameOf(st.said_by))}, last on ${esc(fmtDate(l.last_said))}</span></p>
+    ${l.statements.slice(0, 2).map((x) => `<blockquote class="pull"><p>“${esc(x.text)}”</p><footer>${esc(nameOf(x.said_by))} · ${esc(ROLE[x.role] || x.role || "")} · ${esc(fmtDate(x.date))}${x.url ? ` · <a href="${esc(x.url)}" rel="noopener noreferrer" target="_blank">Source</a>` : ""}</footer></blockquote>`).join("")}</li>`;
+}
+function businessSection() {
+  const B = S.index.business;
+  if (!B) return "";
+  const L = B.links || [];
+  const head = `<div><h2 id="h-biz">Who does business with whom</h2>
+    <p class="muted small">What the monitored companies have said about each other in their own earnings calls and filings over the last ${B.lookback_months} months: supplier and customer, partners, competitors, ownership. Each link is read from a quoted passage, shown with it. A company that is not named (“a large cloud customer”) cannot be found, a statement can be out of date, and banks and lenders are not covered. ${B.pairs_waiting ? `<b>${B.pairs_waiting} pairs of companies are still waiting to be read</b>, so this list is incomplete.` : ""}</p></div>`;
+  if (!L.length) return `<section class="section" aria-labelledby="h-biz">${head}<p class="empty">${B.pairs_read ? "No stated relationship has been found yet." : "Nothing has been read yet. Run “themegraph monitor relations” where the refresh runs."}</p></section>`;
+  const opts = (list, cur) => list.map(([v, l]) => `<option value="${esc(v)}"${v === cur ? " selected" : ""}>${esc(l)}</option>`).join("");
+  const kinds = Object.keys(BIZ).filter((k) => L.some((l) => l.kind === k));
+  return `<section class="section" aria-labelledby="h-biz">${head}
+    <form class="controls" onsubmit="return false">
+      <label class="field">Kind<select id="b-kind">${opts([["", `All kinds (${L.length})`], ...kinds.map((k) => [k, `${BIZ[k]} (${L.filter((l) => l.kind === k).length})`])], "")}</select></label>
+      <label class="field">Company<input id="b-q" type="search" placeholder="Name or ticker"></label>
+    </form>
+    <p class="count" id="b-count" aria-live="polite"></p><ul class="plain bizlist" id="b-list"></ul></section>`;
+}
+function bindBusiness() {
+  const L = S.index.business?.links || [];
+  if (!$("#b-list")) return;
+  const draw = () => {
+    const kind = $("#b-kind").value, q = $("#b-q").value.trim().toLowerCase();
+    const rows = L.filter((l) => (!kind || l.kind === kind) && (!q || [l.a, l.b, nameOf(l.a), nameOf(l.b)].join(" ").toLowerCase().includes(q)))
+      .sort((x, y) => y.last_said.localeCompare(x.last_said));
+    $("#b-count").textContent = `Showing ${Math.min(rows.length, 60)} of ${rows.length} relationships, most recently stated first`;
+    $("#b-list").innerHTML = rows.slice(0, 60).map(bizItem).join("") || `<li class="muted">No relationship matches.</li>`;
+  };
+  $("#b-kind").addEventListener("change", draw);
+  $("#b-q").addEventListener("input", draw);
+  draw();
+}
+
 // -- network -----------------------------------------------------------------------------
 // Companies as dots, two kinds of link: trading together (solid) and discussing the
 // same theme (dashed). Positions come with the release (monitor/network.py), so the
@@ -837,7 +882,7 @@ function networkPage() {
   const opts = (list) => list.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("");
   $("#main").innerHTML = `
     <section class="intro"><h1>Company network</h1>
-      <p class="lede">How the monitored companies connect: by trading together, and by talking about the same themes.</p>
+      <p class="lede">How the monitored companies connect: by trading together, by talking about the same themes, and by what they say about doing business with each other.</p>
       <p class="muted small">${net.price_links.length} price links${net.price_cut != null ? ` (correlation beyond ${esc(net.window.index)} above ${net.price_cut.toFixed(2)}, ${esc(fmtDate(net.window.start))} – ${esc(fmtDate(net.window.end))})` : ""} and ${net.discussion_links.length} discussion links (both companies discuss the same active theme this month). Companies that sit close together are linked, directly or through others; distance has no other meaning.</p></section>
     ${notices()}
     <section class="panel">
@@ -846,14 +891,19 @@ function networkPage() {
         <label class="check"><input type="checkbox" id="n-disc" checked> <i class="key dash" style="border-top-color:var(--series-2);border-top-width:2px"></i>Discussing the same theme</label>
         <label class="field">Highlight a theme<select id="n-theme">${opts([["", "None"], ...themes.map((t) => [t.id, t.title])])}</select></label>
         <label class="field">Highlight a sector<select id="n-sector">${opts([["", "None"], ...sectors.map((s) => [s, s])])}</select></label>
+        ${(S.index.business?.links || []).length ? `<label class="check"><input type="checkbox" id="n-biz" checked> <i class="key dot" style="border-top-color:var(--series-3);border-top-width:3px"></i>Stated business relationship</label>` : ""}
         <label class="check"><input type="checkbox" id="n-labels"> Show every ticker</label>
       </form>
       <div class="net-wrap"><div id="net" class="net"></div><aside id="net-info" class="net-info" aria-live="polite"></aside></div>
       <p class="small muted">Click or focus a company to see its links; the <a href="#/companies">Companies</a> page has the same memberships as a table.</p>
-    </section>`;
+    </section>
+    ${businessSection()}`;
+  bindBusiness();
+  const biz = (S.index.business?.links || []).filter((l) => l.a in Object.fromEntries(net.nodes.map((n) => [n.symbol, 1])) && l.b in Object.fromEntries(net.nodes.map((n) => [n.symbol, 1])));
   const by = Object.fromEntries(net.nodes.map((n) => [n.symbol, n]));
   const nb = {}; // symbol -> {price: [[other, corr]], disc: [[other, themes]]}
-  net.nodes.forEach((n) => { nb[n.symbol] = { price: [], disc: [] }; });
+  net.nodes.forEach((n) => { nb[n.symbol] = { price: [], disc: [], biz: [] }; });
+  biz.forEach((l) => { nb[l.a].biz.push(l); nb[l.b].biz.push(l); });
   net.price_links.forEach((e) => { nb[e.a].price.push([e.b, e.corr]); nb[e.b].price.push([e.a, e.corr]); });
   net.discussion_links.forEach((e) => { nb[e.a].disc.push([e.b, e.themes]); nb[e.b].disc.push([e.a, e.themes]); });
   let picked = null;
@@ -868,7 +918,8 @@ function networkPage() {
     const showP = $("#n-price").checked, showD = $("#n-disc").checked;
     const theme = $("#n-theme").value, sector = $("#n-sector").value, all = $("#n-labels").checked;
     const lit = new Set();
-    if (picked) { lit.add(picked); if (showP) nb[picked].price.forEach(([o]) => lit.add(o)); if (showD) nb[picked].disc.forEach(([o]) => lit.add(o)); }
+    const showB = $("#n-biz")?.checked;
+    if (picked) { lit.add(picked); if (showP) nb[picked].price.forEach(([o]) => lit.add(o)); if (showD) nb[picked].disc.forEach(([o]) => lit.add(o)); if (showB) nb[picked].biz.forEach((l) => { lit.add(l.a); lit.add(l.b); }); }
     net.nodes.forEach((n) => { if ((theme && n.themes.includes(theme)) || (sector && n.sector === sector)) lit.add(n.symbol); });
     const focus = picked || theme || sector;
     const edge = (e, cls) => {
@@ -878,6 +929,7 @@ function networkPage() {
     };
     if (showD) net.discussion_links.forEach((e) => edge(e, "d"));
     if (showP) net.price_links.forEach((e) => edge(e, "p"));
+    if (showB) biz.forEach((e) => edge({ ...e, themes: [] }, "b"));
     const maxDeg = Math.max(1, ...net.nodes.map((n) => n.degree));
     const labelCut = [...net.nodes].sort((a, b) => b.degree - a.degree)[Math.min(net.nodes.length - 1, narrowNet(W) ? 14 : 34)].degree;
     net.nodes.forEach((n) => {
@@ -903,10 +955,11 @@ function networkPage() {
     const disc = [...nb[picked].disc].sort((a, b) => b[1].length - a[1].length);
     box.innerHTML = `<h3 class="mono">${esc(n.symbol)}</h3><p class="small muted">${esc(n.sector || "")}${n.cluster ? ` · <a href="#/clusters">market cluster ${n.cluster}${clusterName(S.index.market_clusters, n.cluster)}</a>` : ""}</p>
       <h4>Themes (${n.themes.length})</h4>${n.themes.length ? `<ul class="plain">${n.themes.map((id) => `<li><a href="#/theme/${esc(id)}">${esc(S.byId[id]?.title || id)}</a></li>`).join("")}</ul>` : `<p class="small muted">In no active theme.</p>`}
+      ${nb[picked].biz.length ? `<h4>Does business with (${nb[picked].biz.length})</h4><ul class="plain small">${nb[picked].biz.slice(0, 12).map((l) => `<li>${bizSentence(l)} <span class="muted">(${esc(fmtDate(l.last_said))})</span></li>`).join("")}</ul>` : ""}
       <h4>Trades with (${price.length})</h4>${price.length ? `<p class="small">${price.slice(0, 12).map(([o, c]) => `<span class="mono">${esc(o)}</span> ${c.toFixed(2)}`).join(" · ")}${price.length > 12 ? ` · +${price.length - 12}` : ""}</p>` : `<p class="small muted">No price link above the cut.</p>`}
       <h4>Discusses the same themes as (${disc.length})</h4>${disc.length ? `<p class="small">${disc.slice(0, 16).map(([o, th]) => `<span class="mono">${esc(o)}</span>${th.length > 1 ? ` ×${th.length}` : ""}`).join(" · ")}${disc.length > 16 ? ` · +${disc.length - 16}` : ""}</p>` : `<p class="small muted">None this month.</p>`}`;
   };
-  ["n-price", "n-disc", "n-theme", "n-sector", "n-labels"].forEach((id) => $("#" + id).addEventListener("change", () => { if (id === "n-theme" || id === "n-sector") picked = null; draw(); info(); }));
+  ["n-price", "n-disc", "n-biz", "n-theme", "n-sector", "n-labels"].forEach((id) => $("#" + id)?.addEventListener("change", () => { if (id === "n-theme" || id === "n-sector") picked = null; draw(); info(); }));
   let w = host.clientWidth;
   window.addEventListener("resize", () => { if ($("#net") === host && host.clientWidth !== w) { w = host.clientWidth; draw(); } });
   draw(); info();
