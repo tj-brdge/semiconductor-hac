@@ -27,7 +27,8 @@ from . import tone as T
 from .config import MonitorConfig
 
 QUOTE_CHARS = 500
-ROLES = ("management_remarks", "management_answer", "analyst_question", "filing")
+ROLES = ("management_remarks", "management_answer", "analyst_question", "filing",
+         "ir_document")
 
 
 @dataclass
@@ -58,6 +59,8 @@ def passage_roles(p: pd.DataFrame) -> pd.Series:
     in_prep = pd.Series([(d, s) in gave_remarks for d, s in zip(p["doc_id"], speaker,
                                                                   strict=True)], index=p.index)
     role = pd.Series("filing", index=p.index)
+    # A company's own IR material is neither a filing nor a call: say so.
+    role[genre.str.startswith("ir:")] = "ir_document"
     role[prep] = "management_remarks"
     qa = genre == "transcript:qa"
     role[qa & in_prep] = "management_answer"

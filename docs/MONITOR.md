@@ -930,6 +930,71 @@ days are `live`. The month-end stays recorded as `published_snapshot`, the evide
 date. Coverage dates inside a build's replayed history keep the reconstructed
 month-end entry, like every other replayed theme.
 
+### SK hynix's SEC filings (2026-11-19)
+
+SK hynix (`000660.KS`) was marked `sec_filer: false`, so only transcripts could
+supply its text, and in the live feed of 2026-11-15 it appeared in no theme. It
+registered with the SEC in 2026 and now files as a foreign private issuer.
+
+- **Checked on EDGAR, 2026-11-19:** CIK 2120882, "SK hynix Inc.", SIC 3674,
+  Commission File No. 001-43391, Form 20-F box checked. 31 Forms 6-K and one
+  6-K/A, filed 2026-07-15 to 2026-11-16; registration documents (DRS, F-1, 424B4)
+  from March to July 2026; no Form 20-F yet. The 6-Ks sampled have no exhibit 99:
+  the text is in the primary document. They range from short notices (a
+  shareholder-return plan, about 400 words) to the November summary of the
+  quarterly business report (several thousand words on the industry, products,
+  capacity and R&D).
+- **Change:** the issuer entry now has `cik: 2120882` and no `sec_filer: false`.
+  Nothing else: the same symbol, currency, role and price history. The Nasdaq ADR
+  is the same company and is not added.
+- **Path, unchanged:** `ingest_edgar` reads Forms 6-K (exhibit 99 when there is
+  one, otherwise the primary document) into `documents_edgar` as `6-K:ex99`;
+  passages are cut and filtered like every other filing. Amendments (6-K/A) and
+  registration statements (F-1) are not read, as for every company.
+- **What it cannot do:** EDGAR holds nothing for SK hynix before 2026. Its text
+  history starts in July 2026, so under the coverage rule it is listed with a
+  theme but left out of growth comparisons until twelve months of documents
+  exist. Month-ends already processed are not rebuilt; filings eligible for them
+  are reported as late documents and count in later months.
+- **Not added:** the company's investor-relations site (earnings releases,
+  presentations, call recordings). It could not be read when this was written,
+  and its earnings releases are also filed as 6-Ks, so reading both would repeat
+  the same event. If older history is wanted, that is the source to add, as its
+  own document type with its own attribution.
+
+### Company IR documents (2026-11-19)
+
+A third document source, for companies whose transcripts and filings are thin
+(on 2026-11-19 the store held one transcript each for SK hynix and Nanya
+Technology). `config/ir_documents.yaml` lists documents on a company's own site;
+`themegraph ingest ir` reads the ones not yet stored, and a refresh that downloads
+documents does the same.
+
+- **What is read:** only the listed links, each once: a web page or a PDF that
+  anyone can open. Nothing signs in, fills a form or follows links. An image-only
+  PDF has no text and is reported.
+- **Kept apart:** stored in `documents_ir` with document type `ir:<kind>`
+  (earnings release, presentation, call script, business report, news), the
+  company's URL and its publication date. On the site its passages are labelled
+  "Company IR document", never "SEC filing" or a call.
+- **Timing:** a company gives a date, not a time. The document counts as
+  published at the end of that day (UTC) and then gets the same lag as a filing.
+- **No double counting:** an earnings release within three days of a stored SEC
+  filing of the same company is skipped (SK hynix files its releases as 6-Ks).
+  Beyond that, the existing rule that drops passages nearly identical to the same
+  company's earlier text applies to this source like any other.
+- **History:** as with any new documents, month-ends already processed are not
+  rebuilt, and a company whose documents are new is left out of growth comparisons
+  until twelve months exist. Older documents listed here help only a full rebuild.
+- **Not a completeness gate:** this source does not count toward the "documents
+  downloaded" check that month-end processing waits for.
+- **Research commands** read the same store, so listed documents become inputs
+  to them too. The list is empty as shipped.
+
+**Not built: automatic listing.** Finding the documents on each site needs that
+site to be inspected, and the companies' sites were not reachable when this was
+written. Until a reader exists the list is filled by hand.
+
 ## Repairing state
 
 Registries are append-only and the fixes above apply to what is written from now

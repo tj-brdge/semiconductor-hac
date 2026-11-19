@@ -38,12 +38,21 @@ sectors:
 # baskets keep their prices. See docs/MONITOR.md, "Universe changes".
 changes:
   - {version: "1", date: 2026-10-27, note: "pilot universe as of the monitor's first release"}
+  # Not a coverage change: the company was already covered. Recorded because it
+  # changes which documents are read for it from 2026-07-15 on.
+  - {version: "1", date: 2026-11-19, note: "SK hynix (000660.KS): SEC filings (Form 6-K, CIK 2120882) are now ingested; no company added or removed"}
 
 issuers:
   # --- memory / storage
   - {symbol: MU, name: "Micron Technology", segment: memory, role: core}
   - {symbol: 005930.KS, name: "Samsung Electronics", segment: memory, role: core, currency: KRW, sec_filer: false}
-  - {symbol: 000660.KS, name: "SK hynix", aliases: ["SK Hynix", "Hynix"], segment: memory, role: core, currency: KRW, sec_filer: false}
+  # SK hynix registered with the SEC in 2026 (ADRs on Nasdaq from July 2026) and files
+  # Form 6-K as a foreign private issuer. Checked on EDGAR 2026-11-19: CIK 2120882,
+  # "SK hynix Inc.", SIC 3674, Commission File No. 001-43391, Form 20-F box checked;
+  # 31 Forms 6-K from 2026-07-15 to 2026-11-16, no 20-F yet. The tracked security
+  # stays the Korean ordinary share (000660.KS, KRW): the ADR is the same company and
+  # is not added. Its filings before July 2026 do not exist on EDGAR.
+  - {symbol: 000660.KS, name: "SK hynix", aliases: ["SK Hynix", "Hynix"], segment: memory, role: core, currency: KRW, cik: 2120882}
   - {symbol: WDC, name: "Western Digital", segment: memory, role: core}
   - {symbol: SNDK, name: "SanDisk", aliases: ["Sandisk"], segment: memory, role: core, listed: 2025-02-24}  # verify
   - {symbol: 2408.TW, name: "Nanya Technology", segment: memory, role: core, currency: TWD, sec_filer: false}

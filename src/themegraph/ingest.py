@@ -249,6 +249,50 @@ def ingest_edgar(client: E.EdgarClient, cfg: PipelineConfig, universe: UniverseC
     return store.write("documents_edgar", _stamp(out), vintage_id())
 
 
+def ingest_ir(client, cfg: PipelineConfig, universe: UniverseConfig, store: Store,
+              entries: list, end: dt.date, symbols: list[str] | None = None,
+              log=_log) -> Path | None:
+    """Read the listed company IR documents not yet stored (data/ir.py).
+
+    Skipped, with a line saying why: a company outside the universe; a date after
+    `end`; an earnings release within three days of a stored SEC filing of the same
+    company (the same release, already read from EDGAR); a document with no
+    readable text (an image-only PDF). One failed download does not stop the rest."""
+    from .data import ir as R
+    covered = {i.symbol for i in universe.issuers}
+    have = set(store.read("documents_ir")["doc_id"]) if store.vintages("documents_ir") else set()
+    filed: dict[str, list] = {}
+    if store.vintages("documents_edgar"):
+        e = store.read("documents_edgar")
+        for sym, g in e.groupby("symbol"):
+            filed[sym] = sorted(pd.to_datetime(g["published_at"], utc=True).dt.date.unique())
+    todo, texts = [], {}
+    for d in entries:
+        if d.symbol not in covered or (symbols and d.symbol not in symbols):
+            continue
+        if d.date > end or R.doc_id(d) in have:
+            continue
+        if d.kind == "earnings_release" and any(
+                abs((d.date - f).days) <= 3 for f in filed.get(d.symbol, [])):
+            log(f"  {d.symbol} {d.date} {d.kind}: skipped, an SEC filing of the same days "
+                "is already stored")
+            continue
+        todo.append(d)
+    for d in _bar(todo, "IR documents", "document"):
+        try:
+            texts[d.url] = client.text(d)
+        except Exception as e:  # noqa: BLE001 - one document's failure is reported
+            log(f"  {d.symbol} {d.date} {d.kind}: {type(e).__name__}: {e}")
+            continue
+        if len(texts[d.url].split()) < 40:
+            log(f"  {d.symbol} {d.date} {d.kind}: no readable text (an image-only PDF?)")
+    df = R.ir_documents(todo, texts, cfg.availability)
+    log(f"IR documents: {len(df)} read of {len(todo)} listed and not yet stored")
+    if df.empty:
+        return None
+    return store.write("documents_ir", _stamp(df), vintage_id())
+
+
 # ------------------------------------------------------------------ loaders
 
 def universe_symbols(universe: UniverseConfig, benchmarks: bool = True) -> set[str]:
@@ -271,7 +315,7 @@ def load_documents(store: Store, upto: str | None = None,
     """Transcripts and filings; with `universe`, only its companies' documents."""
     frames = []
     want = universe_symbols(universe, benchmarks=False) if universe is not None else None
-    for table in ("documents_transcripts", "documents_edgar"):
+    for table in ("documents_transcripts", "documents_edgar", "documents_ir"):
         if store.vintages(table):
             frames.append(store.read(table, upto=upto, symbols=want))
     if not frames:
