@@ -17,6 +17,8 @@ dependencies = [
     "tqdm>=4.66",
     # Written theme titles (monitor/naming.py) and review-page suggestions.
     "anthropic>=1.0",
+    # Text from PDF investor-relations documents (data/ir.py).
+    "pypdf>=4.0",
 ]
 
 [project.optional-dependencies]

@@ -25,7 +25,8 @@ from .pit import assert_pit
 
 # Record identity per table; tables not listed are read one vintage at a time.
 KEYS = {"prices": ["symbol", "date"], "macro": ["series", "date"],
-        "documents_transcripts": ["doc_id"], "documents_edgar": ["doc_id"]}
+        "documents_transcripts": ["doc_id"], "documents_edgar": ["doc_id"],
+        "documents_ir": ["doc_id"]}
 # Bookkeeping or derived from other columns (availability = publication + lag rules):
 # not part of what was observed, so not part of a record's content.
 NOT_CONTENT = {"vintage", "first_seen_at", "available_at"}

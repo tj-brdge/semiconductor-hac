@@ -189,6 +189,17 @@ def ingest_step(kind: str, as_of: dt.date, log=print, profile: Profile | None = 
     from ..data.edgar import EdgarClient
     out.append(str(I.ingest_edgar(EdgarClient(DATA / "raw" / "edgar"), cfg, u, store,
                                   as_of, None)))
+    # Company IR documents listed in config/ir_documents.yaml. Optional: an empty
+    # list downloads nothing, and a failure is reported without failing the stage.
+    try:
+        from ..data import ir as R
+        entries = R.load_manifest()
+        if entries:
+            got = I.ingest_ir(R.IrClient(DATA / "raw" / "ir"), cfg, u, store, entries, as_of,
+                              log=log)
+            out.append(f"IR documents: {got or 'nothing new'}")
+    except Exception as e:  # noqa: BLE001
+        out.append(f"IR documents NOT read ({type(e).__name__}: {e})")
     return "; ".join(out)
 
 

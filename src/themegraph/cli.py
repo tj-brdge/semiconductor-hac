@@ -69,6 +69,10 @@ def cmd_ingest(a):
     client = FMPClient(DATA / "raw" / "fmp", vintage=a.vintage)
     if a.source == "fmp-prices":
         print(I.ingest_fmp_prices(client, cfg, u, store, end))
+    elif a.source == "ir":
+        from .data import ir as R
+        print(I.ingest_ir(R.IrClient(DATA / "raw" / "ir"), cfg, u, store, R.load_manifest(),
+                          end, a.symbols))
     elif a.source == "fmp-macro":
         print(I.ingest_fmp_macro(client, cfg, store, end))
     elif a.source == "fmp-transcripts":
@@ -399,9 +403,10 @@ def main(argv=None):
     s.add_argument("--out", default=str(RUNS / "demo"))
     s.set_defaults(fn=cmd_demo)
     s = sub.add_parser("ingest", help="fetch data into the immutable cache and store")
-    s.add_argument("source", choices=["edgar", "fmp-prices", "fmp-macro", "fmp-transcripts"])
+    s.add_argument("source", choices=["edgar", "fmp-prices", "fmp-macro", "fmp-transcripts",
+                                      "ir"])
     s.add_argument("--end", help="last date (default today)")
-    s.add_argument("--symbols", nargs="*", help="EDGAR only: limit to these symbols")
+    s.add_argument("--symbols", nargs="*", help="EDGAR and IR: limit to these symbols")
     s.add_argument("--vintage", help="snapshot date (YYYY-MM-DD) for data that changes over "
                    "time; default today. Reuse a past date to rebuild from that snapshot "
                    "without downloading")

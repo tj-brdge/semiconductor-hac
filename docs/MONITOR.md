@@ -962,6 +962,39 @@ registered with the SEC in 2026 and now files as a foreign private issuer.
   the same event. If older history is wanted, that is the source to add, as its
   own document type with its own attribution.
 
+### Company IR documents (2026-11-19)
+
+A third document source, for companies whose transcripts and filings are thin
+(on 2026-11-19 the store held one transcript each for SK hynix and Nanya
+Technology). `config/ir_documents.yaml` lists documents on a company's own site;
+`themegraph ingest ir` reads the ones not yet stored, and a refresh that downloads
+documents does the same.
+
+- **What is read:** only the listed links, each once: a web page or a PDF that
+  anyone can open. Nothing signs in, fills a form or follows links. An image-only
+  PDF has no text and is reported.
+- **Kept apart:** stored in `documents_ir` with document type `ir:<kind>`
+  (earnings release, presentation, call script, business report, news), the
+  company's URL and its publication date. On the site its passages are labelled
+  "Company IR document", never "SEC filing" or a call.
+- **Timing:** a company gives a date, not a time. The document counts as
+  published at the end of that day (UTC) and then gets the same lag as a filing.
+- **No double counting:** an earnings release within three days of a stored SEC
+  filing of the same company is skipped (SK hynix files its releases as 6-Ks).
+  Beyond that, the existing rule that drops passages nearly identical to the same
+  company's earlier text applies to this source like any other.
+- **History:** as with any new documents, month-ends already processed are not
+  rebuilt, and a company whose documents are new is left out of growth comparisons
+  until twelve months exist. Older documents listed here help only a full rebuild.
+- **Not a completeness gate:** this source does not count toward the "documents
+  downloaded" check that month-end processing waits for.
+- **Research commands** read the same store, so listed documents become inputs
+  to them too. The list is empty as shipped.
+
+**Not built: automatic listing.** Finding the documents on each site needs that
+site to be inspected, and the companies' sites were not reachable when this was
+written. Until a reader exists the list is filled by hand.
+
 ## Repairing state
 
 Registries are append-only and the fixes above apply to what is written from now

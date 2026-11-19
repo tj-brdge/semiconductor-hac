@@ -20,7 +20,7 @@ const share = (x, d = 0) => x == null ? "—" : `${(x * 100).toFixed(d)}%`;
 const PERIODS = { "3m": ["3M", "3-month", 63], "6m": ["6M", "6-month", 126], "12m": ["12M", "12-month", 252] };
 const STATUS = { new: "New", strengthening: "Strengthening", stable: "Stable", cooling: "Cooling", inactive: "Inactive", merged: "Merged" };
 const ROLE = { management_remarks: "Management, prepared remarks", management_answer: "Management, Q&A answer",
-  analyst_question: "Analyst question", filing: "SEC filing" };
+  analyst_question: "Analyst question", filing: "SEC filing", ir_document: "Company IR document" };
 const BASIS = { live: ["Live", "live"], reconstructed: ["Simulated", "sim"], mixed: ["Simulated + live", "sim"] };
 
 const store = {

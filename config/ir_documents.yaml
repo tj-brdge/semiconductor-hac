@@ -1,0 +1,24 @@
+# Company investor-relations documents read in addition to transcripts and SEC
+# filings (docs/MONITOR.md, "Company IR documents"). For companies whose text is
+# thin: SK hynix (000660.KS) and Nanya Technology (2408.TW) had one transcript each
+# on 2026-11-19.
+#
+# One entry per document that is publicly downloadable as a web page or a PDF:
+#   - symbol:  the company's symbol in the universe
+#     date:    the day the company published it (YYYY-MM-DD)
+#     kind:    earnings_release | presentation | call_script | business_report | news
+#     period:  what it reports on, e.g. 2026Q3 (optional)
+#     title:   as shown on the company's site
+#     url:     the direct link to the page or PDF
+#
+# Rules:
+# - Only material anyone can open without signing in. Nothing behind an email check.
+# - One document per earnings event and kind. A release that the company also files
+#   with the SEC is skipped automatically when that filing is already stored.
+# - Never change or remove an entry that has been read; add new ones below.
+#
+# Entries are added by hand for now. A reader that lists a company's documents
+# automatically needs that company's site to be inspected first; none exists yet.
+# The list is empty, so nothing is downloaded. Read what is listed with:
+#   themegraph ingest ir
+documents: []
