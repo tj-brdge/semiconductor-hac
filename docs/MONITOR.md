@@ -930,6 +930,38 @@ days are `live`. The month-end stays recorded as `published_snapshot`, the evide
 date. Coverage dates inside a build's replayed history keep the reconstructed
 month-end entry, like every other replayed theme.
 
+### SK hynix's SEC filings (2026-11-19)
+
+SK hynix (`000660.KS`) was marked `sec_filer: false`, so only transcripts could
+supply its text, and in the live feed of 2026-11-15 it appeared in no theme. It
+registered with the SEC in 2026 and now files as a foreign private issuer.
+
+- **Checked on EDGAR, 2026-11-19:** CIK 2120882, "SK hynix Inc.", SIC 3674,
+  Commission File No. 001-43391, Form 20-F box checked. 31 Forms 6-K and one
+  6-K/A, filed 2026-07-15 to 2026-11-16; registration documents (DRS, F-1, 424B4)
+  from March to July 2026; no Form 20-F yet. The 6-Ks sampled have no exhibit 99:
+  the text is in the primary document. They range from short notices (a
+  shareholder-return plan, about 400 words) to the November summary of the
+  quarterly business report (several thousand words on the industry, products,
+  capacity and R&D).
+- **Change:** the issuer entry now has `cik: 2120882` and no `sec_filer: false`.
+  Nothing else: the same symbol, currency, role and price history. The Nasdaq ADR
+  is the same company and is not added.
+- **Path, unchanged:** `ingest_edgar` reads Forms 6-K (exhibit 99 when there is
+  one, otherwise the primary document) into `documents_edgar` as `6-K:ex99`;
+  passages are cut and filtered like every other filing. Amendments (6-K/A) and
+  registration statements (F-1) are not read, as for every company.
+- **What it cannot do:** EDGAR holds nothing for SK hynix before 2026. Its text
+  history starts in July 2026, so under the coverage rule it is listed with a
+  theme but left out of growth comparisons until twelve months of documents
+  exist. Month-ends already processed are not rebuilt; filings eligible for them
+  are reported as late documents and count in later months.
+- **Not added:** the company's investor-relations site (earnings releases,
+  presentations, call recordings). It could not be read when this was written,
+  and its earnings releases are also filed as 6-Ks, so reading both would repeat
+  the same event. If older history is wanted, that is the source to add, as its
+  own document type with its own attribution.
+
 ## Repairing state
 
 Registries are append-only and the fixes above apply to what is written from now

@@ -1087,6 +1087,16 @@ windows); events in the same sector or the same market months are still related,
 so p-values are likely somewhat too small. This is disclosed with every result
 and is not corrected by a new filter or test, which would change the protocol.
 
+### Input change: SK hynix SEC filings (2026-11-19)
+
+`config/universe.yaml` is shared by the research commands and the monitor. From
+this date SK hynix (`000660.KS`) is read from EDGAR (CIK 2120882; Forms 6-K from
+2026-07-15). Its filings fall inside the holdout window's last months
+(July to October 2026). That window already counts as inspected (see "Evaluation
+status change: monitoring"), no registered result is recomputed, and a rerun of
+a recorded run would see these documents only with a store vintage from after
+this date. No rule, threshold or form list changed.
+
 ## 12. Open questions
 
 1. Include the adjacency ring (§4.2) in v1? Recommended: yes, for text only.
