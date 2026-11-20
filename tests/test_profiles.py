@@ -45,17 +45,22 @@ def test_tech_universe_extends_the_pilot_without_changing_it():
     segs = {i.segment for i in new}
     assert segs == {"app_software", "security", "data_cloud"}
     assert all(sum(i.segment == s for i in new) >= 12 for s in segs)
-    # Version 3: electrical and data-centre infrastructure, covered from one date
+    # Versions 3 and 4: live expansions. Each is covered from the date of its change
     # and recorded in the change log, so the newly-covered rules apply to all of it.
-    change = tech.changes[-1]
-    assert change.version == tech.version == "3"
-    assert len(live) == 16 and {i.covered_from for i in live} == {change.date}
-    assert sorted(change.added) == sorted(i.symbol for i in live)
-    assert {i.segment for i in live} == {"power", "cooling", "contractors", "datacentres"}
+    v3, v4 = tech.changes[-2], tech.changes[-1]
+    assert (v3.version, v4.version) == ("3", "4") and tech.version == "4"
+    by = {i.symbol: i for i in live}
+    assert sorted(v3.added + v4.added) == sorted(by) and len(v3.added) == 16
+    assert len(v4.added) == 11
+    assert all(by[s].covered_from == v3.date for s in v3.added)
+    assert all(by[s].covered_from == v4.date for s in v4.added)
+    assert {by[s].segment for s in v3.added} == {"power", "cooling", "contractors",
+                                                 "datacentres"}
+    assert {by[s].segment for s in v4.added} == {"gases", "materials", "metals"}
     assert all(i.role == "adjacent" and i.cik and i.name for i in live)
-    assert "XLI" in tech.benchmarks
+    assert {"XLI", "XLB"} <= set(tech.benchmarks)
     e = effective(TECH)
-    assert e["universe_version"] == "3" and len(e["files"]["universe"]) == 2
+    assert e["universe_version"] == "4" and len(e["files"]["universe"]) == 2
 
 
 def test_store_reads_are_limited_to_the_universe(tmp_path):

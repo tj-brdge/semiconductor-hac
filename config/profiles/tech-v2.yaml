@@ -1,11 +1,11 @@
-# The monitor: all 143 companies (the 76 semiconductor-pilot companies, 51 in software,
+# The monitor: all 154 companies (the 76 semiconductor-pilot companies, 51 in software,
 # cybersecurity and data/cloud, and from 2026-11-20 16 in electrical and data-centre
-# infrastructure, added live). Since 2026-11-14 this is the profile every command
+# infrastructure and 11 in materials, added live). Since 2026-11-14 this is the profile every command
 # uses when --profile is not given; the name and directories are kept so the
 # registry, forward-test logs and site already built carry on.
 name: tech-v2
-title: Technology, semiconductors and infrastructure
-description: Semiconductors, software, cybersecurity, data platforms, and the electrical and data-centre infrastructure companies that connect to them.
+title: Technology, semiconductors, infrastructure and materials
+description: Semiconductors, software, cybersecurity, data platforms, and the electrical, data-centre infrastructure and materials companies that connect to them.
 universe: config/tech_v2/universe.yaml
 pipeline: config/pipeline.yaml   # the research specification, shared and unchanged
 monitor: config/tech_v2/monitor.yaml
