@@ -1097,6 +1097,21 @@ status change: monitoring"), no registered result is recomputed, and a rerun of
 a recorded run would see these documents only with a store vintage from after
 this date. No rule, threshold or form list changed.
 
+### Rebuilds and the forward tests (2026-11-20, before any test was read)
+
+The monitor can now be rebuilt from scratch with a larger company list
+(`themegraph monitor rebuild`; MONITOR.md, "Rebuilding history"). For the
+registered forward tests this means:
+
+- A rebuild starts a new registry with an empty forward log. Replayed month-ends
+  log no events (events are logged only at month-ends processed live), so no
+  event is created in hindsight.
+- Events logged before a rebuild stay in the archived registry. They are not
+  pooled with events logged after it: the themes, baskets and company list
+  differ. Each test is read from one registry's log only.
+- The 20-event threshold therefore counts from the rebuild. No test had been read
+  when this was written.
+
 ## 12. Open questions
 
 1. Include the adjacency ring (§4.2) in v1? Recommended: yes, for text only.

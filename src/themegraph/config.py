@@ -176,6 +176,24 @@ class UniverseConfig(_Strict):
     sectors: dict[str, str] = {}   # segment -> sector shown on the dashboard
     changes: list[UniverseChange] = []
     issuers: list[Issuer]
+    # Rebuild marker (docs/MONITOR.md, "Rebuilding history"). A monitor registry
+    # built on or after this date treats every company whose `covered_from` is on or
+    # before it as covered from the start, so the replayed history includes them.
+    # It changes nothing for a registry built earlier: that needs
+    # `themegraph monitor rebuild`.
+    full_history_through: dt.date | None = None
+
+
+def with_full_history(u: UniverseConfig, through: dt.date | None) -> UniverseConfig:
+    """`u` with coverage dates on or before `through` cleared (covered from the
+    start). The entries and the change log in the file are untouched: they stay the
+    record of when each company was actually added."""
+    if through is None:
+        return u
+    issuers = [i.model_copy(update={"covered_from": None})
+               if i.covered_from is not None and i.covered_from <= through else i
+               for i in u.issuers]
+    return u.model_copy(update={"issuers": issuers})
 
 
 def file_sha256(path: Path) -> str:

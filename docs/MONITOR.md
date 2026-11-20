@@ -998,6 +998,49 @@ covered from 2026-11-20:
   per sector the software pilot required. Same safeguards, sector-reference rule
   and costs as version 3 above.
 
+### Rebuilding history (2026-11-20)
+
+The owner asked for a ten-year record that includes companies added later, and to
+be able to add companies and rebuild. Adding a company live (above) never
+changes the past. A rebuild is the other choice: start again and replay the whole
+history with today's coverage list.
+
+**How it works**
+
+- `full_history_through: <date>` in the universe file is the rebuild marker. A
+  registry built on or after it treats every company whose `covered_from` is on
+  or before that date as covered from the start. The entries and the change log
+  stay as the record of when each company was really added.
+- A registry fixes this basis when it is first built and keeps it. Setting the
+  marker later changes nothing for an existing registry: its history is never
+  reinterpreted in place. Each refresh then warns (`warnings.history`) that a
+  rebuild is waiting.
+- `themegraph monitor rebuild` prints what will happen. With `--confirm` it moves
+  the state and site folders to `<folder>.archive-<time>`, copies
+  `relations.json` across (what companies say about each other does not depend
+  on themes), and runs a refresh on the empty state, which replays the last 120
+  month-ends. If that fails for any reason the attempt is moved to
+  `<folder>.failed-<time>` and the previous monitor is put back unchanged.
+
+**To add companies and rebuild:** add the issuers with `covered_from` and a change
+entry as usual, set `full_history_through` to that date, then run the rebuild.
+
+**What a rebuild costs, stated plainly**
+
+- **Everything becomes simulated.** The replay uses today's company list, so it
+  flatters the past: companies are included that nobody would have chosen then.
+  The site already labels this. Days that were live before the rebuild are no
+  longer live; the live record restarts on the rebuild date.
+- **The forward tests start again.** Events are only logged at month-ends
+  processed live, so the new registry's log is empty. The earlier log stays in
+  the archive and is not pooled with the new one (see DESIGN.md).
+- **Theme IDs and titles start again.** Written titles are requested again as
+  themes are published (40 per refresh), which is paid.
+- **Time and memory.** Ten years with 154 companies is the largest build so far.
+  It has not been run; the last full build (127 companies) peaked near 11 GB
+  before the memory work.
+- **New documents are embedded once** (paid); text already embedded is reused.
+
 ### SK hynix's SEC filings (2026-11-19)
 
 SK hynix (`000660.KS`) was marked `sec_filer: false`, so only transcripts could

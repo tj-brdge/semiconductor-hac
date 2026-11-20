@@ -304,6 +304,10 @@ def refresh(state_dir: Path, site_dir: Path, *, fixtures: bool = False,
             Path(fork_state) if fork_state else load_profile(profile.fork_from).state,
             state_dir, profile, now))
     reg = Registry(state_dir, id_prefix=profile.id_prefix)
+    if ctxd.get("universe") is not None:
+        note = _history_basis(reg, ctxd)
+        if note:
+            warnings["history"] = note
     themes_ok = gate("themes", lambda: _themes(reg, ctxd, as_of, now, mcfg, state_dir, log))
     if themes_ok:  # optional: a failure keeps earlier or automatic labels
         warnings.update(_labels(reg, ctxd, mcfg, now, namer, log))
@@ -577,6 +581,29 @@ def _relations(reg: Registry, d: dict, mcfg: MonitorConfig, now: str, namer, log
     except Exception as e:  # noqa: BLE001
         return {"relations": f"{type(e).__name__}: {e}"}
     return {}
+
+
+def _history_basis(reg: Registry, d: dict) -> str | None:
+    """Which companies this registry treats as covered from the start (docs/MONITOR.md,
+    "Rebuilding history"). Fixed when the registry is first built, from the
+    universe's `full_history_through`; a registry built before the marker was set
+    keeps its own basis, so its history is never silently reinterpreted. Returns a
+    note when the coverage list asks for a rebuild this registry has not had."""
+    from ..config import with_full_history
+    want = d["universe"].full_history_through
+    if not reg.data.get("snapshots"):                 # a new registry: fix its basis now
+        reg.data["full_history_through"] = str(want) if want else None
+    have = reg.data.get("full_history_through")
+    if have:
+        d["universe"] = with_full_history(d["universe"], dt.date.fromisoformat(have))
+    if want and str(want) != have:
+        waiting = sorted(i.symbol for i in d["universe"].issuers
+                         if i.covered_from is not None and i.covered_from <= want)
+        return (f"The coverage list asks for history rebuilt with companies added through "
+                f"{want}; this registry was built {'through ' + have if have else 'before that'}. "
+                f"{len(waiting)} companies are treated as added live until "
+                "`themegraph monitor rebuild --confirm` is run.")
+    return None
 
 
 def relation_candidates(d: dict) -> dict:
