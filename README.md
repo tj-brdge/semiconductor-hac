@@ -32,7 +32,7 @@ and inspected), **deferred** (not built).
 | Anchored topics (`--topic-mode anchored`: yearly discovery, monthly assignment, new topics from unclaimed text) | live dev runs at assign 0.45, 0.35 and 0.40. **No tested threshold met both confirmation criteria** (at 0.40, median per-window assigned share 0.475 vs window 0.583; median tightness 0.611 vs 0.632). The comparison uses the stated value 0.40 with that caveat; both modes need rerunning first (docs/EVIDENCE.md) |
 | Window vs anchored comparison (`themegraph compare`, declared criteria in DESIGN.md) | tested on synthetic data; **real comparison pending** (needs both runs rerun with the approved labels, then adjudication) |
 | Evaluation: detection, co-movement, buy-and-hold returns, dependence-grouped inference, adjudication | tested |
-| **Theme monitor** (`themegraph monitor refresh` / `serve`: one monitor of 127 technology and semiconductor companies; persistent theme inventory, equal-weight basket indexes vs SPY, XLK and a sector benchmark, headwinds, companies, network and market-cluster pages, static data feed and dashboard; docs/MONITOR.md) | tested end to end on labelled fixture data; refreshes have run on live data on the owner's machine, but **the live outputs have not been reviewed or validated**, and no forward test has been read |
+| **Theme monitor** (`themegraph monitor refresh` / `serve`: one monitor of 143 companies: semiconductors, technology, and electrical and data-centre infrastructure; persistent theme inventory, equal-weight basket indexes vs SPY, XLK and a sector benchmark, headwinds, companies, network and market-cluster pages, static data feed and dashboard; docs/MONITOR.md) | tested end to end on labelled fixture data; refreshes have run on live data on the owner's machine, but **the live outputs have not been reviewed or validated**, and no forward test has been read |
 | Forward tests of the monitor (headwind, emergence, tailwind; DESIGN.md) | registered 2026-11-12 before any outcome; events are logged by live refreshes; **none read** (each needs 20 events with six months of prices) |
 | Holdout lifecycle (attempt logged before outcomes, one clean attempt, verification) | tested; the formal holdout run has **not** been done, but from 2026-10-27 the monitor reads 2022–2026 data, so that period counts as **inspected**, not untouched (DESIGN.md) |
 | Forward prediction log (`themegraph forward`) | tested; not yet used on live data |
@@ -62,7 +62,7 @@ uv run themegraph monitor refresh                                  # live: price
 scripts/install_schedule.sh                                        # macOS: run that refresh every weekday evening
 ```
 
-There is one monitor. Without `--profile`, every command uses the 127-company
+There is one monitor. Without `--profile`, every command uses the 143-company
 universe in `config/tech_v2/universe.yaml` (the 76 semiconductor-pilot companies
 plus software, cybersecurity and data/cloud), with its registry in
 `monitor_state-tech-v2/` and its site in `site-tech-v2/`. "Strongest" always means
@@ -119,7 +119,7 @@ tables in `data/store/<table>/<vintage>.parquet`; embeddings are cached per mode
 ### Research commands for another profile
 
 `ingest`, `coverage`, `run`, `topics`, `forward` and `report` take `--profile`
-(default `tech-v2`, all 127 companies; `--profile semis` is the semiconductor pilot,
+(default `tech-v2`, all 143 companies; `--profile semis` is the semiconductor pilot,
 whose files, run names and prediction log are unchanged):
 
 ```
