@@ -16,6 +16,13 @@ market:
     Application software: IGV
     Data and cloud software: IGV
     Cybersecurity: CIBR
+    # Added 2026-11-20 with universe version 3, before any return of these
+    # companies was looked at. A theme keeps the reference fixed when its first
+    # basket was decided, so existing themes are unchanged. Data-centre operators
+    # are real estate trusts: no sector reference is set for them.
+    Power and electrical: XLI
+    Cooling and building systems: XLI
+    Electrical and infrastructure contractors: XLI
   sector_benchmark_min_share: 0.5
   benchmark_labels:
     SPY: "US large companies (S&P 500)"
@@ -23,3 +30,4 @@ market:
     SOXX: "Semiconductors (iShares)"
     IGV: "Software (iShares expanded tech-software)"
     CIBR: "Cybersecurity (First Trust NASDAQ cybersecurity)"
+    XLI: "US industrial sector (S&P 500 industrials)"

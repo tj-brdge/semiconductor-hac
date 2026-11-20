@@ -35,18 +35,27 @@ def test_default_profile_is_the_original_configuration():
 def test_tech_universe_extends_the_pilot_without_changing_it():
     base, tech = load_universe(SEMIS.universe), load_universe(TECH.universe)
     old = {i.symbol: i for i in base.issuers}
-    new = [i for i in tech.issuers if i.symbol not in old]
+    added = [i for i in tech.issuers if i.symbol not in old]
+    new = [i for i in added if i.covered_from is None]       # version 2: full history
+    live = [i for i in added if i.covered_from is not None]  # version 3: added live
     assert all(i.model_dump() == old[i.symbol].model_dump()
                for i in tech.issuers if i.symbol in old)  # roles, dates untouched
     assert len(old) == 76 and 40 <= len(new) <= 60
-    assert len({i.cik for i in new}) == len(new)  # one listing per company
-    assert all(i.covered_from is None for i in new)  # built with full history
-    assert tech.changes[-1].version == tech.version == "2"
+    assert len({i.cik for i in added}) == len(added)  # one listing per company
     segs = {i.segment for i in new}
     assert segs == {"app_software", "security", "data_cloud"}
     assert all(sum(i.segment == s for i in new) >= 12 for s in segs)
+    # Version 3: electrical and data-centre infrastructure, covered from one date
+    # and recorded in the change log, so the newly-covered rules apply to all of it.
+    change = tech.changes[-1]
+    assert change.version == tech.version == "3"
+    assert len(live) == 16 and {i.covered_from for i in live} == {change.date}
+    assert sorted(change.added) == sorted(i.symbol for i in live)
+    assert {i.segment for i in live} == {"power", "cooling", "contractors", "datacentres"}
+    assert all(i.role == "adjacent" and i.cik and i.name for i in live)
+    assert "XLI" in tech.benchmarks
     e = effective(TECH)
-    assert e["universe_version"] == "2" and len(e["files"]["universe"]) == 2
+    assert e["universe_version"] == "3" and len(e["files"]["universe"]) == 2
 
 
 def test_store_reads_are_limited_to_the_universe(tmp_path):

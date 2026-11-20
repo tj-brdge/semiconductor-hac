@@ -20,17 +20,23 @@ name: Technology pilot v2
 description: >-
   Semiconductor and adjacent companies from the semiconductor pilot, plus
   application software, cybersecurity, and data platform and cloud software
-  companies. Themes can connect any of them.
-version: "2"
+  companies, and (from 2026-11-20) electrical equipment, cooling, electrical
+  contractors and data-centre operators. Themes can connect any of them.
+version: "3"
 
 # Broad market, technology, and per-sector references (config/tech_v2/monitor.yaml
 # decides which are compared with each theme). All must be ingested.
-benchmarks: [SPY, XLK, SOXX, IGV, CIBR]
+benchmarks: [SPY, XLK, SOXX, IGV, CIBR, XLI]
 
 sectors:
   app_software: Application software
   security: Cybersecurity
   data_cloud: Data and cloud software
+  # Version 3 (2026-11-20). Electrical equipment makers use the existing `power`
+  # segment ("Power and electrical").
+  cooling: Cooling and building systems
+  contractors: Electrical and infrastructure contractors
+  datacentres: Data-centre operators
 
 changes:
   # Built with full history (docs/TECH_PILOT_V2.md, "How the pilot is built"): the
@@ -39,6 +45,13 @@ changes:
   - version: "2"
     date: 2026-10-29
     note: "Technology pilot v2: 51 software, cybersecurity and data/cloud companies, with full history"
+  # A live expansion (docs/MONITOR.md, "Electrical and data-centre infrastructure"):
+  # the 16 companies are covered from this date, so they enter through the
+  # newly-covered rules. No earlier measure, theme or basket is recomputed.
+  - version: "3"
+    date: 2026-11-20
+    added: [HUBB, POWL, GNRC, BE, TT, CARR, JCI, MOD, PWR, EME, FIX, MTZ, STRL, IESC, EQIX, DLR]
+    note: "Electrical equipment, cooling, electrical contractors and data-centre operators: 16 companies, covered from this date"
 
 issuers:
   # --- application software (horizontal enterprise platforms)
@@ -95,3 +108,31 @@ issuers:
   - {symbol: IBM, name: "IBM", aliases: ["International Business Machines"], segment: data_cloud, role: core, cik: 51143}  # INTERNATIONAL BUSINESS MACHINES CORP; NYSE; SIC 3570; 10-K+10-Q since 1994-03-28
   - {symbol: TDC, name: "Teradata", segment: data_cloud, role: core, cik: 816761}  # TERADATA CORP /DE/; NYSE; SIC 7372; 10-K+10-Q since 2007-11-13
   - {symbol: AI, name: "C3.ai", aliases: ["C3 AI"], segment: data_cloud, role: core, cik: 1577526}  # C3.ai, Inc.; NYSE; SIC 7372; 10-K+10-Q since 2021-03-02
+
+  # ===== Version 3, covered from 2026-11-20: electrical and data-centre
+  # infrastructure. Identities checked on SEC EDGAR on 2026-11-20 (each company's
+  # 10-K list): CIK, registered name, SIC code, and a Form 10-K filed in 2026.
+  # Price history, transcripts and the XLI benchmark still need the first download
+  # to confirm. All are role `adjacent`, like the six power companies already covered.
+  # --- electrical equipment and on-site power
+  - {symbol: HUBB, name: "Hubbell", segment: power, role: adjacent, cik: 48898, covered_from: 2026-11-20}  # HUBBELL INC; SIC 3670; 10-K since 1994
+  - {symbol: POWL, name: "Powell Industries", segment: power, role: adjacent, cik: 80420, covered_from: 2026-11-20}  # SIC 3613 switchgear; FYE Sep; 10-K since 1996
+  - {symbol: GNRC, name: "Generac", segment: power, role: adjacent, cik: 1474735, covered_from: 2026-11-20}  # GENERAC HOLDINGS INC.; SIC 3621; 10-K since 2010
+  - {symbol: BE, name: "Bloom Energy", segment: power, role: adjacent, cik: 1664703, covered_from: 2026-11-20}  # SIC 3620; 10-K since 2019
+  # --- cooling and building systems
+  - {symbol: TT, name: "Trane Technologies", aliases: ["Trane"], segment: cooling, role: adjacent, cik: 1466258, covered_from: 2026-11-20}  # Trane Technologies plc; SIC 3822; 10-K since 2010
+  - {symbol: CARR, name: "Carrier Global", segment: cooling, role: adjacent, cik: 1783180, covered_from: 2026-11-20}  # SIC 3585; 10-K since 2021
+  - {symbol: JCI, name: "Johnson Controls", segment: cooling, role: adjacent, cik: 833444, covered_from: 2026-11-20}  # Johnson Controls International plc; SIC 3585; FYE Sep
+  # EDGAR shows this filer as "MODEXUS SOLUTIONS, INC." (formerly Modine Manufacturing
+  # Co, filings through 2026-11-04). Whether the ticker is still MOD is NOT confirmed.
+  - {symbol: MOD, name: "Modine Manufacturing", aliases: ["Modine", "Modexus"], segment: cooling, role: adjacent, cik: 67347, covered_from: 2026-11-20}  # SIC 3585; FYE Mar; 10-K since 1995
+  # --- electrical and infrastructure contractors
+  - {symbol: PWR, name: "Quanta Services", segment: contractors, role: adjacent, cik: 1050915, covered_from: 2026-11-20}  # SIC 1731; 10-K since 1998
+  - {symbol: EME, name: "EMCOR Group", aliases: ["EMCOR"], segment: contractors, role: adjacent, cik: 105634, covered_from: 2026-11-20}  # SIC 1731; 10-K since 1996
+  - {symbol: FIX, name: "Comfort Systems USA", aliases: ["Comfort Systems"], segment: contractors, role: adjacent, cik: 1035983, covered_from: 2026-11-20}  # SIC 1731; 10-K since 1998
+  - {symbol: MTZ, name: "MasTec", segment: contractors, role: adjacent, cik: 15615, covered_from: 2026-11-20}  # MASTEC INC; SIC 1623
+  - {symbol: STRL, name: "Sterling Infrastructure", segment: contractors, role: adjacent, cik: 874238, covered_from: 2026-11-20}  # SIC 1600; 10-K since 1996
+  - {symbol: IESC, name: "IES Holdings", segment: contractors, role: adjacent, cik: 1048268, covered_from: 2026-11-20}  # SIC 1731; FYE Sep; 10-K since 1998
+  # --- data-centre operators (real estate investment trusts)
+  - {symbol: EQIX, name: "Equinix", segment: datacentres, role: adjacent, cik: 1101239, covered_from: 2026-11-20}  # SIC 6798; 10-K since 2001
+  - {symbol: DLR, name: "Digital Realty", segment: datacentres, role: adjacent, cik: 1297996, covered_from: 2026-11-20}  # DIGITAL REALTY TRUST, INC.; SIC 6798; 10-K since 2005

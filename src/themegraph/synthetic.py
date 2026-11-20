@@ -118,7 +118,7 @@ def synthetic_universe(per_segment: int = 8, tech: bool = False,
     return UniverseConfig(
         name="Synthetic technology fixture", version="fixture-2",
         description="Synthetic companies for tests and demos; not real companies.",
-        benchmarks=["SPY", "XLK", "SOXX", "IGV", "CIBR"], issuers=issuers + added,
+        benchmarks=["SPY", "XLK", "SOXX", "IGV", "CIBR", "XLI"], issuers=issuers + added,
         sectors={**sectors, "app_software": "Application software",
                  "security": "Cybersecurity", "data_cloud": "Data and cloud software"},
         changes=[UniverseChange(version="fixture-2", date=TECH_COVERED_FROM,
@@ -191,6 +191,9 @@ def synthetic_prices(universe: UniverseConfig, start="2015-06-01", end="2021-12-
         rets["IGV"] = np.mean(groups["app_software"] + groups["data_cloud"], axis=0)
         rets["CIBR"] = np.mean(groups["security"], axis=0)
         rets["XLK"] = np.mean(core + sum(groups.values(), []), axis=0)
+        # An industrial-sector reference (monitor sector benchmark since universe
+        # version 3). Its own stream, so no other synthetic price changes.
+        rets["XLI"] = mkt + np.random.default_rng(seed + 2000).normal(0, 0.004, n)
     rows = []
     for sym, r in rets.items():
         close = 100 * np.exp(np.cumsum(r))

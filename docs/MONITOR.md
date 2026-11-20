@@ -930,6 +930,48 @@ days are `live`. The month-end stays recorded as `published_snapshot`, the evide
 date. Coverage dates inside a build's replayed history keep the reconstructed
 month-end entry, like every other replayed theme.
 
+### Electrical and data-centre infrastructure (universe version 3, 2026-11-20)
+
+The first expansion made live, into the running monitor, at the owner's request
+(a separate pilot profile was offered and declined). 16 companies, all covered
+from 2026-11-20:
+
+| Group | Companies | Sector label | Sector reference |
+|---|---|---|---|
+| Electrical equipment and on-site power | Hubbell, Powell Industries, Generac, Bloom Energy | Power and electrical (existing) | XLI |
+| Cooling and building systems | Trane Technologies, Carrier Global, Johnson Controls, Modine Manufacturing | Cooling and building systems | XLI |
+| Electrical and infrastructure contractors | Quanta Services, EMCOR Group, Comfort Systems USA, MasTec, Sterling Infrastructure, IES Holdings | Electrical and infrastructure contractors | XLI |
+| Data-centre operators | Equinix, Digital Realty | Data-centre operators | none (real estate trusts) |
+
+- **Boundary.** Companies that make, install or house the electrical and cooling
+  equipment data centres and grid connections need. It extends the six power
+  companies already covered, whose themes (lead times, capacity, capital
+  spending) already crossed into chips in the feed of 2026-11-15 but stayed at
+  three to five companies. Left out: utilities beyond the two already covered,
+  diversified engine and machinery makers, automation suppliers, and companies
+  without periodic SEC reports (Schneider Electric, ABB, Siemens).
+- **Checked on SEC EDGAR, 2026-11-20:** each company's CIK, registered name, SIC
+  code and a Form 10-K filed in 2026 (recorded beside each entry). Not returns.
+- **Not checked:** price history, transcript availability and XLI prices, which
+  need the first download. EDGAR shows Modine's filer as "Modexus Solutions,
+  Inc." since November 2026; whether its ticker is still MOD is unconfirmed.
+- **Representation.** The cohort is 16, but its sector labels hold 2 to 10
+  companies, below the 12 the software pilot required of each new sector. Sector
+  statements for these labels rest on few companies, as they already do for the
+  original adjacency ring.
+- **Safeguards, unchanged code.** Their documents are back-filled, so they are not
+  comparable for growth until 12 months after their first document relative to
+  each month-end; themes that become visible because of them enter by the
+  newly-covered route, are bought only after publication, and are live from
+  then. No earlier measure, theme or basket version is recomputed.
+- **Sector reference.** XLI is new for "Power and electrical" too. A theme's sector
+  reference is fixed when its first basket is decided, so existing themes keep
+  theirs.
+- **Cost of the first refresh.** Transcripts and filings for 16 companies back to
+  2010 are downloaded and embedded once (paid), and about 3,700 more ordered
+  pairs become possible for the business-relationship reader (19,740 against
+  16,002).
+
 ### SK hynix's SEC filings (2026-11-19)
 
 SK hynix (`000660.KS`) was marked `sec_filer: false`, so only transcripts could
