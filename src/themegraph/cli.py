@@ -226,6 +226,63 @@ def cmd_questions(a):
         print(json.dumps(question_share(Path(d)), indent=1))
 
 
+def _rebuild(a, prof, M) -> int:
+    """Rebuild the monitor's history from scratch with today's coverage list
+    (docs/MONITOR.md, "Rebuilding history"). The current registry and site are moved
+    aside, never deleted; if the rebuild fails they are put back."""
+    import shutil
+    state, site = Path(a.state), Path(a.site)
+    stamp = dt.datetime.now(dt.UTC).strftime("%Y%m%dT%H%M%SZ")
+    keep_state, keep_site = Path(f"{state}.archive-{stamp}"), Path(f"{site}.archive-{stamp}")
+    u = _load_universe(prof)
+    through = u.full_history_through
+    n = sum(1 for i in u.issuers if i.covered_from and through and i.covered_from <= through)
+    print(f"Rebuild of profile {prof.name}: {len(u.issuers)} companies; {n} added since the "
+          f"last build will be treated as covered from the start (full_history_through: "
+          f"{through}).\n"
+          f"- The whole history is replayed and labelled simulated; live days so far are "
+          "no longer live.\n"
+          f"- Theme IDs, titles and the forward-test log start again; the old ones are "
+          f"kept in {keep_state}.\n"
+          f"- Current state and site move to {keep_state} and {keep_site}.")
+    if not a.confirm:
+        print("Nothing was changed. Add --confirm to run it.")
+        return 0
+    moved = []
+    for src, dst in ((state, keep_state), (site, keep_site)):
+        if src.exists():
+            shutil.move(str(src), str(dst))
+            moved.append((src, dst))
+    # What companies say about each other does not depend on themes: keep it.
+    if (keep_state / "relations.json").exists():
+        state.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(keep_state / "relations.json", state / "relations.json")
+    as_of = dt.date.fromisoformat(a.as_of) if a.as_of else None
+    try:
+        st = M.refresh(state, site, fixtures=a.fixtures, as_of=as_of,
+                       ingest_prices=not a.no_ingest,
+                       ingest_documents=False if a.no_ingest else None, profile=prof)
+        ok, why = bool(st.get("ok")), st.get("errors")
+    except Exception as e:  # noqa: BLE001 - put the old monitor back whatever failed
+        ok, why = False, f"{type(e).__name__}: {e}"
+    if ok:
+        print(f"Rebuilt. The previous monitor is in {keep_state} and {keep_site}.")
+        return 0
+    for failed in (state, site):
+        if failed.exists():
+            shutil.move(str(failed), f"{failed}.failed-{stamp}")
+    for src, dst in moved:
+        shutil.move(str(dst), str(src))
+    print(f"The rebuild failed ({why}). The previous monitor was put back unchanged; the "
+          f"failed attempt is in {state}.failed-{stamp}.")
+    return 1
+
+
+def _load_universe(prof):
+    from .config import load_universe
+    return load_universe(prof.universe)
+
+
 def cmd_monitor(a):
     """Theme monitor: refresh the inventory and data feed, or serve the dashboard."""
     from .monitor import refresh as M
@@ -279,6 +336,8 @@ def cmd_monitor(a):
         (Path(a.state) / "forward_tests.md").write_text(text)
         print(text)
         return
+    if a.action == "rebuild":
+        sys.exit(_rebuild(a, prof, M))
     if a.action == "relations":
         # Business relationships companies state about each other. --count shows how
         # many pairs are waiting (no calls); otherwise they are read, newest first.
@@ -468,7 +527,7 @@ def main(argv=None):
     s.set_defaults(fn=cmd_review)
     s = sub.add_parser("monitor", help="theme monitor: refresh the data feed or serve it")
     s.add_argument("action", choices=["refresh", "serve", "compare", "review", "forward", "feed",
-                                     "relations"])
+                                     "relations", "rebuild"])
     s.add_argument("--read", choices=["headwind", "emergence", "tailwind"],
                    help="forward: read this test's result (once; refused until 20 events "
                         "have a completed 126-session window)")
@@ -497,6 +556,8 @@ def main(argv=None):
     s.add_argument("--full-prices", action="store_true",
                    help="download every symbol's full price history again (by default "
                         "stored history is reused unless the provider restated it)")
+    s.add_argument("--confirm", action="store_true",
+                   help="rebuild: actually do it (without this, only the plan is printed)")
     s.add_argument("--count", action="store_true",
                    help="relations: only count the pairs waiting to be read (no calls)")
     s.add_argument("--limit", type=int,

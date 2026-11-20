@@ -25,6 +25,12 @@ description: >-
   materials, and metals and minerals. Themes can connect any of them.
 version: "4"
 
+# Rebuild marker (docs/MONITOR.md, "Rebuilding history"), set 2026-11-20 at the
+# owner's request for a ten-year record that includes the companies added in
+# versions 3 and 4. It takes effect only through `themegraph monitor rebuild
+# --confirm`; until then the existing registry keeps treating them as added live.
+full_history_through: 2026-11-20
+
 # Broad market, technology, and per-sector references (config/tech_v2/monitor.yaml
 # decides which are compared with each theme). All must be ingested.
 benchmarks: [SPY, XLK, SOXX, IGV, CIBR, XLI, XLB]
