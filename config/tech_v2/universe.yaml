@@ -21,12 +21,13 @@ description: >-
   Semiconductor and adjacent companies from the semiconductor pilot, plus
   application software, cybersecurity, and data platform and cloud software
   companies, and (from 2026-11-20) electrical equipment, cooling, electrical
-  contractors and data-centre operators. Themes can connect any of them.
-version: "3"
+  contractors and data-centre operators, and industrial gases, electronic
+  materials, and metals and minerals. Themes can connect any of them.
+version: "4"
 
 # Broad market, technology, and per-sector references (config/tech_v2/monitor.yaml
 # decides which are compared with each theme). All must be ingested.
-benchmarks: [SPY, XLK, SOXX, IGV, CIBR, XLI]
+benchmarks: [SPY, XLK, SOXX, IGV, CIBR, XLI, XLB]
 
 sectors:
   app_software: Application software
@@ -37,6 +38,10 @@ sectors:
   cooling: Cooling and building systems
   contractors: Electrical and infrastructure contractors
   datacentres: Data-centre operators
+  # Version 4 (2026-11-20).
+  gases: Industrial gases
+  materials: Electronic materials and chemicals
+  metals: Metals and minerals
 
 changes:
   # Built with full history (docs/TECH_PILOT_V2.md, "How the pilot is built"): the
@@ -52,6 +57,11 @@ changes:
     date: 2026-11-20
     added: [HUBB, POWL, GNRC, BE, TT, CARR, JCI, MOD, PWR, EME, FIX, MTZ, STRL, IESC, EQIX, DLR]
     note: "Electrical equipment, cooling, electrical contractors and data-centre operators: 16 companies, covered from this date"
+  # A second live expansion the same day (docs/MONITOR.md, "Materials").
+  - version: "4"
+    date: 2026-11-20
+    added: [LIN, APD, DD, ESI, ROG, PLAB, CBT, FCX, SCCO, MP, ALB]
+    note: "Materials that feed chips and electrification: industrial gases, electronic materials, metals and minerals; 11 companies, covered from this date"
 
 issuers:
   # --- application software (horizontal enterprise platforms)
@@ -136,3 +146,25 @@ issuers:
   # --- data-centre operators (real estate investment trusts)
   - {symbol: EQIX, name: "Equinix", segment: datacentres, role: adjacent, cik: 1101239, covered_from: 2026-11-20}  # SIC 6798; 10-K since 2001
   - {symbol: DLR, name: "Digital Realty", segment: datacentres, role: adjacent, cik: 1297996, covered_from: 2026-11-20}  # DIGITAL REALTY TRUST, INC.; SIC 6798; 10-K since 2005
+
+  # ===== Version 4, covered from 2026-11-20: materials that feed chips and
+  # electrification. Identities checked on SEC EDGAR on 2026-11-20 (each company's
+  # 10-K list): CIK, registered name, SIC code and its latest Form 10-K. Price
+  # history, transcripts and the XLB benchmark still need the first download.
+  # Considered and left out: Qnity Electronics (separated from DuPont; one 10-K,
+  # filed 2026-02-26, under two years of its own reports, and EDGAR did not resolve
+  # the ticker Q).
+  # --- industrial gases
+  - {symbol: LIN, name: "Linde", segment: gases, role: adjacent, cik: 1707925, covered_from: 2026-11-20}  # LINDE PLC; SIC 2810; 10-K since 2018
+  - {symbol: APD, name: "Air Products", segment: gases, role: adjacent, cik: 2969, covered_from: 2026-11-20}  # Air Products & Chemicals, Inc.; SIC 2810; FYE Sep
+  # --- electronic materials and chemicals
+  - {symbol: DD, name: "DuPont", segment: materials, role: adjacent, cik: 1666700, covered_from: 2026-11-20}  # DuPont de Nemours, Inc.; SIC 2821; 10-K since 2018
+  - {symbol: ESI, name: "Element Solutions", segment: materials, role: adjacent, cik: 1590714, covered_from: 2026-11-20}  # SIC 2890; 10-K since 2014
+  - {symbol: ROG, name: "Rogers Corporation", segment: materials, role: adjacent, cik: 84748, covered_from: 2026-11-20}  # ROGERS CORP; SIC 2821
+  - {symbol: PLAB, name: "Photronics", segment: materials, role: adjacent, cik: 810136, covered_from: 2026-11-20}  # SIC 3674; FYE Oct; latest 10-K 2025-12-17
+  - {symbol: CBT, name: "Cabot Corporation", segment: materials, role: adjacent, cik: 16040, covered_from: 2026-11-20}  # CABOT CORP; SIC 2890; FYE Sep
+  # --- metals and minerals
+  - {symbol: FCX, name: "Freeport-McMoRan", aliases: ["Freeport"], segment: metals, role: adjacent, cik: 831259, covered_from: 2026-11-20}  # SIC 1000
+  - {symbol: SCCO, name: "Southern Copper", segment: metals, role: adjacent, cik: 1001838, covered_from: 2026-11-20}  # SIC 1000; 10-K since 2001
+  - {symbol: MP, name: "MP Materials", segment: metals, role: adjacent, cik: 1801368, covered_from: 2026-11-20}  # SIC 1000; 10-K since 2021
+  - {symbol: ALB, name: "Albemarle", segment: metals, role: adjacent, cik: 915913, covered_from: 2026-11-20}  # ALBEMARLE CORP; SIC 2821 (lithium); 10-K since 1997

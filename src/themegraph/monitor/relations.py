@@ -45,7 +45,7 @@ SUFFIXES = {"technology", "technologies", "holdings", "holding", "systems", "net
 # Short forms that are ordinary words or shared by several companies: never matched.
 TOO_GENERIC = {"Linear", "Applied", "Power", "Silicon", "Advanced", "General", "Western",
                "Gen", "Palo Alto", "Monolithic", "Analog", "United", "Super", "Constellation",
-               "Cadence Design", "Hewlett Packard", "Bloom"}
+               "Cadence Design", "Hewlett Packard", "Bloom", "Rogers", "Cabot"}
 
 SCHEMA = {
     "type": "object",

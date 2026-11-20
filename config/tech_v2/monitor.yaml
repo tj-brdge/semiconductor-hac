@@ -23,6 +23,10 @@ market:
     Power and electrical: XLI
     Cooling and building systems: XLI
     Electrical and infrastructure contractors: XLI
+    # Added 2026-11-20 with universe version 4, on the same terms.
+    Industrial gases: XLB
+    Electronic materials and chemicals: XLB
+    Metals and minerals: XLB
   sector_benchmark_min_share: 0.5
   benchmark_labels:
     SPY: "US large companies (S&P 500)"
@@ -31,3 +35,4 @@ market:
     IGV: "Software (iShares expanded tech-software)"
     CIBR: "Cybersecurity (First Trust NASDAQ cybersecurity)"
     XLI: "US industrial sector (S&P 500 industrials)"
+    XLB: "US materials sector (S&P 500 materials)"

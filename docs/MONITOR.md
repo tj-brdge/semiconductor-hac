@@ -972,6 +972,32 @@ from 2026-11-20:
   pairs become possible for the business-relationship reader (19,740 against
   16,002).
 
+### Materials (universe version 4, 2026-11-20)
+
+A second live expansion the same day, at the owner's request ("add some materials
+companies"; the choice of companies was left to this build). 11 companies,
+covered from 2026-11-20:
+
+| Group | Companies | Sector reference |
+|---|---|---|
+| Industrial gases | Linde, Air Products | XLB |
+| Electronic materials and chemicals | DuPont, Element Solutions, Rogers Corporation, Photronics, Cabot Corporation | XLB |
+| Metals and minerals | Freeport-McMoRan, Southern Copper, MP Materials, Albemarle | XLB |
+
+- **Boundary.** Materials that feed chip making or electrification: process gases,
+  electronic chemicals and substrates, photomasks, copper, rare earths and lithium.
+  Left out: steel, paper, packaging, fertiliser, gold and other materials with no
+  link to the covered companies.
+- **Checked on SEC EDGAR, 2026-11-20:** CIK, registered name, SIC code and the
+  latest Form 10-K for each (Photronics' is from December 2025: its year ends in
+  October). **Left out after the check:** Qnity Electronics, separated from DuPont,
+  has one 10-K (February 2026), under the two years of its own reports the
+  software pilot required, and EDGAR did not resolve its ticker.
+- **Not checked:** price history, transcripts and XLB prices (first download).
+- **Representation.** 11 companies across three labels of 2 to 5, below the 12
+  per sector the software pilot required. Same safeguards, sector-reference rule
+  and costs as version 3 above.
+
 ### SK hynix's SEC filings (2026-11-19)
 
 SK hynix (`000660.KS`) was marked `sec_filer: false`, so only transcripts could

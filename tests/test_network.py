@@ -64,7 +64,7 @@ def test_research_commands_take_a_profile(capsys):
 
     from themegraph import cli
     cfg, u, prof = cli._research(Namespace())
-    assert prof.name == "tech-v2" and len(u.issuers) == 143  # one universe by default
+    assert prof.name == "tech-v2" and len(u.issuers) == 154  # one universe by default
     cfg2, u2, prof2 = cli._research(Namespace(profile="semis"))
     assert prof2.name == "semis" and len(u2.issuers) == 76   # the pilot, on request
     assert cli._is_default(prof2) and not cli._is_default(prof)
