@@ -699,8 +699,14 @@ earlier version are labelled again once; curated labels are never replaced.
 Changed 2026-11-21, after a feed in which four of 44 active themes still had keyword
 titles: the limit of 40 per refresh was spent before the oldest active themes were
 reached. **Every active theme is now written at each refresh whatever the limit**;
-the limit only paces the backlog of inactive and merged themes. To write that
-backlog in one go instead of 40 per refresh:
+the limit only paces the backlog of inactive and merged themes.
+
+**The limit was removed the same day at the owner's request**
+(`labels.max_per_refresh: null`): each refresh writes every waiting title. The
+first refresh after this makes one paid call per waiting theme (several hundred on
+the live monitor) and takes correspondingly longer; later refreshes only write new
+or changed themes. Setting a number restores the pacing. To write the backlog
+without a refresh:
 
 ```
 themegraph monitor titles --count     # how many are waiting; no calls
@@ -1082,7 +1088,7 @@ entry as usual, set `full_history_through` to that date, then run the rebuild.
   processed live, so the new registry's log is empty. The earlier log stays in
   the archive and is not pooled with the new one (see DESIGN.md).
 - **Theme IDs and titles start again.** Written titles are requested again as
-  themes are published (40 per refresh), which is paid.
+  themes are published (all at the first refresh, one call each), which is paid.
 - **Time and memory.** Ten years with 154 companies is the largest build so far.
   It has not been run; the last full build (127 companies) peaked near 11 GB
   before the memory work.

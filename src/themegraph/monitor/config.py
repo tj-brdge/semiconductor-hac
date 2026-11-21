@@ -78,7 +78,9 @@ class Labels(_S):
     # machine running the refresh, otherwise automatic keyword labels.
     writer: Literal["auto", "claude", "keywords"] = "auto"
     model: str = "claude-opus-5-5"
-    max_per_refresh: int = 40
+    # None: no limit, every waiting title is written at each refresh (the owner's
+    # choice, 2026-11-21). A number paces the backlog of inactive themes only.
+    max_per_refresh: int | None = None
 
 
 class Groups(_S):
