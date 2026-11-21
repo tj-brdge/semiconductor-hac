@@ -60,7 +60,9 @@ labels:                        # readable titles and summaries (docs/MONITOR.md,
   writer: claude               # auto | claude | keywords. claude: a missing key or package is a
                                # warning in status.json and titles fall back to keywords
   model: claude-opus-5-5
-  max_per_refresh: 40          # labels are written once per theme and keyword name
+  max_per_refresh: null        # no limit since 2026-11-21 (was 40): every waiting title is
+                               # written at each refresh. Labels are written once per theme
+                               # and keyword name. A number paces inactive themes only.
 
 comovement:                    # "trading together" (docs/MONITOR.md); prices only, never a route in
   window_sessions: 126         # last six months, compared with the six months before

@@ -2,6 +2,10 @@
 # (config/universe.yaml, unchanged, all 76 issuers kept with their roles) plus 51
 # companies in application software, cybersecurity, and data platforms and cloud
 # software. Used by the tech-v2 profile only (config/profiles/tech-v2.yaml).
+# Since 2026-11-20 it also holds 27 companies in electrical and data-centre
+# infrastructure (version 3) and materials (version 4): 154 in all. For those 27,
+# identities were checked on EDGAR; prices, transcripts and the XLI and XLB
+# benchmarks are still unverified (docs/MONITOR.md, "What is still unverified").
 #
 # Identities checked against SEC EDGAR on 2026-10-27 (company_tickers_exchange.json
 # and each company's filing index): CIK, registered name, exchange, SIC code and the

@@ -248,34 +248,83 @@ def _rebuild(a, prof, M) -> int:
     if not a.confirm:
         print("Nothing was changed. Add --confirm to run it.")
         return 0
-    moved = []
-    for src, dst in ((state, keep_state), (site, keep_site)):
-        if src.exists():
-            shutil.move(str(src), str(dst))
-            moved.append((src, dst))
-    # What companies say about each other does not depend on themes: keep it.
-    if (keep_state / "relations.json").exists():
-        state.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(keep_state / "relations.json", state / "relations.json")
-    as_of = dt.date.fromisoformat(a.as_of) if a.as_of else None
+    for path in (keep_state, keep_site):
+        if path.exists():       # never write into an existing archive
+            print(f"Nothing was changed: {path} already exists. Try again in a moment.")
+            return 1
+    existed = {p: p.exists() for p in (state, site)}
+    moved: list[tuple[Path, Path]] = []
+    ok, why, stopped = False, None, False
     try:
+        for src, dst in ((state, keep_state), (site, keep_site)):
+            if existed[src]:
+                # A rename either happens whole or not at all: no half-moved monitor.
+                src.rename(dst)
+                moved.append((src, dst))
+        # What companies say about each other does not depend on themes: keep it.
+        if (keep_state / "relations.json").exists():
+            state.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(keep_state / "relations.json", state / "relations.json")
+        as_of = dt.date.fromisoformat(a.as_of) if a.as_of else None
         st = M.refresh(state, site, fixtures=a.fixtures, as_of=as_of,
                        ingest_prices=not a.no_ingest,
                        ingest_documents=False if a.no_ingest else None, profile=prof)
         ok, why = bool(st.get("ok")), st.get("errors")
+    except KeyboardInterrupt:
+        why, stopped = "stopped from the keyboard", True
     except Exception as e:  # noqa: BLE001 - put the old monitor back whatever failed
-        ok, why = False, f"{type(e).__name__}: {e}"
+        why = f"{type(e).__name__}: {e}"
     if ok:
         print(f"Rebuilt. The previous monitor is in {keep_state} and {keep_site}.")
         return 0
-    for failed in (state, site):
-        if failed.exists():
-            shutil.move(str(failed), f"{failed}.failed-{stamp}")
-    for src, dst in moved:
-        shutil.move(str(dst), str(src))
-    print(f"The rebuild failed ({why}). The previous monitor was put back unchanged; the "
-          f"failed attempt is in {state}.failed-{stamp}.")
-    return 1
+    kept, problems = _undo_rebuild(existed, moved, stamp)
+    print(f"The rebuild failed ({why}).")
+    if not problems:
+        print("The previous monitor was put back unchanged"
+              + (f"; the failed attempt is in {', '.join(map(str, kept))}." if kept else "."))
+    else:
+        print("RECOVERY WAS NOT COMPLETE. Nothing was deleted. What happened:")
+        for line in problems:
+            print(f"- {line}")
+        if kept:
+            print(f"- The failed attempt is in {', '.join(map(str, kept))}.")
+    return 130 if stopped else 1
+
+
+def _undo_rebuild(existed: dict, moved: list, stamp: str) -> tuple[list, list[str]]:
+    """Put a failed rebuild's folders back. Renames only, and never onto a folder that
+    exists: the archive stays where it is unless it can be moved back whole. Returns
+    (where the failed attempt was kept, what could not be undone)."""
+    back = dict(moved)
+    kept, problems = [], []
+    for path, was_there in existed.items():
+        archive = back.get(path)
+        if was_there and archive is None:
+            continue    # never moved aside: this folder is still the previous monitor
+        if path.exists():           # what the failed attempt wrote
+            aside = Path(f"{path}.failed-{stamp}")
+            n = 1
+            while aside.exists():
+                n += 1
+                aside = Path(f"{path}.failed-{stamp}-{n}")
+            try:
+                path.rename(aside)
+                kept.append(aside)
+            except OSError as e:
+                problems.append(
+                    f"{path} holds the failed attempt and could not be moved aside "
+                    f"({type(e).__name__}: {e})"
+                    + (f". The previous one is safe in {archive}; to restore it, move "
+                       f"{path} away and rename {archive} to {path}" if archive else ""))
+                continue
+        if archive is not None:
+            try:
+                archive.rename(path)
+            except OSError as e:
+                problems.append(f"the previous {path.name} could not be moved back "
+                                f"({type(e).__name__}: {e}). It is safe in {archive}; "
+                                f"rename it to {path} to restore it")
+    return kept, problems
 
 
 def _load_universe(prof):
@@ -371,6 +420,38 @@ def cmd_monitor(a):
             print(f"failed {k}: {v}")
         print(f"{len(R.links(store, {i.symbol for i in d['universe'].issuers}))} links so far. "
               "Run `themegraph monitor refresh --no-ingest` to publish them.")
+        return
+    if a.action == "titles":
+        # Written titles and summaries for themes still called by their keywords.
+        # --count shows how many are waiting (no calls); otherwise they are written,
+        # active themes first, all of them unless --limit is given.
+        from .monitor import naming
+        from .monitor.config import load_monitor
+        from .monitor.registry import Registry
+        mcfg = load_monitor(prof.monitor)
+        reg = Registry(Path(a.state), id_prefix=prof.id_prefix)
+        themes = reg.published()
+        curated = naming.curated_labels()
+        waiting = [t for t in themes if t["id"] not in curated
+                   and naming.needs_label(t, True)]
+        active = sum(t.get("status") in naming.ACTIVE for t in waiting)
+        unclear = sum((t.get("label") or {}).get("status") == "ambiguous" for t in themes)
+        print(f"{len(themes)} published themes; {len(waiting)} are waiting for a written "
+              f"title ({active} of them active), one Claude call each. {unclear} keep "
+              "their keywords because their passages were judged unclear.")
+        if a.count or not waiting:
+            return
+        as_of = dt.date.fromisoformat(a.as_of) if a.as_of else dt.date.today()
+        d = M.load_inputs(a.fixtures, as_of, profile=prof)
+        now = dt.datetime.now(dt.UTC).isoformat(timespec="seconds")
+        c = naming.apply_labels(themes, M.coverage(d, mcfg).sector,
+                                naming.ClaudeNamer(mcfg.labels.model), now=now,
+                                limit=None if a.limit in (None, -1) else a.limit)
+        reg.save()
+        print(json.dumps({k: v for k, v in c.items() if k != "errors"}))
+        for k, v in list(c["errors"].items())[:10]:
+            print(f"failed {k}: {v}")
+        print("Run `themegraph monitor refresh --no-ingest` to publish them.")
         return
     if a.action == "feed":
         from .monitor.config import load_monitor
@@ -477,12 +558,12 @@ def main(argv=None):
                    "without downloading")
     s.add_argument("--profile",
                    help="configuration profile in config/profiles (default: tech-v2, all "
-                        "127 companies; semis is the semiconductor-only pilot)")
+                        "154 companies; semis is the semiconductor-only pilot)")
     s.set_defaults(fn=cmd_ingest)
     s = sub.add_parser("coverage", help="per-issuer data coverage")
     s.add_argument("--profile",
                    help="configuration profile in config/profiles (default: tech-v2, all "
-                        "127 companies; semis is the semiconductor-only pilot)")
+                        "154 companies; semis is the semiconductor-only pilot)")
     s.set_defaults(fn=cmd_coverage)
     s = sub.add_parser("run", help="build layers, candidates, evaluation and report")
     s.add_argument("--period", choices=["dev", "holdout"], default="dev")
@@ -498,7 +579,7 @@ def main(argv=None):
                    "methods; recorded in the manifest")
     s.add_argument("--profile",
                    help="configuration profile in config/profiles (default: tech-v2, all "
-                        "127 companies; semis is the semiconductor-only pilot)")
+                        "154 companies; semis is the semiconductor-only pilot)")
     s.set_defaults(fn=cmd_run)
     s = sub.add_parser("topics", help="print topics for sample windows (calibration)")
     s.add_argument("--dates", nargs="+", default=["2016-06-30"])
@@ -508,14 +589,14 @@ def main(argv=None):
                    help="inspect dates after dev_end; logged as holdout contamination")
     s.add_argument("--profile",
                    help="configuration profile in config/profiles (default: tech-v2, all "
-                        "127 companies; semis is the semiconductor-only pilot)")
+                        "154 companies; semis is the semiconductor-only pilot)")
     s.set_defaults(fn=cmd_topics)
     s = sub.add_parser("forward", help="as-of prediction log (predict) and outcomes")
     s.add_argument("action", choices=["predict", "outcomes"])
     s.add_argument("--cutoff", help="prediction date YYYY-MM-DD (default today)")
     s.add_argument("--profile",
                    help="configuration profile in config/profiles (default: tech-v2, all "
-                        "127 companies; semis is the semiconductor-only pilot)")
+                        "154 companies; semis is the semiconductor-only pilot)")
     s.set_defaults(fn=cmd_forward)
     s = sub.add_parser("adjudicate", help="write/refresh a run's adjudication worksheet")
     s.add_argument("run_dir")
@@ -533,13 +614,13 @@ def main(argv=None):
     s.set_defaults(fn=cmd_review)
     s = sub.add_parser("monitor", help="theme monitor: refresh the data feed or serve it")
     s.add_argument("action", choices=["refresh", "serve", "compare", "review", "forward", "feed",
-                                     "relations", "rebuild", "progress"])
+                                     "relations", "rebuild", "progress", "titles"])
     s.add_argument("--read", choices=["headwind", "emergence", "tailwind"],
                    help="forward: read this test's result (once; refused until 20 events "
                         "have a completed 126-session window)")
     s.add_argument("--profile",
                    help="configuration profile in config/profiles (default: tech-v2, all "
-                        "127 companies; semis is the semiconductor-only pilot)")
+                        "154 companies; semis is the semiconductor-only pilot)")
     s.add_argument("--state", help="registry directory (default: the profile's)")
     s.add_argument("--site", help="dashboard directory (default: the profile's)")
     s.add_argument("--against", default="semis",
@@ -565,9 +646,9 @@ def main(argv=None):
     s.add_argument("--confirm", action="store_true",
                    help="rebuild: actually do it (without this, only the plan is printed)")
     s.add_argument("--count", action="store_true",
-                   help="relations: only count the pairs waiting to be read (no calls)")
+                   help="relations, titles: only count what is waiting (no calls)")
     s.add_argument("--limit", type=int,
-                   help="relations: read at most this many pairs (default: all waiting)")
+                   help="relations, titles: handle at most this many (default: all waiting)")
     s.add_argument("--port", type=int, default=8780)
     s.set_defaults(fn=cmd_monitor)
     s = sub.add_parser("questions", help="share of analyst questions in a run's text")
@@ -585,7 +666,7 @@ def main(argv=None):
     s.add_argument("run_dir")
     s.add_argument("--profile",
                    help="configuration profile in config/profiles (default: tech-v2, all "
-                        "127 companies; semis is the semiconductor-only pilot)")
+                        "154 companies; semis is the semiconductor-only pilot)")
     s.set_defaults(fn=cmd_report)
     a = p.parse_args(argv)
     a.fn(a)

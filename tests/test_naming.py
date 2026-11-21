@@ -177,3 +177,18 @@ def test_over_the_limit_keeps_a_label_written_for_the_current_keywords():
     themes = [_pub("x", "inactive", "2017-01-31", dict(lab))]
     N.apply_labels(themes, {}, lambda p: 1 / 0, curated={}, limit=0)
     assert themes[0]["label"] == lab
+
+
+def test_every_active_theme_is_written_whatever_the_limit():
+    """44 active themes and a limit of 40 left the four oldest with keyword titles."""
+    themes = [_pub(f"a{i}", "stable", f"20{10 + i}-01-31") for i in range(5)] + \
+             [_pub(f"o{i}", "inactive", f"20{10 + i}-01-31") for i in range(5)]
+    asked = []
+
+    def namer(prompt):
+        asked.append(prompt)
+        raise RuntimeError("stop here")       # counting calls is all this test needs
+    c = N.apply_labels(themes, {}, namer, curated={}, limit=2)
+    assert len(asked) == 5                    # all active, none of the backlog
+    assert set(c["errors"]) == {f"a{i}" for i in range(5)}
+

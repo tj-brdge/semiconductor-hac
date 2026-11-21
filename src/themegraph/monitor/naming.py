@@ -284,7 +284,12 @@ def apply_labels(themes: list[dict], sectors: dict[str, str], namer=None,
             lab = cur
         elif not needs_label(th, namer is not None):
             continue
-        elif namer is not None and (limit is None or calls < limit):
+        elif namer is not None and (limit is None or calls < limit
+                                    or th.get("status") in ACTIVE):
+            # The limit paces the backlog of older themes. Active themes are what a
+            # reader sees, so every one of them is written whatever the limit
+            # (2026-11-21: with 44 active and a limit of 40, the four oldest active
+            # themes kept keyword titles).
             calls += 1
             try:
                 answer, model = namer(build_prompt(th, sectors))
