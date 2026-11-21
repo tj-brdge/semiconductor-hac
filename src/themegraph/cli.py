@@ -421,6 +421,38 @@ def cmd_monitor(a):
         print(f"{len(R.links(store, {i.symbol for i in d['universe'].issuers}))} links so far. "
               "Run `themegraph monitor refresh --no-ingest` to publish them.")
         return
+    if a.action == "titles":
+        # Written titles and summaries for themes still called by their keywords.
+        # --count shows how many are waiting (no calls); otherwise they are written,
+        # active themes first, all of them unless --limit is given.
+        from .monitor import naming
+        from .monitor.config import load_monitor
+        from .monitor.registry import Registry
+        mcfg = load_monitor(prof.monitor)
+        reg = Registry(Path(a.state), id_prefix=prof.id_prefix)
+        themes = reg.published()
+        curated = naming.curated_labels()
+        waiting = [t for t in themes if t["id"] not in curated
+                   and naming.needs_label(t, True)]
+        active = sum(t.get("status") in naming.ACTIVE for t in waiting)
+        unclear = sum((t.get("label") or {}).get("status") == "ambiguous" for t in themes)
+        print(f"{len(themes)} published themes; {len(waiting)} are waiting for a written "
+              f"title ({active} of them active), one Claude call each. {unclear} keep "
+              "their keywords because their passages were judged unclear.")
+        if a.count or not waiting:
+            return
+        as_of = dt.date.fromisoformat(a.as_of) if a.as_of else dt.date.today()
+        d = M.load_inputs(a.fixtures, as_of, profile=prof)
+        now = dt.datetime.now(dt.UTC).isoformat(timespec="seconds")
+        c = naming.apply_labels(themes, M.coverage(d, mcfg).sector,
+                                naming.ClaudeNamer(mcfg.labels.model), now=now,
+                                limit=None if a.limit in (None, -1) else a.limit)
+        reg.save()
+        print(json.dumps({k: v for k, v in c.items() if k != "errors"}))
+        for k, v in list(c["errors"].items())[:10]:
+            print(f"failed {k}: {v}")
+        print("Run `themegraph monitor refresh --no-ingest` to publish them.")
+        return
     if a.action == "feed":
         from .monitor.config import load_monitor
         from .monitor.feed import feed
@@ -582,7 +614,7 @@ def main(argv=None):
     s.set_defaults(fn=cmd_review)
     s = sub.add_parser("monitor", help="theme monitor: refresh the data feed or serve it")
     s.add_argument("action", choices=["refresh", "serve", "compare", "review", "forward", "feed",
-                                     "relations", "rebuild", "progress"])
+                                     "relations", "rebuild", "progress", "titles"])
     s.add_argument("--read", choices=["headwind", "emergence", "tailwind"],
                    help="forward: read this test's result (once; refused until 20 events "
                         "have a completed 126-session window)")
@@ -614,9 +646,9 @@ def main(argv=None):
     s.add_argument("--confirm", action="store_true",
                    help="rebuild: actually do it (without this, only the plan is printed)")
     s.add_argument("--count", action="store_true",
-                   help="relations: only count the pairs waiting to be read (no calls)")
+                   help="relations, titles: only count what is waiting (no calls)")
     s.add_argument("--limit", type=int,
-                   help="relations: read at most this many pairs (default: all waiting)")
+                   help="relations, titles: handle at most this many (default: all waiting)")
     s.add_argument("--port", type=int, default=8780)
     s.set_defaults(fn=cmd_monitor)
     s = sub.add_parser("questions", help="share of analyst questions in a run's text")

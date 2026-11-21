@@ -696,6 +696,21 @@ nine words, and the summary's first sentence to say what the companies are
 discussing (`PROMPT_VERSION` 2, 2026-11-14). Themes labelled by Claude under an
 earlier version are labelled again once; curated labels are never replaced.
 
+Changed 2026-11-21, after a feed in which four of 44 active themes still had keyword
+titles: the limit of 40 per refresh was spent before the oldest active themes were
+reached. **Every active theme is now written at each refresh whatever the limit**;
+the limit only paces the backlog of inactive and merged themes. To write that
+backlog in one go instead of 40 per refresh:
+
+```
+themegraph monitor titles --count     # how many are waiting; no calls
+themegraph monitor titles             # write them all (one Claude call each, paid)
+themegraph monitor refresh --no-ingest   # publish them to the site
+```
+
+`--limit N` writes at most N. Themes whose passages Claude judged unclear keep their
+keywords and are not asked again. Display only: no theme, basket or return changes.
+
 Changed 2026-11-15, after the first feed from live data (433 published themes, 31
 active; 120 answers, 40 not used, 22 of those only for a title of ten to twelve
 words):
