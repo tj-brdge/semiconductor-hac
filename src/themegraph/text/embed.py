@@ -22,6 +22,7 @@ import pandas as pd
 from sklearn.feature_extraction.text import HashingVectorizer
 from tqdm.auto import tqdm
 
+from .. import progress
 from ..config import Embedding
 from ..data.http import env_value
 from ..usage import USAGE
@@ -256,6 +257,8 @@ class EmbeddingCache:
                     self._write_shard(keys, vecs)
                     fill(keys, vecs)
                     bar.update(len(chunk))
+                    progress.tick("Embedding passages", min(i + len(chunk), len(todo)),
+                                  len(todo))
         return V
 
     def _write_shard(self, keys: list[str], vecs: np.ndarray) -> None:

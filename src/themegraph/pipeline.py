@@ -20,7 +20,7 @@ import pandas as pd
 from joblib import Parallel, delayed
 from tqdm.auto import tqdm
 
-from . import __version__
+from . import __version__, progress
 from .config import CONFIG_DIR, PipelineConfig, UniverseConfig, file_sha256
 from .data.pit import snapshot_ts
 from .eval.comovement import comovement_test, summarise_percentiles
@@ -45,8 +45,8 @@ from .universe.membership import roles, segments, symbols_as_of
 
 
 def _bar(items, desc: str, total: int | None = None):
-    return tqdm(items, desc=desc, unit="snapshot", total=total, disable=None,
-                dynamic_ncols=True)
+    return progress.track(tqdm(items, desc=desc, unit="snapshot", total=total, disable=None,
+                               dynamic_ncols=True), desc, total)
 
 
 @dataclass

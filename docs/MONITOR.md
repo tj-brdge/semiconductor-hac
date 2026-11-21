@@ -1136,3 +1136,28 @@ history and the previous directories stay available for comparison.
   supply.
 - **Fixtures.** `--fixtures` runs the full path on synthetic companies and prices,
   and the dashboard says so on every page.
+
+## Watching a long run: progress and memory
+
+A refresh or rebuild reports where it is and how much memory it holds while it runs.
+
+- **Every printed line** starts with elapsed time and memory, for example
+  `[1:42:10 | memory 9.6 GB, peak 10.8 GB]   Text clustering: 61/120, about 0:48:00 left`.
+  Positions inside the long loops (embedding passages, text clustering, market and macro
+  layers, updating themes month-end by month-end) print about every 15 seconds, with an
+  estimate of the time left in that loop. The estimate is the average so far times what is
+  left; later months hold more text, so it tends to run short early on.
+- **From a second terminal**, `themegraph monitor progress` prints the stage, the position
+  in it, the time left in the step, memory now and the peak in each stage. It reads
+  `<state>/progress.json`, which the run rewrites as it goes, and starts nothing. To keep
+  it on screen: `watch -n 10 themegraph monitor progress`. If the run was killed (for
+  example by the system running out of memory) it says the run stopped without finishing
+  and shows the last position and memory recorded.
+- **Afterwards**, `status.json` → `metrics` carries `peak_total_mb` and
+  `peak_mb_by_stage` beside the existing `peak_rss_mb`.
+
+Memory is resident memory of the main process plus the worker processes it starts. Text
+clustering runs in workers, so the older `peak_rss_mb` (main process only) understates
+that stage. The figures are sampled when a line is printed, so a short spike between two
+lines can be missed; on Windows, where `ps` is not available, memory shows as `?`.
+This is reporting only: no result depends on it.
