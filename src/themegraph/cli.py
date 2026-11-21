@@ -338,6 +338,12 @@ def cmd_monitor(a):
         return
     if a.action == "rebuild":
         sys.exit(_rebuild(a, prof, M))
+    if a.action == "progress":
+        # Where a running refresh or rebuild is, and its memory: run it in a second
+        # terminal. Reads <state>/progress.json; starts nothing.
+        from . import progress
+        print(progress.report(Path(a.state)))
+        return
     if a.action == "relations":
         # Business relationships companies state about each other. --count shows how
         # many pairs are waiting (no calls); otherwise they are read, newest first.
@@ -527,7 +533,7 @@ def main(argv=None):
     s.set_defaults(fn=cmd_review)
     s = sub.add_parser("monitor", help="theme monitor: refresh the data feed or serve it")
     s.add_argument("action", choices=["refresh", "serve", "compare", "review", "forward", "feed",
-                                     "relations", "rebuild"])
+                                     "relations", "rebuild", "progress"])
     s.add_argument("--read", choices=["headwind", "emergence", "tailwind"],
                    help="forward: read this test's result (once; refused until 20 events "
                         "have a completed 126-session window)")

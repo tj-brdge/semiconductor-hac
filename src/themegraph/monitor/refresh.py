@@ -29,7 +29,7 @@ from pathlib import Path
 import pandas as pd
 
 from .. import pipeline as P
-from .. import usage
+from .. import progress, usage
 from ..config import file_sha256, load_pipeline, load_universe
 from ..market.returns import price_panel
 from . import forward_tests
@@ -232,9 +232,14 @@ def refresh(state_dir: Path, site_dir: Path, *, fixtures: bool = False,
     steps: dict[str, dict] = {}
     usage.USAGE.clear()
     started = time.perf_counter()
+    # Every line gains elapsed time and memory; the position is also kept in
+    # <state>/progress.json for `themegraph monitor progress` (reporting only).
+    log = watch = progress.Progress(state_dir, log)
+    progress.HOOK = watch.tick
 
     def run(name, fn):
         clock = time.perf_counter()
+        watch.enter(name)
         try:
             detail = fn()
             steps[name] = {"ok": True, "at": now, "detail": detail}
@@ -246,6 +251,8 @@ def refresh(state_dir: Path, site_dir: Path, *, fixtures: bool = False,
             return False
         finally:
             steps[name]["seconds"] = round(time.perf_counter() - clock, 2)
+            watch(f"{name}: {'done' if steps[name]['ok'] else 'FAILED'} in "
+                  f"{progress.clock(steps[name]['seconds'])}")
 
     macro_note = ""
     if not fixtures and ingest_prices:
@@ -361,8 +368,10 @@ def refresh(state_dir: Path, site_dir: Path, *, fixtures: bool = False,
     status["late_documents"] = late_documents(reg, ctxd["docs"]) if "docs" in ctxd else None
     status["ok"] = status["ok"] and not skipped
     status.update(run_info)
+    progress.HOOK = None
     status["metrics"] = {"seconds": round(time.perf_counter() - started, 1),
-                         "peak_rss_mb": peak_rss_mb(), "usage": usage.snapshot()}
+                         "peak_rss_mb": peak_rss_mb(), **watch.finish(),
+                         "usage": usage.snapshot()}
     if "docs" in ctxd and "prices" in ctxd:
         _coverage_report(state_dir, ctxd, now)
     write_status(site_dir, status)
@@ -454,7 +463,7 @@ def _themes(reg: Registry, d: dict, as_of: dt.date, now: str, mcfg: MonitorConfi
         return seen[t]
     roles = {i.symbol: i.role for i in u.issuers}
     counts = []
-    for t in todo:
+    for t in progress.track(todo, "Updating themes, month-end"):
         if t not in set(ctx.snapshots):
             continue
         counts.append({"t": str(t.date()), **reg.process(
