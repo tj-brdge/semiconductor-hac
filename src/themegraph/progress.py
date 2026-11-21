@@ -99,17 +99,23 @@ class Progress:
         self.stage = "starting"
         self.step: dict | None = None
         self.message = ""
-        self.peak_total = 0.0
+        self.peak_total: float | None = None   # None until memory was really measured
         self.by_stage: dict[str, float] = {}
         self._last = 0.0
         self._last_desc = None
 
     def _memory(self) -> dict:
+        """One sample. Where memory cannot be measured (no `ps`), the figures stay
+        unknown (None): an unknown is never recorded as zero or counted as a peak."""
         m = memory_mb() or {}
-        total = m.get("total_mb") or peak_rss_mb() or 0.0
-        self.peak_total = max(self.peak_total, total)
-        self.by_stage[self.stage] = max(self.by_stage.get(self.stage, 0.0), total)
-        return {**m, "peak_process_mb": peak_rss_mb(), "peak_total_mb": self.peak_total}
+        total = m.get("total_mb")
+        if total is not None:
+            self.peak_total = total if self.peak_total is None else max(self.peak_total,
+                                                                        total)
+            self.by_stage[self.stage] = max(self.by_stage.get(self.stage, total), total)
+        return {"process_mb": m.get("process_mb"), "workers_mb": m.get("workers_mb"),
+                "total_mb": total, "peak_process_mb": peak_rss_mb(),
+                "peak_total_mb": self.peak_total}
 
     def _write(self, mem: dict, done: bool = False) -> None:
         body = {"pid": os.getpid(), "running": not done,
@@ -128,9 +134,12 @@ class Progress:
             pass
 
     def _stamp(self, mem: dict) -> str:
-        now = mem.get("total_mb")
-        return (f"[{clock(time.time() - self.started)} | memory {gb(now)}, "
-                f"peak {gb(self.peak_total)}]")
+        peak = gb(self.peak_total)
+        if self.peak_total is None and mem.get("peak_process_mb") is not None:
+            # No sample of the whole run, but the system still reports this process.
+            peak = f"{gb(mem['peak_process_mb'])} (main process only)"
+        return (f"[{clock(time.time() - self.started)} | memory {gb(mem.get('total_mb'))}, "
+                f"peak {peak}]")
 
     def __call__(self, message="") -> None:
         mem = self._memory()
@@ -190,8 +199,9 @@ def report(state_dir: Path) -> str:
     running = p.get("running") and alive(int(p.get("pid", -1)))
     mem = p.get("memory") or {}
     if running:
-        live = memory_mb(int(p["pid"])) or {}
-        mem = {**mem, **live}
+        live = memory_mb(int(p["pid"]))
+        if live:        # an unavailable reading must not hide the last recorded one
+            mem = {**mem, **live}
         head = f"Running (process {p['pid']}), started {p['started_at']}"
     elif p.get("running"):
         head = f"Stopped without finishing (process {p.get('pid')} is gone)"
@@ -209,11 +219,13 @@ def report(state_dir: Path) -> str:
     if p.get("message"):
         lines.append(f"  last line  {p['message']}")
     if mem:
+        peak = gb(mem.get("peak_total_mb"))
+        if mem.get("peak_total_mb") is None and mem.get("peak_process_mb") is not None:
+            peak = f"{gb(mem['peak_process_mb'])} (main process only)"
         lines.append(f"  memory     {gb(mem.get('total_mb'))} "
                      f"{'now' if running else 'at the last update'} "
                      f"(main process {gb(mem.get('process_mb'))}, "
-                     f"workers {gb(mem.get('workers_mb'))}); "
-                     f"peak {gb(mem.get('peak_total_mb'))}")
+                     f"workers {gb(mem.get('workers_mb'))}); peak {peak}")
     for k, v in (p.get("peak_mb_by_stage") or {}).items():
         lines.append(f"    peak in {k:<18} {gb(v)}")
     return "\n".join(lines)

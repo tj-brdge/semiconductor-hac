@@ -135,3 +135,95 @@ def test_a_failed_rebuild_puts_the_old_monitor_back(tmp_path, capsys):
         raise MemoryError("killed")
     assert cli._rebuild(_args(tmp_path, True), TECH, NS(refresh=boom)) == 1
     assert (tmp_path / "state" / "registry.json").read_text() == '{"old": true}'
+
+
+def _names(tmp_path, prefix):
+    return [p for p in tmp_path.iterdir() if p.name.startswith(prefix)]
+
+
+def _intact(tmp_path):
+    assert (tmp_path / "state" / "registry.json").read_text() == '{"old": true}'
+    assert (tmp_path / "state" / "relations.json").exists()
+    assert (tmp_path / "site" / "index.html").read_text() == "old site"
+    assert not _names(tmp_path, "state.archive-") and not _names(tmp_path, "site.archive-")
+
+
+def test_a_failure_before_the_refresh_is_rolled_back_too(tmp_path, monkeypatch, capsys):
+    """Moving the site aside, or copying relations.json, can fail as well."""
+    _old_monitor(tmp_path)
+    real = cli.Path.rename
+
+    def no_site(self, target):
+        if self.name == "site":
+            raise PermissionError("site is locked")
+        return real(self, target)
+    monkeypatch.setattr(cli.Path, "rename", no_site)
+    never = NS(refresh=lambda *a, **k: (_ for _ in ()).throw(AssertionError("ran")))
+    assert cli._rebuild(_args(tmp_path, True), TECH, never) == 1
+    monkeypatch.undo()
+    _intact(tmp_path)
+    out = capsys.readouterr().out
+    assert "site is locked" in out and "put back unchanged" in out
+    assert not _names(tmp_path, "state.failed-")    # nothing was written: nothing kept
+
+    def no_copy(*a, **k):
+        raise OSError("disk full")
+    monkeypatch.setattr("shutil.copy2", no_copy)
+    assert cli._rebuild(_args(tmp_path, True), TECH, never) == 1
+    monkeypatch.undo()
+    _intact(tmp_path)
+    assert "disk full" in capsys.readouterr().out
+
+
+def test_stopping_a_rebuild_from_the_keyboard_puts_the_old_monitor_back(tmp_path):
+    _old_monitor(tmp_path)
+
+    def stop(state, site, **kw):
+        (state / "half.json").write_text("{}")
+        raise KeyboardInterrupt
+    assert cli._rebuild(_args(tmp_path, True), TECH, NS(refresh=stop)) == 130
+    _intact(tmp_path)
+    assert (_names(tmp_path, "state.failed-")[0] / "half.json").exists()
+
+
+def test_when_recovery_fails_nothing_is_lost_and_the_report_says_where(
+        tmp_path, monkeypatch, capsys):
+    _old_monitor(tmp_path)
+    real = cli.Path.rename
+
+    def refresh(state, site, **kw):
+        site.mkdir()
+        (state / "half.json").write_text("{}")
+
+        def stuck(self, target):    # from here on the new state folder cannot be moved
+            if self.name == "state":
+                raise PermissionError("state is in use")
+            return real(self, target)
+        monkeypatch.setattr(cli.Path, "rename", stuck)
+        raise MemoryError("killed")
+    assert cli._rebuild(_args(tmp_path, True), TECH, NS(refresh=refresh)) == 1
+    monkeypatch.undo()
+    out = capsys.readouterr().out
+    assert "RECOVERY WAS NOT COMPLETE" in out and "state is in use" in out
+    archive = _names(tmp_path, "state.archive-")[0]
+    assert str(archive) in out                               # where the old one is
+    assert (archive / "registry.json").read_text() == '{"old": true}'   # not overwritten
+    assert (tmp_path / "state" / "half.json").exists()       # the attempt, not deleted
+    assert not (tmp_path / "state" / "registry.json").exists()
+    assert (tmp_path / "site" / "index.html").read_text() == "old site"  # site did recover
+    assert _names(tmp_path, "site.failed-")
+
+
+def test_an_existing_archive_is_never_written_into(tmp_path, monkeypatch, capsys):
+    _old_monitor(tmp_path)
+
+    class Fixed(dt.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 11, 21, 12, 0, 0, tzinfo=tz)
+    monkeypatch.setattr(cli.dt, "datetime", Fixed)
+    (tmp_path / "state.archive-20261121T120000Z").mkdir()
+    assert cli._rebuild(_args(tmp_path, True), TECH, NS(refresh=None)) == 1
+    assert "already exists" in capsys.readouterr().out
+    assert (tmp_path / "state" / "registry.json").read_text() == '{"old": true}'
+

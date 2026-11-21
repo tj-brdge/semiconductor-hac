@@ -56,3 +56,47 @@ def test_report_says_when_a_run_died(tmp_path):
 def test_track_without_a_run_is_a_plain_loop():
     assert progress.HOOK is None
     assert list(progress.track(iter("ab"), "x")) == ["a", "b"]
+
+
+def test_unknown_memory_stays_unknown(tmp_path, monkeypatch):
+    """No `ps` and no `resource`: figures are null and shown as ?, never 0.0 GB."""
+    monkeypatch.setattr(progress, "memory_mb", lambda pid=None: None)
+    monkeypatch.setattr(progress, "peak_rss_mb", lambda: None)
+    lines = []
+    p = progress.Progress(tmp_path, lines.append, every=0)
+    p.enter("themes")
+    p("text layer")
+    p.tick("Text clustering", 1, 2)
+    assert all("memory ?, peak ?" in x and "0.0 GB" not in x for x in lines)
+    body = json.loads((tmp_path / progress.FILE).read_text())
+    assert body["memory"]["total_mb"] is None and body["memory"]["peak_total_mb"] is None
+    assert body["peak_mb_by_stage"] == {}
+    assert p.finish() == {"peak_total_mb": None, "peak_mb_by_stage": {}}
+    text = progress.report(tmp_path)
+    assert "0.0 GB" not in text and "?" in text
+
+
+def test_a_missing_sample_does_not_move_the_peak(tmp_path, monkeypatch):
+    samples = iter([{"process_mb": 900.0, "workers_mb": 100.0, "total_mb": 1000.0}, None,
+                    {"process_mb": 400.0, "workers_mb": 0.0, "total_mb": 400.0}, None])
+    monkeypatch.setattr(progress, "memory_mb", lambda pid=None: next(samples))
+    lines = []
+    p = progress.Progress(tmp_path, lines.append)
+    p.stage = "themes"
+    p("a")
+    p("b")
+    assert "memory ?, peak 1.0 GB" in lines[-1]      # unknown now, the real peak kept
+    p("c")
+    assert "memory 0.4 GB, peak 1.0 GB" in lines[-1]
+    assert p.finish()["peak_mb_by_stage"] == {"themes": 1000.0}
+
+
+def test_only_the_process_peak_is_known(tmp_path, monkeypatch):
+    monkeypatch.setattr(progress, "memory_mb", lambda pid=None: None)
+    monkeypatch.setattr(progress, "peak_rss_mb", lambda: 2048.0)
+    lines = []
+    p = progress.Progress(tmp_path, lines.append)
+    p("a")
+    assert "memory ?, peak 2.0 GB (main process only)" in lines[-1]
+    assert p.finish()["peak_total_mb"] is None
+

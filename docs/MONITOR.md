@@ -807,8 +807,9 @@ method & data (coverage, freshness, the last refresh's stages, release ID).
 ## Profiles (`config/profiles/`, `monitor/profiles.py`)
 
 **One monitor.** Since 2026-11-14 every command without `--profile` uses `tech-v2`:
-all 127 companies (the 76 semiconductor-pilot companies plus software,
-cybersecurity and data/cloud), one download of prices and documents, one registry
+all the companies in `config/tech_v2/universe.yaml` (127 at that date: the 76
+semiconductor-pilot companies plus software, cybersecurity and data/cloud; 154 since
+the expansions of 2026-11-20), one download of prices and documents, one registry
 (`monitor_state-tech-v2/`) and one site (`site-tech-v2/`). The profile keeps its
 name and directories so the registry, forward-test logs and site already built
 carry on. Before that date the default was the semiconductor-only pilot, and the
@@ -998,6 +999,30 @@ covered from 2026-11-20:
   per sector the software pilot required. Same safeguards, sector-reference rule
   and costs as version 3 above.
 
+### What is still unverified for versions 3 and 4 (audit of 2026-11-21)
+
+Checked from the repository alone, with no download: the checkout holds no price
+store, no documents and no monitor state, so nothing here can establish coverage.
+The configuration lists the companies; it does not show that data exists for them.
+Until the first real refresh is inspected, all of this is unverified for the 27
+companies:
+
+- **Prices:** that each symbol returns a history, and how far back it goes.
+- **Transcripts and filings:** how many documents each company has and from when.
+- **Benchmarks:** that XLI and XLB return prices over the whole ten years.
+- **Modine:** whether MOD still resolves after the filer's name change.
+
+Where to look after a refresh: `coverage_report.json` in the state folder (documents
+per company), `status.json` (`price_gaps`, `warnings`, failed steps) and the Data
+status page.
+
+**Data-centre operators (Equinix, Digital Realty) keep no sector reference.** No
+real-estate or data-centre index is in the benchmark list, so none can be compared
+from stored data, and a broad real-estate fund is mostly other property types. With
+two companies the label can only reach the 50% share that selects a sector reference
+in a theme made mostly of those two. Adding a reference would add a benchmark and
+must be decided before their returns are looked at, and recorded with a date.
+
 ### Rebuilding history (2026-11-20)
 
 The owner asked for a ten-year record that includes companies added later, and to
@@ -1020,7 +1045,14 @@ history with today's coverage list.
   `relations.json` across (what companies say about each other does not depend
   on themes), and runs a refresh on the empty state, which replays the last 120
   month-ends. If that fails for any reason the attempt is moved to
-  `<folder>.failed-<time>` and the previous monitor is put back unchanged.
+  `<folder>.failed-<time>` and the previous monitor is put back unchanged. That covers
+  every step after the confirmation: moving the folders aside, copying
+  `relations.json`, the refresh, and stopping it with Ctrl-C. Folders are renamed,
+  never copied or deleted, and never onto a folder that exists. If putting things
+  back fails too, the command says "RECOVERY WAS NOT COMPLETE", lists where the
+  previous monitor and the failed attempt are, and which rename restores it. A
+  process killed outright (for example by the system when memory runs out) cannot
+  put anything back: the previous monitor is then in the `.archive-<time>` folders.
 
 **To add companies and rebuild:** add the issuers with `covered_from` and a change
 entry as usual, set `full_history_through` to that date, then run the rebuild.
@@ -1159,5 +1191,6 @@ A refresh or rebuild reports where it is and how much memory it holds while it r
 Memory is resident memory of the main process plus the worker processes it starts. Text
 clustering runs in workers, so the older `peak_rss_mb` (main process only) understates
 that stage. The figures are sampled when a line is printed, so a short spike between two
-lines can be missed; on Windows, where `ps` is not available, memory shows as `?`.
+lines can be missed. Where memory cannot be measured (no `ps`, as on Windows) it shows
+as `?` and is stored as null, never as zero, and no peak is recorded for it.
 This is reporting only: no result depends on it.

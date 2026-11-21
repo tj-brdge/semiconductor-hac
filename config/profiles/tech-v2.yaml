@@ -12,8 +12,10 @@ monitor: config/tech_v2/monitor.yaml
 state: monitor_state-tech-v2
 site: site-tech-v2
 fixture: tech
-# Built like the semiconductor pilot: the first refresh replays 120 month-ends (10 years) with
-# all 127 companies (simulated history, labelled), then runs live. Its themes have
+# Built like the semiconductor pilot: the first refresh replayed 120 month-ends (10 years) with
+# the 127 companies it then had (simulated history, labelled), then runs live. The 27
+# companies added on 2026-11-20 (154 in all) are covered from that date until a rebuild
+# (docs/MONITOR.md, "Rebuilding history"). Its themes have
 # their own tech- IDs; the semiconductor registry is not copied or changed. (For a
 # live expansion that should keep another profile's theme IDs, set
 # fork_from: <profile> instead; see docs/TECH_PILOT_V2.md.)
