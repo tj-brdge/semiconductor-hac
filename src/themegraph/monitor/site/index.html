@@ -4,27 +4,49 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="light dark">
-<title>Theme Monitor</title>
-<meta name="description" content="Investment themes in company earnings calls and filings, with equal-weight basket performance.">
+<title>Themegraph</title>
+<meta name="description" content="Investment themes in company earnings calls and filings, with the companies involved, the evidence, and how their shares have traded.">
 <link rel="stylesheet" href="styles.css">
 <script type="module" src="app.js"></script>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
-<header class="site-header"><div class="bar">
-  <a class="brand" href="#/"><span class="brand-mark" aria-hidden="true"></span>Theme Monitor</a>
-  <nav class="nav" aria-label="Main">
-    <a href="#/" data-nav="overview">Overview</a>
-    <a href="#/themes" data-nav="themes">Themes</a>
-    <a href="#/companies" data-nav="companies">Companies</a>
-    <a href="#/network" data-nav="network">Network</a>
-    <a href="#/clusters" data-nav="clusters">Clusters</a>
-    <a href="#/method" data-nav="method">Method</a>
-  </nav>
-  <button type="button" class="theme-toggle" id="theme-toggle">Auto</button>
-</div></header>
-<main id="main" tabindex="-1" aria-busy="true"><p class="muted">Loading the latest release…</p></main>
-<footer class="site-footer"><p>Research tool, not investment advice. Simulated history shows what a rule would have done; it is not a track record. <span id="release" class="mono"></span></p></footer>
-<noscript><p style="padding:16px">This dashboard needs JavaScript to read its data files.</p></noscript>
+<div class="app">
+  <aside class="side" id="side" aria-label="Sections">
+    <a class="brand" href="#/"><span class="brand-mark" aria-hidden="true"></span><span>Themegraph</span></a>
+    <nav class="nav" aria-label="Main">
+      <a href="#/" data-nav="overview"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 2h5v6H2zM9 2h5v3H9zM9 7h5v7H9zM2 10h5v4H2z"/></svg>Overview</a>
+      <a href="#/themes" data-nav="themes"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3.5h12M2 8h12M2 12.5h12"/></svg>Themes</a>
+      <a href="#/companies" data-nav="companies"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 14V3h6v11M9 7h4v7M1.5 14h13M5 5.5h2M5 8h2M5 10.5h2"/></svg>Companies</a>
+      <p class="nav-label">Markets</p>
+      <a href="#/clusters" data-nav="clusters"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h3v4H2zM2 9h3v4H2zM5 5h3v6H5M8 8h3M11 5h3v6h-3z"/></svg>Market structure</a>
+      <a href="#/network" data-nav="network"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="3.5" cy="4" r="1.6"/><circle cx="12.5" cy="5" r="1.6"/><circle cx="8" cy="12" r="1.6"/><path d="M5 4.3l6 .5M4.4 5.4l2.8 5.2M11.6 6.4l-2.8 4.3"/></svg>Relationships</a>
+      <a href="#/macro" data-nav="macro"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 12l3.5-4 2.5 2 3-5 3 3M2 14h12"/></svg>Macro</a>
+      <p class="nav-label">Evidence</p>
+      <a href="#/research" data-nav="research"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 2v4L2.5 13a1 1 0 0 0 .9 1.5h9.2a1 1 0 0 0 .9-1.5L10 6V2M5 2h6M4.5 10h7"/></svg>Research and validation</a>
+      <a href="#/method" data-nav="method"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 2h7l3 3v9H3zM10 2v3h3M5.5 8h5M5.5 10.5h5"/></svg>Methodology and data</a>
+    </nav>
+    <div class="side-foot" id="side-status" aria-live="polite"></div>
+  </aside>
+  <div class="scrim" id="scrim" hidden></div>
+  <div class="body">
+    <header class="top">
+      <button type="button" class="icon-btn" id="menu" aria-label="Open sections" aria-controls="side" aria-expanded="false"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h12M2 8h12M2 12h12"/></svg></button>
+      <div class="search" role="search">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg>
+        <input id="gs" type="search" placeholder="Search themes and companies" aria-label="Search themes and companies" autocomplete="off" spellcheck="false" role="combobox" aria-expanded="false" aria-controls="gs-results">
+        <kbd aria-hidden="true">/</kbd>
+        <div id="gs-results" class="search-results" role="listbox" hidden></div>
+      </div>
+      <div class="top-right">
+        <span class="asof" id="asof"></span>
+        <button type="button" class="theme-toggle" id="theme-toggle">Auto</button>
+      </div>
+    </header>
+    <main id="main" tabindex="-1" aria-busy="true"><p class="muted pad">Loading the latest release…</p></main>
+    <footer class="site-footer"><p>Research tool, not investment advice. Simulated history shows what a rule would have done; it is not a track record. Nothing here has been shown to predict returns. <span id="release" class="mono"></span></p></footer>
+  </div>
+</div>
+<noscript><p style="padding:16px">This application needs JavaScript to read its data files.</p></noscript>
 </body>
 </html>

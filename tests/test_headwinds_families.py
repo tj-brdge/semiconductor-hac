@@ -155,3 +155,14 @@ def test_group_names_are_written_once_and_fall_back_to_the_lead_theme():
     g2 = [{"id": "g-a", "lead": "a", "members": ["a", "b"]}]
     c = naming.name_groups(g2, th, {}, Bad())
     assert g2[0]["name_source"] == "lead" and "g-a" in c["errors"]
+
+
+def test_a_tailwind_quotes_the_growth_figures_that_decided_it():
+    from themegraph.monitor.export import tone_sentence
+    tone = {"direction": "tailwind", "negative_share": 0.04, "negative_ratio": 0.4,
+            "positive_share": 0.62, "positive_ratio": 2.6, "headwind_terms": ["delays"]}
+    text = tone_sentence(tone)
+    assert "62%" in text and "2.6×" in text and "more growth language" in text
+    assert "delays" not in text and "4%" not in text
+    head = tone_sentence({**tone, "direction": "headwind"})
+    assert "4%" in head and "more problem language" in head and "delays" in head

@@ -273,3 +273,19 @@ def test_a_factor_with_a_short_history_is_left_out_not_allowed_to_cut_the_rest()
     assert one["factors_left_out"] == left
     assert set(one["companies"][0]["links"]) == {"us2y", "us10y", "wti", "dxy"}
     assert one["beyond_chance"]                              # the planted links are still found
+
+
+def test_a_group_too_young_for_any_comparison_has_no_entry_and_blocks_nothing():
+    """A column with 15 to 23 months of history passed the length gate for the
+    30-day span but allowed no slid-history offset, which raised and made the whole
+    macro table unavailable."""
+    from themegraph.monitor.macro import span_sensitivities
+    rng, idx, F, mkt = _long()
+    young = pd.Series(np.nan, index=idx)
+    for months in (15, 23):
+        young.iloc[:] = np.nan
+        young.iloc[-months:] = rng.standard_normal(months)
+        Y = pd.DataFrame({"old": 0.6 * mkt + rng.standard_normal(144), "young": young},
+                         index=idx)
+        out = span_sensitivities(Y, mkt, F, 1)
+        assert "old" in out and "young" not in out, months

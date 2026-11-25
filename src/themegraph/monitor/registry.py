@@ -340,7 +340,11 @@ class Registry:
         old_c = share(old.get("passages_by_issuer", {}), meta.get(base, {}).get(
             "window_by_issuer", {})) if old and old.get("present") else None
         growth = round(now_c / old_c, 3) if now_c is not None and old_c else None
-        old_issuers = set(old.get("issuers", [])) if old else set()
+        # "New in three months" needs the theme to have been found three months ago:
+        # against a month in which it was absent (or not observable) every company
+        # would count as new, so there is no comparison (None), not a full list.
+        had_base = bool(old and old.get("present"))
+        old_issuers = set(old.get("issuers", [])) if had_base else set()
         return {
             "t": ts, "present": True, "observed": True,
             # emergence (growth, new companies and the routes use comparable companies)
@@ -350,7 +354,7 @@ class Registry:
             "issuers": issuers, "n_issuers": len(issuers),
             "comparable_issuers": comp_issuers,
             "recently_added": sorted(set(issuers) - comp),
-            "new_issuers_3m": sorted(set(comp_issuers) - old_issuers) if old else None,
+            "new_issuers_3m": sorted(set(comp_issuers) - old_issuers) if had_base else None,
             "flagged": c.flagged,
             "flagged_comparable": bool(
                 c.flagged and len(comp_issuers) >= m.pool.min_issuers

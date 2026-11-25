@@ -140,11 +140,15 @@ def span_sensitivities(Y: pd.DataFrame, market: pd.Series, factors: pd.DataFrame
         cols = [c for c, st in zip(Yv.columns, start, strict=True)
                 if st == s0 and Yv[c].iloc[s0:].notna().all() and Yv[c].iloc[s0:].std() > 0]
         n = len(m) - s0
-        if not cols or (n - h + 1) / h < MIN_BLOCKS:
+        gap = max(h, 12)
+        # The comparison slides the factor history by every offset at least `gap`
+        # months from either end. A group too young to allow even one such offset
+        # has no comparison, so it has no entry (it used to raise and take the whole
+        # table with it).
+        if not cols or (n - h + 1) / h < MIN_BLOCKS or n - gap + 1 <= gap:
             continue
         y, ms, Fs = Yv[cols].to_numpy()[s0:], m[s0:], F[s0:]
         obs = _span_betas(y, ms, Fs, h)
-        gap = max(h, 12)
         null = np.stack([np.abs(_span_betas(y, ms, np.roll(Fs, k, axis=0), h))
                          for k in range(gap, n - gap + 1)])
         pval = (1 + (null >= np.abs(obs)).sum(axis=0)) / (1 + len(null))
