@@ -15,7 +15,15 @@ It is deliberately short; detail lives in `MONITOR.md` and `DESIGN.md`.
 | 3 | Real-data review | The owner runs a refresh on this branch and sends the exports listed below; pages and audit findings are checked against them | Stage 1, owner's machine | Waiting |
 | 4 | Fundamentals feasibility | A go or no-go with evidence on original values, dates, restatements, coverage, cost and redistribution | `data.sec.gov` access | Desk study done: go, with a small proof step still to run |
 | 5 | Economic-impact extraction feasibility | A frozen sample, adjudicated labels and a pre-declared comparison against the phrase lists | Owner's approval and labelling time | Proposal below; nothing run |
-| 6 | Distribution readiness | Licensing answers in writing; hosting, secrets and the public/private split reviewed | Stages 1 to 3, licensing | Not started |
+| 6 | Distribution readiness | Hosting, secrets and the public/private split reviewed | Stages 1 to 3 | Licensing settled by the owner (below); the rest not started |
+
+## Licensing
+
+The owner stated on 2026-11-25 that their FMP licence covers distribution. On that
+basis prices, transcripts and figures derived from FMP data may be shown to outside
+readers. The licence itself was not read here; its exact terms (attribution, any
+limit on raw data downloads as opposed to display) stay the owner's to check. SEC
+filings are public and may be redistributed with citation.
 
 ## Exports needed from the owner's machine
 
@@ -116,8 +124,8 @@ was downloaded: `data.sec.gov` is blocked in the build environment.
   structured data: safe, but days to weeks stale.
 - **Provider alternative.** FMP statements carry filing and acceptance dates and
   has "as reported" endpoints, but whether its standard figures are first-reported
-  or restated is unconfirmed. Its terms require a separate licence to display or
-  redistribute its data. This was read from search results, not the full terms.
+  or restated is unconfirmed. The owner's licence covers distribution (see
+  Licensing above).
 - **Redistribution.** SEC data is public and may be redistributed with citation.
 - **Size and cost.** Medium engineering effort; no data cost for SEC.
 
