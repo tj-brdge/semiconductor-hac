@@ -255,17 +255,22 @@ def theme_overview(doc: dict) -> list[dict]:
 
 
 def tone_sentence(tone: dict) -> str:
-    """What the phrase counts say about a theme's news, and nothing more."""
-    neg, ratio = tone["negative_share"], tone.get("negative_ratio")
+    """What the phrase counts say about a theme's news, and nothing more. The figures
+    quoted are the ones that decided the label: growth language for a tailwind,
+    problem language otherwise."""
+    tail = tone["direction"] == "tailwind" and tone.get("positive_share") is not None
+    part, ratio = (tone["positive_share"], tone.get("positive_ratio")) if tail else (
+        tone["negative_share"], tone.get("negative_ratio"))
     usual = f", {ratio:.1f}× the usual rate for this kind of text" if ratio else ""
     terms = tone.get("headwind_terms") or []
-    used = f" (most often: {_list(terms[:4])})" if terms else ""
+    used = f" (most often: {_list(terms[:4])})" if terms and not tail else ""
     lead = {"headwind": "A headwind: companies are describing problems.",
             "tailwind": "A tailwind: companies are describing growth and demand.",
             "mixed": "Mixed: neither problem nor growth language stands out."}[
                 tone["direction"]]
-    return (f"{lead} {neg:.0%} of its management and filing passages use more problem "
-            f"language than growth language{usual}{used}. Counted with fixed phrase "
+    more, less = ("growth", "problem") if tail else ("problem", "growth")
+    return (f"{lead} {part:.0%} of its management and filing passages use more {more} "
+            f"language than {less} language{usual}{used}. Counted with fixed phrase "
             "lists, which miss negation and context; read the quoted passages.")
 
 

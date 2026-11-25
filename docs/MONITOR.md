@@ -737,6 +737,35 @@ per-refresh cap). Fixture runs never call Claude.
 
 ## Dashboard (`monitor/site/`)
 
+**Redesigned 2026-11-25** as a research application (`docs/PLATFORM_PLAN.md`,
+stage 1). Same architecture: static files, no build step, no dependencies, one
+feed. What changed:
+
+- **Shell.** A fixed sidebar (Overview, Themes, Companies, Market structure,
+  Relationships, Macro, Research and validation, Methodology and data), a search
+  box over themes and companies (`/` focuses it), the data dates always in view,
+  and light, dark and automatic colour schemes.
+- **Overview.** Counts that link to filtered lists, then tables: emerging and
+  strengthening, where companies describe problems, long-running, the latest
+  month-end, baskets gaining and losing ground, topics, and data dates.
+- **Themes.** One sortable table (click a heading), filters in the URL, compact or
+  with summaries, a sparkline per basket. Old `?sort=` links still work.
+- **Theme page.** A strip of separate headline facts; performance, discussion and
+  evidence on the left; companies, co-movement, macro and overlapping themes on the
+  right; the record below.
+- **Company page** (`#/company/<symbol>`, new): its themes, market cluster and
+  price links, macro links, stated relationships and quoted passages. Company
+  names link to it everywhere.
+- **Macro** (`#/macro`, new route): what was on the clusters page.
+- **Research and validation** (`#/research`, new): what each measure describes, how
+  it is checked, forward-test progress, simulated and live counts, survivorship,
+  known limitations, coverage and freshness.
+- **Nothing new is computed.** Every figure comes from the feed; a missing value
+  is a dash and sorts last. Verified on fixtures only, at 1440 and 390 pixels.
+
+The notes below describe the earlier design and remain true of the data shown.
+
+
 **Redesign, 2026-11-17 (presentation only).** The aim is that a first-time reader
 can say, in a few seconds, which themes are emerging or strengthening, what the
 companies are discussing, how many and which companies, and how the stocks have
