@@ -7,6 +7,42 @@ A rule change must be added here, dated, before it takes effect.
 Each entry ends with a tag: rule change, display only, data input or bug fix. How things work now
 is in `docs/METHOD.md`.
 
+### 2026-11-26 — `--as-of` is an information cutoff for every layer
+A refresh with a past `--as-of` now cuts prices, documents and macro series at that date before
+any layer reads them (kept when `available_at` is on or before the end of that day; prices also
+by date). Before, only themes stopped there, while valuation, macro, clusters, the network and
+coverage read the whole store. A run dated today is unchanged. Not cut: the store's vintage (a
+historical run still sees today's adjusted prices and revised documents) and the download
+watermark. Tag: bug fix.
+
+### 2026-11-26 — A carried price is not an observation
+Baskets are still valued with the last close carried forward (a valuation convention, reported
+as stale). Statistics no longer use those carried values: a month-end counts as observed only if
+the last real close is within `stale_sessions` sessions; otherwise the monthly return is missing,
+not zero. Macro group returns average the members with observed returns and record how many
+were left out; the company macro table leaves a company out of spans it does not cover;
+participation counts only holdings with observed prices at both ends. Changes macro tables and
+participation for baskets holding delisted, suspended or long-gap names. Basket indexes,
+weights and returns are unchanged. Co-movement and market clusters were not changed (they
+already require a share of own closes). Tag: bug fix.
+
+### 2026-11-26 — Why a three-month lead changed; how current the evidence is
+"Gaining / losing ground" keeps its rule, and now records the excess over the month that
+entered the three-month window and over the month that left, with which one mattered more. Each
+theme records how many trailing months lacked evidence; the site marks these "No recent
+evidence" and lists them apart from cooling themes. No status or classification changed.
+Tag: display only.
+
+### 2026-11-26 — Economic-impact pilot protocol approved and frozen
+`docs/experiments/ECONOMIC_IMPACT_PILOT.md`, version 1: 300 passages, acceptance criteria fixed
+before any model answer, cost about $5.60 approved by the owner. Experimental; nothing in it
+feeds the monitor. Tag: rule change (experimental protocol only).
+
+### 2026-11-26 — Fundamentals feasibility test prepared, not run
+The SEC refused downloads from the build environment. A script for the owner's machine and the
+first-reported logic with tests are in place; no proposal is made until data is measured
+(`docs/experiments/FUNDAMENTALS_FEASIBILITY.md`). Tag: data input.
+
 ### 2026-11-26 — Documentation rebuilt
 `MONITOR.md` (1,246 lines of descriptions mixed with dated notes) was replaced by `METHOD.md` (how
 things work now), `OPERATIONS.md` (running it) and this log. Each statement was checked against

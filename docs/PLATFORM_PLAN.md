@@ -62,16 +62,30 @@ None of this blocks the frontend, which is built and tested on the fixtures.
 - Status markers are decided looking back, and one large month moves the status
   twice; the chart says so.
 
-**Proposed, waiting for approval (each changes a result or a rule):**
+**Done since (2026-11-26, approved by the owner):** `--as-of` cuts every input; carried
+prices are no longer treated as observations in macro and participation statistics; the
+gaining/losing figure shows what entered and what left its window; themes without recent
+evidence are marked and listed apart from cooling ones. See `DECISIONS.md`.
+
+**Lifecycle rule proposals, waiting for approval (each changes a status rule; none is adopted):**
+
+| Proposal | Why | What would change |
+|---|---|---|
+| A separate `unobserved` state after 3 months without evidence | Today a theme whose companies stop reporting keeps its last status indefinitely; the site now flags it, but the status itself still reads "stable" or "strengthening" | Status would read "unobserved" until evidence returns, then resume from the comparison that is available. It would never count towards inactive or cooling |
+| Retire to `inactive` after 12 months unobserved | A theme carried only by companies that delisted can never be observed again | Its basket and history stay; it stops appearing among active themes |
+| Require two month-ends in a row before a status change | One unusually large month can change the status when it arrives and again when it leaves | Fewer status markers; a genuine change is shown one month later |
+| Resume cleanly after a zero base | A theme returning from absence keeps its old label because the comparison divides by zero | A stated rule for the first months after a return, for example "new" again until three observed months exist |
+
+Each would be dated in `DECISIONS.md` before taking effect, judged on the text only, never on
+returns, and applied going forward; past status history would not be rewritten.
+
+**Still proposed from the audit:**
 
 | Proposal | Why | Effect |
 |---|---|---|
-| Treat a carried price as missing in macro and participation statistics | A stock with no quotes after delisting enters as a run of zero returns | Changes macro tables for baskets holding such stocks. Unverified whether the real store triggers it |
-| Dampen status changes (for example, two month-ends in a row) | One spike month causes up to four status changes | A detection rule; must be dated and judged on text only |
-| Cap how long a theme's status can stay frozen without evidence | Themes whose companies stop reporting never go inactive | A status rule |
-| Make "gaining / losing ground" say which month left the window, or replace it | The one-month change in two overlapping three-month windows can read "gaining" with no new outperformance | Display, or a measure change |
-| Make `--as-of` cut every input on real data, not only themes | Valuation, macro and clusters use the whole store | CLI semantics |
 | Adjust co-movement for markets that close before the US | Seoul, Tokyo and Taipei closes precede the US close; those names can look more connected | A measure change; currently documented as a limitation |
+| Use observed returns in co-movement and market clusters too | They take daily returns from carried closes behind an own-close share gate | Likely small; unmeasured |
+| Cut the store's vintage on a historical `--as-of` | A historical run still sees today's adjusted prices and revised documents | Needs vintage-aware reads; larger change |
 
 **Research limitations now stated on the Research and Validation page:**
 survivorship, coverage as a chosen list, equal-weight baskets against

@@ -206,11 +206,11 @@ def export(state_dir: Path, work: Path = WORK, *, profile=None, fixtures: bool =
 
     state_dir, work = Path(state_dir), Path(work)
     profile = profile or load_profile(DEFAULT)
-    if not (state_dir / "registry.json").exists():
-        raise Refused(f"no registry in {state_dir}: nothing to export")
     if (work / "sample.csv").exists():
         raise Refused(f"{work / 'sample.csv'} exists: the sample was drawn from the export "
                       "already there, so the export is not replaced")
+    if not (state_dir / "registry.json").exists():
+        raise Refused(f"no registry in {state_dir}: nothing to export")
     before = _state_hashes(state_dir)
     mcfg = load_monitor(profile.monitor)
     with tempfile.TemporaryDirectory() as tmp:

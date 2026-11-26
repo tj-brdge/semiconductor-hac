@@ -1269,6 +1269,8 @@ function researchPage() {
         <li><b>Headwind and tailwind come from a phrase list.</b> A shortage can help a supplier and hurt its customer; the measure does not separate them.</li>
         <li><b>Shares listed in Seoul, Tokyo and Taipei close hours before the US market.</b> Co-movement and cluster measures use same-day returns without adjusting for this, so those companies can look more connected to each other than they are.</li>
         <li><b>Model-written text.</b> Titles, summaries and business relationships are written or read by a language model from quoted passages. The passages are shown so they can be checked; the wording has not been independently reviewed.</li>
+        <li><b>A past run still sees today's data vintage.</b> A refresh dated in the past cuts every input at that date, but prices are today's adjusted prices and documents are today's stored versions, so it is not a perfect replay of what was known then.</li>
+        <li><b>Missing is not zero.</b> A share with no recent quote keeps its last price in a basket (marked stale) but is left out of macro and participation statistics. A theme whose companies had too few documents is marked “No recent evidence”, with its status carried forward; that is not a decline.</li>
         <li><b>Themes overlap.</b> Baskets share companies, sectors and market conditions, so results across themes are not independent observations.</li>
       </ul></section>
     <div class="grid g-2">

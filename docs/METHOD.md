@@ -212,6 +212,8 @@ Each published theme has an equal-weight basket of its companies, valued daily (
 | `1m`, `3m`, `6m`, `12m` | The last 21, 63, 126 and 252 sessions; null without enough history. |
 
 - `participation_3m`: constituents up over 63 sessions, and those beating the first benchmark.
+  Only holdings with an observed price at both ends count as eligible; the rest are reported as
+  `unobserved`. A carried close values a holding but is not an observation.
 - `market_trend`: "gaining" or "losing" when the 3-month excess over the first benchmark changed by
   `market.trend_threshold_pp` (5 points) or more since the previous month-end, else "steady".
   Two 3-month windows a month apart share two months, so the change equals the excess over the
@@ -290,6 +292,12 @@ latest window and feeds no measure (`network.py`).
 
 Macro tables ask whether a group of stocks tended to move with rates, oil, inflation or the dollar,
 beyond the market. They describe the past and feed nothing else (`macro.py`).
+
+- **Observed returns only.** Monthly returns come from `PriceBook.observed`: a month-end counts
+  only if the last real close is within `stale_sessions` sessions of it. A stock with no quotes
+  (delisted, suspended, a long gap) has missing returns, not zero returns. A group averages the
+  members with observed returns and records how many were used and left out; a company is left
+  out of any span it does not fully cover.
 
 - **Factors:** monthly change in the 2-year and 10-year Treasury yields, monthly log change in WTI
   crude and the dollar index, and CPI growth. CPI for month M counts in month M + 2
