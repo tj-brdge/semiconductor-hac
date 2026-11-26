@@ -78,6 +78,20 @@ class PriceBook:
         out = np.where(pd.isna(lastv), 10**6, pos_v - pos_l)
         return pd.Series(out, index=self.cal)
 
+    @property
+    def observed(self) -> pd.DataFrame:
+        """Carried closes for statistics: a day's value counts as observed only when
+        the security's last real close is at most `stale_sessions` of its own venue's
+        sessions old (the rule that reports a holding as stale); otherwise it is
+        missing (NaN), never a zero return. Verified venue closures are not sessions
+        (eval/returns.py: `venue_sessions`), so a holiday week leaves no gap.
+        Valuation does not read this: a basket is always valued from `carry`."""
+        if getattr(self, "_observed", None) is None:
+            miss = pd.DataFrame({s: self.missing_sessions(s) for s in self.carry.columns},
+                                index=self.cal)
+            self._observed = self.carry.where(miss <= self.stale)
+        return self._observed
+
 
 def _segment(book: PriceBook, members: list[str], entry: pd.Timestamp,
              end: pd.Timestamp | None) -> dict:
@@ -345,18 +359,29 @@ def _live_from(theme: dict, version: dict, go_live: str | None) -> pd.Timestamp 
 
 
 def _participation(book: PriceBook, members: list[str], benchmarks: list[str]) -> dict:
+    """How many constituents rose, and beat the first benchmark, over three months.
+
+    Eligible: a constituent with an observed price (`PriceBook.observed`) at both
+    ends of the window. One whose quotes stopped (delisted, suspended, a long gap)
+    has a carried value but no return to speak of: it is not eligible, and is
+    counted in `unobserved` instead of as "eligible, not positive"."""
     k = TRAILING["3m"]
     if len(book.cal) <= k:
         return {"eligible": 0}
     a, b = book.cal[-1 - k], book.cal[-1]
-    r = {}
+    seen = book.observed
+    r, unobserved = {}, 0
     for s in members:
         if s in book.carry and pd.notna(book.carry[s].get(a)) and pd.notna(book.carry[s].get(b)):
-            r[s] = book.carry[s][b] / book.carry[s][a] - 1
+            if pd.notna(seen[s].get(a)) and pd.notna(seen[s].get(b)):
+                r[s] = book.carry[s][b] / book.carry[s][a] - 1
+            else:
+                unobserved += 1
     spy = benchmarks[0] if benchmarks else None
     rb = (book.carry[spy][b] / book.carry[spy][a] - 1) if spy in book.carry else None
     return {"eligible": len(r), "positive": int(sum(x > 0 for x in r.values())),
-            f"beat_{spy}": int(sum(x > rb for x in r.values())) if rb is not None else None}
+            f"beat_{spy}": int(sum(x > rb for x in r.values())) if rb is not None else None,
+            "unobserved": unobserved}
 
 
 def market_history(perf: dict, snapshots: list[str]) -> list[dict]:

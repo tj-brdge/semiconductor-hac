@@ -89,7 +89,6 @@ def test_amendment_is_a_dated_revision_and_never_replaces_the_first_value():
     r = rev.iloc[0]
     assert (r["kind"], r["form"], r["value"], r["adsh"]) == ("amendment", "10-K/A", 380, "KA")
     assert r["available_at"] == pd.Timestamp("2025-04-10 12:05", tz="UTC")  # EDT
-    # An amendment accepted first in the loaded data still does not get relabelled.
     assert bool(r["own_period"])
 
 
@@ -181,8 +180,10 @@ def test_53_week_non_december_year_is_keyed_on_dates_not_fy_fp():
             sub_row("K24", "10-K", "20240928", "2024-11-01 06:01:00.0")]
     nums = [num_row("K23", "Revenues", "20230930", 4, 3830),
             num_row("Q1", "Revenues", "20231230", 1, 1196),
-            num_row("Q2", "Revenues", "20240330", 1, 908), num_row("Q2", "Revenues", "20240330", 2, 2104),
-            num_row("Q3", "Revenues", "20240629", 1, 858), num_row("Q3", "Revenues", "20240629", 3, 2962),
+            num_row("Q2", "Revenues", "20240330", 1, 908),
+            num_row("Q2", "Revenues", "20240330", 2, 2104),
+            num_row("Q3", "Revenues", "20240629", 1, 858),
+            num_row("Q3", "Revenues", "20240629", 3, 2962),
             num_row("K24", "Revenues", "20240928", 4, 3910),
             num_row("K24", "Revenues", "20230930", 4, 3830)]
     _, first, rev, q, _ = run(subs, nums)
@@ -211,7 +212,6 @@ def test_segment_coregistrant_and_custom_rows_are_ignored():
 
 
 def test_two_values_for_one_fact_in_a_filing_are_dropped_not_guessed():
-    subs = [sub_row("A", "10-Q", "20240331", "2024-05-01 16:00:00.0")]
     nums = [num_row("A", "Revenues", "20240331", 1, 1000),
             num_row("A", "Revenues", "20240331", 1, 400)]
     frame = pd.DataFrame(nums).drop(columns=["segments"])  # an older file layout
