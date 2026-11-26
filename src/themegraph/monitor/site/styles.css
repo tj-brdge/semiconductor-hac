@@ -428,3 +428,4 @@ tbody tr:hover td { background: color-mix(in srgb, var(--accent-bg) 45%, transpa
 h4 { display: flex; align-items: center; }
 td.t .sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 380px; }
 .stackv:last-child td.t .sub { max-width: 200px; }
+@media (max-width: 900px) { .stats > :last-child:nth-child(odd) { grid-column: span 2; } }
