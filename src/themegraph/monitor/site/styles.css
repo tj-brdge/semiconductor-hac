@@ -399,3 +399,32 @@ blockquote { margin: 0; color: var(--ink-2); line-height: 1.55; }
 @media print { .side, .top, .jump { display: none; } .app { display: block; } }
 .section > h3, .panel > h3, #mc-host > h3 { margin-top: 14px; margin-bottom: 4px; }
 .card h3 { margin: 0; }
+
+/* -- second pass: definitions on demand, quieter chrome ------------------------------ */
+main:focus, main:focus-visible { outline: none; }
+.help { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; margin-left: 5px;
+  border: 1px solid var(--line-strong); border-radius: 50%; background: none; color: var(--muted); font: 600 10px/1 var(--sans);
+  cursor: help; vertical-align: 2px; padding: 0; }
+.help:hover, .help:focus-visible { color: var(--ink); border-color: var(--ink-2); }
+.help::after { content: attr(data-tip); position: absolute; top: calc(100% + 7px); left: -8px; z-index: 40; width: min(340px, 78vw);
+  padding: 9px 11px; border-radius: 4px; background: var(--ink); color: var(--surface); font: 400 .8rem/1.45 var(--sans);
+  text-align: left; text-transform: none; letter-spacing: 0; white-space: normal; box-shadow: 0 10px 28px -10px rgba(0, 0, 0, .5);
+  opacity: 0; visibility: hidden; transition: opacity .1s ease; pointer-events: none; }
+.help:hover::after, .help:focus::after { opacity: 1; visibility: visible; }
+.stackv:last-child .help::after, .dl .help::after { left: auto; right: -8px; }
+.tag.ev { border-color: var(--warn-line); color: var(--warn-ink); background: var(--warn-bg); }
+.panel-head { align-items: center; }
+.panel-head h2 { margin: 0; }
+.panel > .panel-head + .table-wrap, .panel > .panel-head + .stats { margin-top: 2px; }
+td, th { font-variant-numeric: tabular-nums; }
+td.num { font-feature-settings: "tnum"; }
+tbody tr:hover td { background: color-mix(in srgb, var(--accent-bg) 45%, transparent); }
+.kpis { gap: 24px; margin: 6px 0 10px; padding: 8px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.kpi .small { font-size: .74rem; }
+.chart .grid line { stroke-dasharray: 1 3; }
+.together ul.plain li { padding: 4px 0; border-top: 1px solid var(--line); color: var(--ink-2); }
+.verdict { font-size: 1.15rem; letter-spacing: -.01em; }
+.note { line-height: 1.45; }
+h4 { display: flex; align-items: center; }
+td.t .sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 380px; }
+.stackv:last-child td.t .sub { max-width: 200px; }

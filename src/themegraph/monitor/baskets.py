@@ -361,22 +361,45 @@ def _participation(book: PriceBook, members: list[str], benchmarks: list[str]) -
 
 def market_history(perf: dict, snapshots: list[str]) -> list[dict]:
     """3-month return and excess vs the first benchmark at each month-end, from the
-    index itself (for 'gaining / losing market strength')."""
+    index itself (for 'gaining / losing ground').
+
+    Two 3-month windows one month apart share two months. The change in the 3-month
+    excess is therefore the excess over the stretch that entered (since the previous
+    month-end) minus the excess over the stretch that left the window. Both are
+    recorded, so a reader can tell new outperformance from an old month dropping
+    out; nothing here changes how a trend is classified."""
     if perf.get("status") != "ok":
         return []
     s = pd.DataFrame(perf["series"]).set_index("date")
     s.index = pd.to_datetime(s.index)
     b = [c for c in s.columns if c not in ("theme", "coverage", "basis")]
-    out = []
+    n3 = TRAILING["3m"]
+
+    def excess(i0: int, i1: int) -> float | None:
+        """Basket return minus the benchmark's between two rows of the index."""
+        if not b or i0 < 0 or i1 <= i0:
+            return None
+        a, z = s.iloc[i0], s.iloc[i1]
+        if pd.isna(a[b[0]]) or pd.isna(z[b[0]]) or not a[b[0]] or not a["theme"]:
+            return None
+        return float(z["theme"] / a["theme"] - 1) - float(z[b[0]] / a[b[0]] - 1)
+
+    out, prev = [], None
     for t in snapshots:
         d = pd.Timestamp(t).tz_localize(None).normalize()
-        hist = s.loc[s.index <= d]
-        if len(hist) <= TRAILING["3m"]:
+        pos = int(s.index.searchsorted(d, side="right")) - 1   # last session on or before
+        if pos < n3:
             continue
-        a = hist.iloc[-1 - TRAILING["3m"]]
-        z = hist.iloc[-1]
+        a, z = s.iloc[pos - n3], s.iloc[pos]
         row = {"t": t, "ret_3m": float(z["theme"] / a["theme"] - 1)}
-        if b and pd.notna(z[b[0]]) and pd.notna(a[b[0]]):
-            row[f"excess_3m_vs_{b[0]}"] = row["ret_3m"] - float(z[b[0]] / a[b[0]] - 1)
+        ex = excess(pos - n3, pos)
+        if ex is not None:
+            row[f"excess_3m_vs_{b[0]}"] = ex
+        if prev is not None and prev < pos:
+            entered, left = excess(prev, pos), excess(prev - n3, pos - n3)
+            if entered is not None and left is not None:
+                row[f"entered_excess_vs_{b[0]}"] = entered
+                row[f"left_excess_vs_{b[0]}"] = left
+        prev = pos
         out.append(row)
     return out

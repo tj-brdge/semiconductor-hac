@@ -84,6 +84,11 @@ Status says whether discussion of a theme is growing, steady or fading: text, no
 - **Could it have been seen?** A month is an absence (`observed: true`, `share: 0`) only if at least
   half of the companies that last discussed the theme had text in that window. Otherwise it is
   missing evidence (`observed: false`, `share: null`) and does not count towards inactivity.
+- **How current the evidence is.** Each theme carries `observation`: the last observed month,
+  the number of trailing unobserved months, and the months it was looked for and not found.
+  While months are unobserved the status is carried from the last observed month. The site
+  marks such themes "No recent evidence" and lists them apart from cooling themes: missing
+  evidence is not treated as declining discussion. No status rule depends on these fields.
 
 **Emergence measures**, per month-end row:
 - `share`: the theme's share of all passages in the window.
@@ -208,7 +213,13 @@ Each published theme has an equal-weight basket of its companies, valued daily (
 
 - `participation_3m`: constituents up over 63 sessions, and those beating the first benchmark.
 - `market_trend`: "gaining" or "losing" when the 3-month excess over the first benchmark changed by
-  5 points or more between the last two month-ends (`market.trend_threshold_pp`).
+  `market.trend_threshold_pp` (5 points) or more since the previous month-end, else "steady".
+  Two 3-month windows a month apart share two months, so the change equals the excess over the
+  month that entered (`latest_month_pp`) minus the excess over the month that left
+  (`left_month_pp`). Both are recorded, and `driver` names the larger contributor:
+  `latest_month` (new relative performance) or `window` (an older month dropping out). The site
+  shows both figures, so a weak month leaving the window is never presented as new momentum. The
+  classification itself is unchanged. Measured at the last processed month-end (`as_of`).
 - `hindsight`: the first basket's companies over the 126 sessions before entry. Kept apart from
   every return figure, because nobody could have held it.
 
@@ -452,7 +463,7 @@ version 1).
 - **Strict JSON.** No NaN or Infinity. An unavailable measurement is `null`, with a reason where one
   exists. A non-finite number fails the export.
 - **Lists in `index.json`:** `emerging`, `headwinds`, `established`, `market_gaining`,
-  `market_losing`, `cooling`, `newly_covered`, `inactive`.
+  `market_losing`, `cooling`, `unobserved`, `newly_covered`, `inactive`.
 - **Freshness.** `price_gaps` lists covered companies and benchmarks more than 3 of their own
   market's sessions behind, or with no prices (`freshness.price_stale_sessions`). Documents are
   flagged stale after 21 days (`documents_stale_days`).

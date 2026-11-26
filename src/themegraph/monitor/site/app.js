@@ -45,6 +45,11 @@ const coHref = (sym) => `#/company/${encodeURIComponent(sym)}`;
 const company = (sym) => { const n = S.index?.company_names?.[sym]; return `<a class="co" href="${coHref(sym)}">${n ? `${esc(n)} <span class="tk">${esc(sym)}</span>` : `<span class="tk solo">${esc(sym)}</span>`}</a>`; };
 const firstSentence = (t) => { const m = String(t || "").match(/^.{20,}?[.!?](?=\s|$)/); return m ? m[0] : String(t || ""); };
 // Plain words beside every signed difference, so direction never rests on colour.
+// A definition one hover or focus away, so pages carry figures, not paragraphs.
+const help = (text) => `<button type="button" class="help" aria-label="${esc(text)}" data-tip="${esc(text)}">?</button>`;
+// How current the evidence behind a status is (missing evidence is not decline).
+const stale = (r) => (r?.observation && !r.observation.current ? r.observation : null);
+const staleTag = (r) => { const o = stale(r); return o ? `<span class="tag ev" title="Too few of its companies had documents for ${o.months_unobserved} month${o.months_unobserved === 1 ? "" : "s"}. The status is carried from ${esc(fmtDate(o.last_observed, true))}; this is missing evidence, not a decline.">No recent evidence</span>` : ""; };
 const aheadBehind = (x) => x == null ? "" : x > 0 ? "ahead" : x < 0 ? "behind" : "level";
 const BASIS_WORD = { live: "live", reconstructed: "simulated", mixed: "simulated and live" };
 
@@ -149,7 +154,7 @@ const COLS = {
   theme: { h: "Theme", cls: "t", text: true, sort: (r) => r.title.toLowerCase(),
     cell: (r) => `<a href="#/theme/${esc(r.id)}">${esc(r.title)}</a>${S.expanded && r.label_source !== "keywords" && r.summary ? `<span class="sub">${esc(firstSentence(r.summary))}</span>` : ""}<span class="sub">${esc((r.sectors || []).join(", "))}${familyOf(r).length ? ` · overlaps ${familyOf(r).length} similar` : ""}</span>` },
   status: { h: "Status", sort: (r) => -STATUS_ORDER[r.status], tip: "Discussion status: the last three months against the three before",
-    cell: (r) => `<span class="meta">${chip(r.status)}${toneTag(r)}${r.route === "newly_covered" ? `<span class="tag" title="Visible because coverage expanded; not counted as emerging">Newly covered</span>` : ""}</span>` },
+    cell: (r) => `<span class="meta">${chip(r.status)}${staleTag(r)}${toneTag(r)}${r.route === "newly_covered" ? `<span class="tag" title="Visible because coverage expanded; not counted as emerging">Newly covered</span>` : ""}</span>` },
   topic: { h: "Topic", text: true, sort: (r) => (r.group?.name || "").toLowerCase() || null, cell: (r) => r.group ? esc(r.group.name) : `<span class="na">—</span>` },
   route: { h: "Entered by", text: true, sort: (r) => r.route, cell: (r) => esc(ROUTE[r.route] || r.route || "—") },
   first: { h: "Published", sort: (r) => r.published_snapshot, tip: "Month-end at which the theme entered the monitor", cell: (r) => `<span style="white-space:nowrap">${esc(fmtDate(r.published_snapshot, true))}</span>` },
@@ -164,6 +169,10 @@ const COLS = {
     cell: (r) => { const x = periodReturn(r); return x.na ? `<span class="na">—</span>` : pts(x[`excess_vs_${bench()}`]); } },
   trend: { h: "3m vs bench", num: true, sort: (r) => r.market.trend?.excess_3m_pp, tip: "Three-month return minus the benchmark's, in points", cell: (r) => r.market.trend?.excess_3m_pp == null ? `<span class="na">—</span>` : pts(r.market.trend.excess_3m_pp / 100) },
   change: { h: "1m change", num: true, sort: (r) => r.market.trend?.change_pp_1m, tip: "Change in that three-month difference since the previous month-end", cell: (r) => r.market.trend?.change_pp_1m == null ? `<span class="na">—</span>` : pts(r.market.trend.change_pp_1m / 100) },
+  entered: { h: "Latest month", num: true, sort: (r) => r.market.trend?.latest_month_pp, tip: "Basket minus benchmark over the month that entered the three-month window", cell: (r) => r.market.trend?.latest_month_pp == null ? `<span class="na">—</span>` : pts(r.market.trend.latest_month_pp / 100) },
+  left: { h: "Month dropped", num: true, sort: (r) => r.market.trend?.left_month_pp, tip: "Basket minus benchmark over the month that left the three-month window. A weak month leaving raises the three-month figure without any new outperformance.", cell: (r) => r.market.trend?.left_month_pp == null ? `<span class="na">—</span>` : pts(r.market.trend.left_month_pp / 100) },
+  why: { h: "Mostly because", sort: (r) => r.market.trend?.driver, tip: "Which of the two moved the three-month figure more",
+    cell: (r) => { const t = r.market.trend || {}; return t.driver === "latest_month" ? "Latest month" : t.driver === "window" ? `<span class="muted">${t.trend === "gaining" ? "A weak month dropped out" : t.trend === "losing" ? "A strong month dropped out" : "An older month dropped out"}</span>` : `<span class="na">—</span>`; } },
   together: { h: "Co-movement", sort: (r) => r.market.trading_together_pct, tip: "Whether the basket's stocks moved together beyond the market over six months, against random baskets",
     cell: (r) => r.market.trading_together_verdict ? esc(TOGETHER[r.market.trading_together_verdict] || r.market.trading_together_verdict) : `<span class="na">—</span>` },
   spark: { h: "Basket vs bench", cls: "sp", tip: "Basket (solid) and benchmark (dashed); shaded where live",
@@ -215,11 +224,12 @@ function overview() {
   const joiners = active.filter((r) => (r.emergence.new_issuers_3m || []).length)
     .sort((x, y) => y.emergence.new_issuers_3m.length - x.emergence.new_issuers_3m.length);
   const G = S.index.theme_groups || [];
+  const unobs = list(L.unobserved || []);
   const render = () => {
     const cap = (rows, key) => rows.slice(0, S[key] ? undefined : 8);
     const more = (rows, key, id) => rows.length > 8 ? `<button type="button" class="link-btn" id="${id}" aria-expanded="${!!S[key]}">${S[key] ? "Show fewer" : `Show all ${rows.length}`}</button>` : "";
     $("#main").innerHTML = `
-      ${pageHead("Overview", `What ${U.n_companies ?? "the monitored"} companies are discussing in earnings calls and filings, and how the shares involved have traded. Discussion and prices are measured separately and never combined into one score.`, periodControl(), U.name || "")}
+      ${pageHead("Overview", `What ${U.n_companies ?? "the monitored"} companies are discussing in earnings calls and filings, and how the shares involved have traded.`, periodControl(), U.name || "")}
       ${notices(true)}
       <div class="stats">
         ${stat("Active themes", active.length, `${T.length} published in all`, "#/themes?status=active")}
@@ -228,35 +238,33 @@ function overview() {
         ${stat("Cooling", n((r) => r.status === "cooling"), "discussion down on three months", "#/themes?status=cooling")}
         ${stat("Describing problems", n((r) => r.tone?.direction === "headwind"), "far more problem language than usual", "#/themes?status=active&tone=headwind")}
         ${stat("Companies in a theme", `${inTheme}<span class="muted" style="font-size:.6em;font-weight:500"> of ${cos.length}</span>`, "in at least one active theme", "#/companies?show=in")}
+        ${unobs.length ? stat("No recent evidence", unobs.length, "status carried forward; not a decline", "#/themes?status=active&evidence=missing") : ""}
       </div>
       <div class="grid g-main">
         <div class="stackv">
-          <section class="panel" aria-labelledby="h-em"><div class="panel-head"><div><h2 id="h-em">Emerging and strengthening</h2>
-            <p class="note">Companies are talking about these more than three months ago. A description of discussion, not a forecast for the shares.</p></div>
+          <section class="panel" aria-labelledby="h-em"><div class="panel-head"><h2 id="h-em">Emerging and strengthening ${help("Themes companies are discussing more than three months ago, or flagged by the emergence rule. A description of discussion, not a forecast for the shares.")}</h2>
             <a class="more" href="#/themes?status=active&sort=growth">All ${active.length} active →</a></div>
             ${themeTable(cap(featured, "allFeatured"), ["theme", "status", "cos", "growth", "ret", "ex", "spark"], { empty: "No theme is emerging or strengthening right now. Themes appear here when discussion of a topic grows across several companies." })}
             <p class="more">${more(featured, "allFeatured", "more-em")}</p></section>
-          <section class="panel" aria-labelledby="h-hw"><div class="panel-head"><div><h2 id="h-hw">Where companies describe problems</h2>
-            <p class="note">Far more talk of weak demand, excess inventory or pricing pressure than usual. Whether these baskets go on to lag is being tested, not established.</p></div>
+          <section class="panel" aria-labelledby="h-hw"><div class="panel-head"><h2 id="h-hw">Where companies describe problems ${help("Far more talk of weak demand, excess inventory or pricing pressure than usual, counted with a fixed phrase list. Whether these baskets go on to lag is being tested, not established.")}</h2>
             ${headwinds.length ? `<a class="more" href="#/themes?status=active&tone=headwind">All →</a>` : ""}</div>
             ${themeTable(headwinds.slice(0, 8), ["theme", "status", "cos", "growth", "ret", "ex", "spark"], { empty: "No theme stands out for problem language right now." })}</section>
-          <section class="panel" aria-labelledby="h-es"><div class="panel-head"><div><h2 id="h-es">Long-running themes</h2>
-            <p class="note">Discussed in at least 6 of the last 12 months by four or more companies.</p></div></div>
+          <section class="panel" aria-labelledby="h-es"><div class="panel-head"><h2 id="h-es">Long-running themes ${help("Discussed in at least 6 of the last 12 months by four or more companies.")}</h2></div>
             ${themeTable(cap(established, "allEstablished"), ["theme", "status", "cos", "months", "ret", "ex", "spark"], { empty: "No long-running themes yet." })}
             <p class="more">${more(established, "allEstablished", "more-es")}</p></section>
-          ${newly.length ? `<section class="panel"><div class="panel-head"><div><h2>Newly covered</h2><p class="note">Visible because coverage expanded: long-running discussion among newly added companies, found in their earlier documents. Not counted as emerging, and tracked only from publication.</p></div></div>
+          <section class="panel"><div class="panel-head"><h2>Change in three-month lead over ${esc(b)} ${help(`The basket's three-month return minus ${b}'s, compared with the same figure a month earlier. Listed when it moved by 5 points or more. Two three-month windows a month apart share two months, so the change is the latest month minus the month that dropped out: the last column says which mattered more. Prices only, measured at the last processed month-end.`)}</h2></div>
+            ${themeTable([...list(L.market_gaining).slice(0, 5), ...list(L.market_losing).slice(0, 5)], ["theme", "trend", "change", "entered", "left", "why"], { empty: "No basket's lead moved by 5 points this month." })}</section>
+          ${newly.length ? `<section class="panel"><div class="panel-head"><h2>Newly covered ${help("Visible because coverage expanded: long-running discussion among newly added companies, found in their earlier documents. Not counted as emerging, and tracked only from publication.")}</h2></div>
             ${themeTable(newly.slice(0, 8), ["theme", "status", "cos", "months", "ret", "ex"], {})}</section>` : ""}
         </div>
         <div class="stackv">
           <section class="panel"><div class="panel-head"><h2>Latest month-end${latest ? `: ${esc(fmtDate(latest))}` : ""}</h2></div>
             <dl class="dl"><dt>First published</dt><dd>${fresh.length ? fresh.slice(0, 6).map((r) => `<a href="#/theme/${esc(r.id)}">${esc(r.title)}</a>`).join("; ") + (fresh.length > 6 ? ` <span class="muted">+${fresh.length - 6}</span>` : "") : `<span class="muted">No new theme this month</span>`}</dd>
-              <dt>New participants</dt><dd>${joiners.length ? joiners.slice(0, 5).map((r) => `<a href="#/theme/${esc(r.id)}">${esc(r.title)}</a> <span class="muted">+${r.emergence.new_issuers_3m.length} (${esc(r.emergence.new_issuers_3m.slice(0, 3).map(nameOf).join(", "))}${r.emergence.new_issuers_3m.length > 3 ? "…" : ""})</span>`).join("<br>") : `<span class="muted">No theme gained a company in three months</span>`}</dd></dl>
-            <p class="note" style="margin-top:8px">New participants: companies that began discussing a theme in the last three months.</p></section>
-          <section class="panel"><div class="panel-head"><div><h2>Baskets gaining ground against ${esc(b)}</h2><p class="note">Three-month return minus ${esc(b)}'s rose by 5 points or more since the previous month-end. Prices only.</p></div></div>
-            ${themeTable(list(L.market_gaining).slice(0, 6), ["theme", "trend", "change"], { empty: "None this month." })}</section>
-          <section class="panel"><div class="panel-head"><div><h2>Baskets losing ground</h2><p class="note">The same measure fell by 5 points or more. A well-discussed theme can still have a falling basket.</p></div></div>
-            ${themeTable(list(L.market_losing).slice(0, 6), ["theme", "trend", "change"], { empty: "None this month." })}</section>
-          ${G.length ? `<section class="panel"><div class="panel-head"><div><h2>Topics</h2><p class="note">Active themes close in meaning, grouped for reading. Each theme keeps its own basket.</p></div></div>
+              <dt>New participants ${help("Companies that began discussing a theme in the last three months. Shown only when the theme was already found three months ago.")}</dt><dd>${joiners.length ? joiners.slice(0, 5).map((r) => `<a href="#/theme/${esc(r.id)}">${esc(r.title)}</a> <span class="muted">+${r.emergence.new_issuers_3m.length} (${esc(r.emergence.new_issuers_3m.slice(0, 3).map(nameOf).join(", "))}${r.emergence.new_issuers_3m.length > 3 ? "…" : ""})</span>`).join("<br>") : `<span class="muted">No theme gained a company in three months</span>`}</dd></dl>
+</section>
+          ${unobs.length ? `<section class="panel"><div class="panel-head"><h2>No recent evidence ${help("Too few of these themes' companies had documents in the latest months to say whether the theme is still discussed. Their status is carried from the last month with evidence. This is missing evidence, not a decline.")}</h2><a class="more" href="#/themes?status=active&evidence=missing">All ${unobs.length} →</a></div>
+            <ul class="plain subthemes">${unobs.slice(0, 6).map((r) => `<li><a href="#/theme/${esc(r.id)}">${esc(r.title)}</a> <span class="small muted">${esc(STATUS[r.status] || r.status)} as of ${esc(fmtDate(r.observation.last_observed, true))} · ${r.observation.months_unobserved} month${r.observation.months_unobserved === 1 ? "" : "s"} without evidence</span></li>`).join("")}</ul></section>` : ""}
+          ${G.length ? `<section class="panel"><div class="panel-head"><h2>Topics ${help("Active themes close in meaning, grouped for reading. Each theme keeps its own basket.")}</h2></div>
             <ul class="plain subthemes">${G.map((g) => `<li><a href="#/themes?topic=${esc(g.id)}">${esc(g.name)}</a> <span class="small muted">${g.members.length} themes · ${g.companies.length} companies</span></li>`).join("")}</ul></section>` : ""}
           <section class="panel"><div class="panel-head"><h2>Data</h2><a class="more" href="#/research">Validation status →</a></div>
             <dl class="dl"><dt>Prices through</dt><dd>${esc(fmtDate(a.prices))}</dd><dt>Calls and filings through</dt><dd>${esc(fmtDate(a.documents))}</dd>
@@ -264,7 +272,7 @@ function overview() {
               <dt>Quiet themes</dt><dd><a href="#/themes?status=cooling">${(L.cooling || []).length} cooling</a> · <a href="#/themes?status=inactive">${L.inactive.length} inactive</a>, kept with their history</dd></dl></section>
         </div>
       </div>
-      <p class="note" style="margin-top:12px">Returns: each basket started with equal money in every company and is not rebalanced. ${esc(PERIODS[S.period][1])} return to ${esc(fmtDate(a.prices))}, against ${esc(b)} in percentage points (pts). <span class="tag sim">Simulated</span> marks history rebuilt after the fact; <span class="tag live">Live</span> marks prices observed after the theme was published.</p>`;
+      <p class="note" style="margin-top:12px"><span class="tag sim">Simulated</span> history rebuilt after the fact with today's company list · <span class="tag live">Live</span> observed after publication · baskets are equal-weight and not rebalanced · nothing here has been shown to predict returns. <a href="#/research">What is and is not established →</a></p>`;
     bindPeriod($("#main"), render);
     $("#more-es")?.addEventListener("click", () => { S.allEstablished = !S.allEstablished; render(); $("#more-es")?.focus(); });
     $("#more-em")?.addEventListener("click", () => { S.allFeatured = !S.allFeatured; render(); $("#more-em")?.focus(); });
@@ -279,11 +287,11 @@ function allThemes(params) {
   const sort0 = LEGACY_SORT[params.get("sort")] || (COLS[params.get("sort")] ? params.get("sort") : "ret");
   const q = { q: params.get("q") || "", status: params.get("status") || "", sector: params.get("sector") || "",
     route: params.get("route") || "", tone: params.get("tone") || "", topic: params.get("topic") || "",
-    sort: sort0, dir: params.get("dir") || (COLS[sort0].text ? "asc" : "desc") };
+    evidence: params.get("evidence") || "", sort: sort0, dir: params.get("dir") || (COLS[sort0].text ? "asc" : "desc") };
   const opts = (list, cur) => list.map(([v, l]) => `<option value="${esc(v)}"${v === cur ? " selected" : ""}>${esc(l)}</option>`).join("");
   S.expanded = store.get("tm.expanded", "0") === "1";
   $("#main").innerHTML = `
-    ${pageHead("Themes", "Every theme the monitor has published, including cooling, inactive and merged ones. Nothing is deleted. Click a column heading to sort.", periodControl())}
+    ${pageHead("Themes", "Every theme published, including cooling, inactive and merged ones.", periodControl())}
     ${notices()}
     <form class="toolbar" role="search" onsubmit="return false">
       <label class="field">Filter<input id="f-q" type="search" placeholder="Theme, company or term" value="${esc(q.q)}"></label>
@@ -292,13 +300,14 @@ function allThemes(params) {
       <label class="field">Entered by<select id="f-route">${opts([["", "Any"], ["emergence", "Emergence rule"], ["established", "Established (persistent)"], ["newly_covered", "Newly covered"]], q.route)}</select></label>
       <label class="field">Kind of news<select id="f-tone">${opts([["", "Any"], ["headwind", "Headwind (problems)"], ["tailwind", "Tailwind (growth)"], ["mixed", "Mixed"]], q.tone)}</select></label>
       ${(S.index.theme_groups || []).length ? `<label class="field">Topic<select id="f-topic">${opts([["", "Any topic"], ...S.index.theme_groups.map((g) => [g.id, g.name])], q.topic)}</select></label>` : ""}
+      <label class="field">Evidence<select id="f-evidence">${opts([["", "Any"], ["current", "Current"], ["missing", "No recent evidence"]], q.evidence)}</select></label>
       <div class="seg" role="group" aria-label="Row detail"><button type="button" id="v-compact" aria-pressed="${!S.expanded}">Compact</button><button type="button" id="v-expanded" aria-pressed="${S.expanded}">With summaries</button></div>
     </form>
     <p class="count" id="count" aria-live="polite"></p>
     <section class="panel flush" id="list"></section>`;
   let sort = q.sort, dir = q.dir;
   const read = () => ({ q: $("#f-q").value.trim(), status: $("#f-status").value, sector: $("#f-sector").value,
-    route: $("#f-route").value, tone: $("#f-tone").value, topic: $("#f-topic")?.value || "" });
+    route: $("#f-route").value, tone: $("#f-tone").value, topic: $("#f-topic")?.value || "", evidence: $("#f-evidence").value });
   const draw = (focusSort) => {
     const f = read();
     const words = f.q.toLowerCase().split(/\s+/).filter(Boolean);
@@ -308,6 +317,7 @@ function allThemes(params) {
       if (f.route && r.route !== f.route) return false;
       if (f.tone && r.tone?.direction !== f.tone) return false;
       if (f.topic && r.group?.id !== f.topic) return false;
+      if (f.evidence && (f.evidence === "missing") !== !!stale(r)) return false;
       const hay = [r.title, r.summary, r.name, r.id, ...(r.sectors || []), ...(r.key_constituents || []).flatMap((c) => [c.symbol, nameOf(c.symbol)])].join(" ").toLowerCase();
       return words.every((w) => hay.includes(w));
     }), sort, dir);
@@ -323,7 +333,7 @@ function allThemes(params) {
     const p = new URLSearchParams(Object.entries({ ...f, sort: sort === "ret" ? "" : sort, dir: dir === (COLS[sort].text ? "asc" : "desc") ? "" : dir }).filter(([, v]) => v));
     history.replaceState(null, "", `#/themes${p.toString() ? "?" + p : ""}`);
   };
-  ["f-q", "f-status", "f-sector", "f-route", "f-tone", "f-topic"].forEach((id) => $("#" + id)?.addEventListener(id === "f-q" ? "input" : "change", () => draw()));
+  ["f-q", "f-status", "f-sector", "f-route", "f-tone", "f-topic", "f-evidence"].forEach((id) => $("#" + id)?.addEventListener(id === "f-q" ? "input" : "change", () => draw()));
   const setView = (v) => { S.expanded = v; store.set("tm.expanded", v ? "1" : "0"); $("#v-compact").setAttribute("aria-pressed", String(!v)); $("#v-expanded").setAttribute("aria-pressed", String(v)); draw(); };
   $("#v-compact").addEventListener("click", () => setView(false));
   $("#v-expanded").addEventListener("click", () => setView(true));
@@ -353,15 +363,15 @@ function macroLine(g) {
 function macroHTML(g) {
   const M = S.index.macro;
   if (!M?.available) return "";
-  const head = `<h2>Rates, oil, inflation and the dollar</h2>`;
+  const head = `<div class="panel-head"><h2>Macro links ${help("When a factor rose over a time frame, did this basket tend to rise (+) or fall (−), beyond the market and the other factors? Changes in the factors, not levels. Bold is larger than in 95% of trials with the factor history slid out of step; with many factors and time frames some bold values appear by chance. A description of the past.")}</h2></div>`;
   if (!g) return `<div class="macro">${head}<p class="small muted">Not enough price history for this basket.</p></div>`;
   const cell = (f, sp) => { const x = g[sp.key]?.[f.key]; return x ? `<td class="num">${x.clear ? `<b>${signed(x.beta)}</b>` : `<span class="muted">${signed(x.beta)}</span>`}</td>` : `<td class="num muted">—</td>`; };
   const months = Math.max(...M.spans.map((sp) => g[sp.key]?.months || 0));
   return `<div class="macro">${head}
-    <p class="small muted">Over each time frame: when the factor rose over that span, did this basket tend to rise (+) or fall (−) over the same span, beyond what ${esc(M.index)} and the other factors explain? These are changes in the factors, not their levels. Up to ${months} months of history to ${esc(M.end)}, current companies, equal weight.</p>
-    <div class="table-wrap"><table class="stack"><thead><tr><th>Factor</th>${M.spans.map((sp) => `<th class="num">${esc(sp.label)}</th>`).join("")}</tr></thead>
+<p class="note">Up to ${months} months of history to ${esc(M.end)}; today's companies, equal weight.</p>
+    <div class="table-wrap"><table class="dense"><thead><tr><th>Factor</th>${M.spans.map((sp) => `<th class="num">${esc(sp.label)}</th>`).join("")}</tr></thead>
     <tbody>${M.factors.map((f) => `<tr><td>${esc(f.label)}</td>${M.spans.map((sp) => cell(f, sp)).join("")}</tr>`).join("")}</tbody></table></div>
-    <p class="small muted"><b>Bold</b> is a clear link: larger than in 95% of trials with the factor history slid out of step with the returns. Grey is not distinguishable from chance. A value of +0.40 means the basket's return over the span was 0.4 of its usual move higher when the factor rose by one of its usual moves. A dash means too little history for that span. With five factors and five time frames some bold values appear by chance, and baskets that share companies tend to show the same ones: a description of the past, not a forecast.${M.missing.length ? ` Not available: ${esc(M.missing.join(", "))}.` : ""}</p></div>`;
+    <p class="note"><b>Bold</b>: larger than in 95% of trials with the factor history slid out of step. Grey: not distinguishable from chance. A dash: too little history.${M.missing.length ? ` Not available: ${esc(M.missing.join(", "))}.` : ""}</p></div>`;
 }
 function factorMovesHTML() {
   const M = S.index.macro;
@@ -369,7 +379,7 @@ function factorMovesHTML() {
   const fmt = (v, unit) => v == null ? "—" : `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).toFixed(2)}${unit === "pp" ? " pts" : "%"}`;
   return `<section class="section" aria-labelledby="h-fm"><div><h2 id="h-fm">What the macro factors did</h2>
     <p class="muted small">The change in each factor over each time frame, to ${esc(M.end)}. Yields in percentage points; oil, the dollar and consumer prices in percent. CPI is counted from the month it was published, so it runs about two months behind.</p></div>
-    <div class="table-wrap"><table class="stack"><thead><tr><th>Factor</th>${M.spans.map((sp) => `<th class="num">${esc(sp.label)}</th>`).join("")}</tr></thead>
+    <div class="table-wrap"><table class="dense"><thead><tr><th>Factor</th>${M.spans.map((sp) => `<th class="num">${esc(sp.label)}</th>`).join("")}</tr></thead>
     <tbody>${M.factors.map((f) => { const x = M.factor_moves[f.key]; return `<tr><td>${esc(f.label)}</td>${M.spans.map((sp) => `<td class="num">${fmt(x?.moves?.[sp.key], x?.unit)}</td>`).join("")}</tr>`; }).join("")}</tbody></table></div></section>`;
 }
 
@@ -387,11 +397,10 @@ function togetherHTML(tt) {
   };
   const n = tt.now, b = tt.before;
   const verdict = n && n.informative ? { together: "Trading together", less: "Less connected than usual", usual: "Not unusual" }[n.verdict] : "";
-  return `<div class="together"><h2>Co-movement, beyond the market</h2>
-    <p class="small muted">Whether these stocks move as a group once the part explained by ${esc(idx)} is removed. Prices only: separate from how much the theme is discussed and from the basket's return.</p>
+  return `<div class="together"><div class="panel-head"><h2>Co-movement ${help(`Whether these stocks move as a group once the part explained by ${idx} is removed, compared with random baskets of the same size and segment mix. Prices only. Co-movement is not evidence of a business relationship.`)}</h2></div>
     ${verdict ? `<p class="verdict">${verdict}</p>` : n ? `<p class="verdict">Cannot be judged</p>` : ""}
     ${n && n.informative && !n.segment_matched && n.same_segment_share < 0.5 ? `<p class="small muted">Few other monitored companies share these segments, so most random baskets come from other segments. Part of this may be ordinary sector co-movement rather than the theme.</p>` : ""}
-    <ul class="plain">${line(n, "Last 6 months")}${line(b, "6 months before")}</ul>
+    <ul class="plain small">${line(n, "Last 6 months")}${line(b, "6 months before")}</ul>
     ${n && n.excess_corr != null ? `<details><summary>How this is measured</summary><div class="body prose small">
       <p>Daily returns of every monitored company with its own close on at least 90% of the sessions, linked across days without a close. Their covariance is shrunk toward a single-index model on ${esc(tt.index)} (Ledoit and Wolf, 2003; shrinkage ${n.shrinkage.toFixed(2)} for the last 6 months), and each pair's correlation beyond what ${esc(tt.index)} explains is averaged over the basket: ${n.excess_corr.toFixed(3)} now${b && b.excess_corr != null ? `, ${b.excess_corr.toFixed(3)} before` : ""}.</p>
       <p>With this model every pair's level is scaled down by the same factor (one minus the shrinkage), so the comparison with random baskets of the same size and segment mix is the measure, not the level. At a shrinkage of 1 nothing is left beyond the market and no comparison is made. ${n.left_out?.length ? `Left out for too few closes, or no movement apart from the market: ${esc(n.left_out.join(", "))}.` : ""}</p></div></details>` : ""}
@@ -403,9 +412,9 @@ function togetherHTML(tt) {
 function themeStats(t, m, B, held, others) {
   const R = t.performance.returns || {}, r = R["12m"] || R.full_period, b = B[0];
   const g = m.growth_3m, ex = r ? r[`excess_vs_${b}`] : null;
-  const row = S.byId[t.id] || {}, tt = t.trading_together?.now, tone = row.tone?.direction;
+  const row = S.byId[t.id] || {}, tt = t.trading_together?.now, tone = row.tone?.direction, ob = t.observation;
   return `<div class="stats">
-    ${stat("Discussion", esc(STATUS[t.status] || t.status), g == null ? "No three-month comparison yet" : `Latest month ${g.toFixed(2)}× its share three months ago`)}
+    ${stat("Discussion", esc(STATUS[t.status] || t.status), ob && !ob.current ? `Carried from ${esc(fmtDate(ob.last_observed, true))}: no recent evidence` : g == null ? "No three-month comparison yet" : `Latest month ${g.toFixed(2)}× its share three months ago`)}
     ${stat("Companies", m.n_issuers ?? "—", held.length ? `${held.length} held in the basket${others.length ? `, ${others.length} discussing only` : ""}` : "No basket yet")}
     ${stat("Share of text", share(m.share, 1), `Discussed in ${m.persistence_12 ?? "—"} of the last 12 months`)}
     ${stat(r ? `Basket · ${r === R["12m"] ? "12 months" : "since start"}` : "Basket", r ? pct(r.theme) : "—", r ? `${basisTag(r.basis)} ${esc(fmtDate(r.start))} – ${esc(fmtDate(r.end))}` : esc(t.performance.note || "Not valued yet"))}
@@ -472,7 +481,7 @@ async function themePage(id, token) {
   const retRow = (k, label) => {
     const r = R[k];
     if (!r) return `<tr><td class="first">${label}</td><td colspan="${1 + 2 * B.length}" class="muted">Not enough history</td></tr>`;
-    return `<tr><td class="first">${label} ${basisTag(r.basis)}<div class="small muted">${esc(fmtDate(r.start))} – ${esc(fmtDate(r.end))}</div></td><td class="num" data-k="Basket">${pct(r.theme)}</td>${B.map((b) => `<td class="num" data-k="${esc(b)}">${pct(r[b])}</td>`).join("")}${B.map((b) => `<td class="num" data-k="vs ${esc(b)}">${pts(r["excess_vs_" + b])}</td>`).join("")}</tr>`;
+    return `<tr title="${esc(fmtDate(r.start))} – ${esc(fmtDate(r.end))}"><td class="first">${label} ${basisTag(r.basis)}</td><td class="num" data-k="Basket">${pct(r.theme)}</td>${B.map((b) => `<td class="num" data-k="${esc(b)}">${pct(r[b])}</td>`).join("")}${B.map((b) => `<td class="num" data-k="vs ${esc(b)}">${pts(r["excess_vs_" + b])}</td>`).join("")}</tr>`;
   };
   const trend = t.market_trend || {};
   const roles = m.evidence_roles || {};
@@ -495,10 +504,11 @@ async function themePage(id, token) {
   $("#main").innerHTML = `
     <nav class="crumb" aria-label="Breadcrumb"><a href="#/">Overview</a> / <a href="#/themes">Themes</a> / <span class="mono">${esc(t.id)}</span></nav>
     ${notices()}
-    <header class="hero"><div class="card-top"><h1>${esc(t.title)}</h1><span class="meta">${toneTag(S.byId[t.id] || {})} ${chip(t.status)}</span></div>
+    <header class="hero"><div class="card-top"><h1>${esc(t.title)}</h1><span class="meta">${staleTag(t)} ${toneTag(S.byId[t.id] || {})} ${chip(t.status)}</span></div>
       <p class="summary">${esc(t.summary)}</p>
       <p class="note">${labelNote(t)}</p>
       ${t.newly_covered ? `<p class="notice"><span><b>Newly covered.</b> This theme became visible when coverage expanded: ${t.newly_covered.new_companies.length} of its companies were added recently. Their earlier documents show the topic in ${t.newly_covered.backfill_present} of the ${t.newly_covered.of_last} months before ${esc(fmtDate(t.newly_covered.at))}; that is historical analysis, not an earlier discovery. Tracking began when it was published on ${esc(fmtDate(t.published_at))}.</span></p>` : ""}
+      ${t.observation && !t.observation.current ? `<p class="notice warn"><span><b>No recent evidence.</b> For ${t.observation.months_unobserved} month${t.observation.months_unobserved === 1 ? "" : "s"} too few of this theme's companies had documents to tell whether it is still discussed. The status shown is carried from ${esc(fmtDate(t.observation.last_observed, true))}. This is missing evidence, not a decline in discussion.</span></p>` : ""}
       ${t.merged_into ? `<p class="notice warn">Merged into <a href="#/theme/${esc(t.merged_into)}">${esc(S.byId[t.merged_into]?.title || t.merged_into)}</a>. Its history and basket are kept here.</p>` : ""}
       ${topicLine(t)}
     </header>
@@ -507,12 +517,11 @@ async function themePage(id, token) {
 
     <div class="grid g-main">
     <div class="stackv">
-    <section class="panel" aria-labelledby="h-mkt"><div class="panel-head"><div><h2 id="h-mkt">Basket performance</h2>
-      <p class="note">How the companies' shares have done. A separate question from how much the theme is discussed.</p></div>
+    <section class="panel" aria-labelledby="h-mkt"><div class="panel-head"><h2 id="h-mkt">Basket performance ${help("An equal-weight basket of the theme's companies, bought after the theme was decided and not rebalanced, against benchmarks. A separate question from how much the theme is discussed. No trading costs are deducted.")}</h2>
       ${p.status === "ok" ? `<div class="seg" role="group" aria-label="Chart range">${RANGES.map(([k, l]) => `<button type="button" data-range="${k}">${l}</button>`).join("")}</div>` : ""}</div>
       ${p.status === "ok" ? `
         <div class="kpis" id="kpis"></div>
-        <div class="legend"><span><i class="key" style="border-top-color:var(--series-1);border-top-width:3px"></i>Theme basket</span>${B.map((b, i) => `<span><i class="key dash" style="border-top-color:var(--series-${i + 2})"></i>${esc(b)}</span>`).join("")}<span><i class="band-key"></i>Live (observed)</span><span><span class="event-key" aria-hidden="true">▼</span>Event</span>${p.hindsight ? `<span><i class="hind-key"></i>Before entry (hindsight, when shown)</span>` : ""}<span class="muted">Unshaded: simulated</span></div>
+        <div class="legend"><span><i class="key" style="border-top-color:var(--series-1);border-top-width:3px"></i>Theme basket</span>${B.map((b, i) => `<span><i class="key dash" style="border-top-color:var(--series-${i + 2})"></i>${esc(b)}</span>`).join("")}<span><i class="band-key"></i>Live (observed)</span><span class="muted">Unshaded: simulated</span><span><span class="event-key" aria-hidden="true">▼</span>Event</span>${p.hindsight ? `<span><i class="hind-key"></i>Before entry (hindsight)</span>` : ""}</div>
         ${p.hindsight ? `<label class="check"><input type="checkbox" id="hind-toggle"> Show the ${Math.round(p.hindsight.sessions / 21)} months before the basket started (hindsight)</label>` : ""}
         <div id="chart"></div><p class="sr" aria-live="polite" id="readout"></p>
         <p class="note" id="hind-note"></p>
@@ -525,17 +534,16 @@ async function themePage(id, token) {
           <li><b>“vs”</b> is the basket's return minus the benchmark's, in percentage points (pts). Prices through ${esc(fmtDate(S.index.data_as_of?.prices))}.</li>
           <li><b>Simulated or live:</b> ${seriesNote.trim()}</li>
           <li>${benchText(t, B)}</li>
-          ${trend.trend ? `<li>Against ${esc(B[0])} the basket is <b>${esc(trend.trend === "gaining" ? "gaining ground" : trend.trend === "losing" ? "losing ground" : "holding steady")}</b>: its 3-month return is ${num(trend.excess_3m_pp, 1)} pts ${aheadBehind(trend.excess_3m_pp)}, a change of ${num(trend.change_pp_1m, 1)} pts since the previous month-end.</li>` : ""}
+          ${trend.trend ? `<li><b>Three-month lead over ${esc(B[0])}:</b> ${num(trend.excess_3m_pp, 1)} pts at ${esc(fmtDate(trend.as_of))}, ${num(trend.change_pp_1m, 1)} pts on a month earlier${trend.latest_month_pp != null ? `. The latest month contributed ${num(trend.latest_month_pp, 1)} pts; the month that dropped out of the window had been ${num(trend.left_month_pp, 1)} pts${trend.driver === "window" ? ". Most of the change comes from that older month leaving, not from new relative performance" : ""}` : ""}.</li>` : ""}
         </ul></div></details>
         <details><summary>Chart data as a table</summary><div class="body table-wrap" id="chart-table"></div></details>`
         : `<p class="empty">${esc(p.note || "No prices yet.")}</p>`}
     </section>
 
-    <section class="panel" aria-labelledby="h-disc"><div class="panel-head"><div><h2 id="h-disc">Discussion over time</h2>
-        <p class="note">How much and how widely companies talk about this theme. Independent of share prices.</p></div></div>
+    <section class="panel" aria-labelledby="h-disc"><div class="panel-head"><h2 id="h-disc">Discussion over time ${help("The theme's share of all monitored text at each month-end. Independent of share prices.")}</h2></div>
         <div class="legend"><span><i class="key" style="border-top-color:var(--series-1);border-top-width:3px"></i>Share of all monitored text (%)</span><span><span class="event-key up" aria-hidden="true">▲</span>Strengthening or recovered</span><span><span class="event-key down" aria-hidden="true">▼</span>Cooling, levelling off or going quiet</span></div>
         <div id="disc-chart"></div><p class="sr" aria-live="polite" id="disc-readout"></p>
-        <p class="note">Markers are changes of status, decided at each month-end looking back: the average of the last three months against the three before, within a fixed group of companies. One unusually large month can therefore move the status when it arrives and again when it leaves the comparison. Adding or removing companies can move the line without a marker.${t.measures.slice(-36).some((r) => !r.present && r.observed === false) ? " Breaks in the line are months with missing evidence: too few of the theme's companies had documents to tell whether it was discussed. Zero means the documents were there and the theme was not found." : ""}</p>
+        <p class="note">Markers are status changes, decided at each month-end looking back (three months against the three before), so one large month can move the status twice.${t.measures.slice(-36).some((r) => !r.present && r.observed === false) ? " <b>Breaks in the line are missing evidence</b>, not zero: too few of the theme's companies had documents that month. Zero means the documents were there and the theme was not found." : ""}</p>
         <dl class="dl cols">
           <dt>Latest month vs 3 months ago</dt><dd>${m.growth_3m == null ? "No comparison yet" : `${m.growth_3m.toFixed(2)}× (share of comparable companies' text; one month against one month, so it can differ from the status)`}</dd>
           <dt>Share of text</dt><dd>${share(m.share, 1)} of passages in the last six months</dd>
@@ -546,8 +554,7 @@ async function themePage(id, token) {
         </dl>
         <details><summary>Month by month</summary><div class="body" style="padding-left:0">${histTable}</div></details></section>
 
-    <section class="panel evidence" aria-labelledby="h-ev"><div class="panel-head"><div><h2 id="h-ev">What companies are saying</h2>
-      <p class="note">Passages closest to the centre of the theme in the latest month (${esc(fmtDate(t.evidence.latest_t))}), quoted as written, one per company first. Analyst questions show what investors asked; they are not company statements.</p></div></div>
+    <section class="panel evidence" aria-labelledby="h-ev"><div class="panel-head"><h2 id="h-ev">What companies are saying ${help("Passages closest to the centre of the theme, quoted as written, at most one per company. Analyst questions show what investors asked; they are not company statements.")}</h2><span class="small muted">${esc(fmtDate(t.evidence.latest_t, true))}</span></div>
       <div class="quotes">${quotes.slice(0, 4).map((q) => quoteHTML(q, cited)).join("") || `<p class="empty">No passages in the latest month.</p>`}</div>
       ${quotes.length > 4 ? `<details><summary>${quotes.length - 4} more passages</summary><div class="body quotes" style="padding-left:0">${quotes.slice(4).map((q) => quoteHTML(q, cited)).join("")}</div></details>` : ""}
       ${t.evidence.first_t && t.evidence.first_t !== t.evidence.latest_t ? `<details><summary>Passages from when the theme was first seen (${esc(fmtDate(t.evidence.first_t))})</summary><div class="body quotes" style="padding-left:0">${t.evidence.first.map((q) => quoteHTML(q, cited)).join("")}</div></details>` : ""}
@@ -559,14 +566,14 @@ async function themePage(id, token) {
       <p class="note">${held.length ? (p.status === "ok" ? `${held.length} held, bought at the close on ${esc(fmtDate(p.current_entry))} (basket version ${p.current_version}). ${p.coverage_latest != null && p.coverage_latest < 1 ? `<b>${share(1 - p.coverage_latest)} of the basket's value is priced at an older close.</b>` : "Every holding has a current price."}` : "Decided, not bought yet.") : "No basket yet."}</p></div></div>
       ${t.pending_version ? `<p class="notice"><span>A new basket has been decided (${esc(t.pending_version.constituents.map(nameOf).join(", "))}) and will be bought at the first close after ${esc(fmtDate(t.pending_version.entry_after))}.</span></p>` : ""}
       ${held.length ? (p.status === "ok" ? `<div class="table-wrap"><table class="dense"><thead><tr><th>Held in the basket</th><th class="num">Weight</th><th class="num">Return</th><th class="num" title="Points contributed to the basket's return since the current basket version was bought, not over the whole history">Contrib.</th></tr></thead>
-        <tbody>${p.constituents.map((c) => `<tr><td>${company(c.symbol)}<span class="sub">${esc(c.sector || "")}${c.price_status && c.price_status !== "fresh" ? ` · ${esc(priceText(c))}` : ""}</span></td>
+        <tbody>${p.constituents.map((c) => `<tr title="${esc(c.sector || "")}"><td>${company(c.symbol)}${c.price_status && c.price_status !== "fresh" ? `<span class="sub">${esc(priceText(c))}</span>` : ""}</td>
           <td class="num">${share(c.weight_now, 1)}</td><td class="num">${pct(c.return_since_entry)}</td><td class="num">${pts(c.contribution, 2)}</td></tr>`).join("")}</tbody></table></div>
         <details><summary>Starting weights and roles</summary><div class="body table-wrap"><table class="dense"><thead><tr><th>Company</th><th>Role</th><th class="num">Start</th><th class="num">Now</th><th>Price</th></tr></thead>
         <tbody>${p.constituents.map((c) => `<tr><td>${company(c.symbol)}</td><td>${esc(c.role)}</td><td class="num">${share(c.start_weight, 1)}</td><td class="num">${share(c.weight_now, 1)}</td><td>${esc(priceText(c))}</td></tr>`).join("")}</tbody></table></div></details>`
         : `<ul class="plain names">${held.map((c) => `<li>${company(c.symbol)}</li>`).join("")}</ul>`) : ""}
-      <h4>Discussing it, not held (${others.length})</h4>
-      ${others.length ? `<ul class="plain names" style="margin-top:6px">${others.map((x) => `<li>${company(x)}</li>`).join("")}</ul>` : `<p class="note">Every company discussing the theme this month is in the basket.</p>`}
-      <p class="note" style="margin-top:8px">A company joins the basket when enough of its own recent text is about the theme, and a change has to hold for two month-ends before it is bought.${m.new_issuers_3m?.length ? ` New to the discussion in the last 3 months: ${esc(m.new_issuers_3m.map(nameOf).join(", "))}.` : ""}</p>
+      <h4>Discussing it, not held (${others.length}) ${help("A company joins the basket when enough of its own recent text is about the theme, and a change has to hold for two month-ends before it is bought.")}</h4>
+      ${others.length ? `<ul class="plain names" style="margin-top:6px">${others.map((x) => `<li>${company(x)}</li>`).join("")}</ul>` : `<p class="note">None: every company discussing it is held.</p>`}
+      <p class="note" style="margin-top:8px">${m.new_issuers_3m?.length ? `New to the discussion in the last 3 months: ${esc(m.new_issuers_3m.map(nameOf).join(", "))}.` : ""}</p>
     </section>
     ${p.status === "ok" && t.trading_together ? `<section class="panel" id="h-tt">${togetherHTML(t.trading_together)}</section>` : ""}
     ${p.status === "ok" && S.index.macro?.available ? `<section class="panel" id="h-macro">${macroHTML(t.macro)}</section>` : ""}
@@ -624,7 +631,7 @@ function mountDiscussion(t) {
   const dp = hi < 2 ? 2 : 1;
   S.disc?.destroy();
   S.disc = lineChart($("#disc-chart"), { rows, markers, base: null,
-    series: [{ key: "share", label: "Share", color: "var(--series-1)", width: 2.5,
+    series: [{ key: "share", label: "Share", color: "var(--series-1)", width: 2,
       missing: "no evidence" }],
     title: "Share of all monitored text discussing this theme, by month-end",
     format: (v) => `${v.toFixed(dp)}%`, tick: (v) => `${v.toFixed(dp)}%`,
@@ -655,9 +662,10 @@ function mountChart(t) {
     e.at = early ? -1 : sessionIn(all, e);
     e.pre = early && pre.length && e.date.slice(0, 10) >= pre[0].date ? sessionIn(pre, e) : -1;
   });
-  const keys = [{ key: "theme", label: "Basket", color: "var(--series-1)", width: 2.75, optional: true },
+  const DASH = ["6 4", "2 3", "9 3 2 3"];
+  const keys = [{ key: "theme", label: "Basket", color: "var(--series-1)", width: 2.25, optional: true },
     { key: "hind", label: "Same companies before (hindsight)", color: "var(--series-1)", dash: "2 4", width: 2, optional: true },
-    ...B.map((b, i) => ({ key: b, label: b, color: `var(--series-${i + 2})`, dash: "6 4", width: 1.75 }))];
+    ...B.map((b, i) => ({ key: b, label: b, color: `var(--series-${i + 2})`, dash: DASH[i % DASH.length], width: 1.25 }))];
   const draw = () => {
     if (before) range = "all";
     const spec = RANGES.find((r) => r[0] === range);
@@ -690,7 +698,7 @@ function mountChart(t) {
     const ret = (k) => last.v[k] == null ? null : last.v[k] / 100 - 1;
     $("#kpis").innerHTML = `<div class="kpi"><div class="small muted">Basket, ${esc(fmtDate(basket[0].date))} – ${esc(fmtDate(last.date))}</div><div class="v">${pct(ret("theme"))}</div>${basisTag(basis)}</div>
       ${B.map((b) => `<div class="kpi"><div class="small muted">vs ${esc(b)} (${esc(plainPct(ret(b)))})</div><div class="v">${pts(ret("theme") != null && ret(b) != null ? ret("theme") - ret(b) : null)}</div></div>`).join("")}
-      <div class="kpi"><div class="small muted">Priced today</div><div class="v">${share(p.coverage_latest)}</div><div class="small muted">of basket value</div></div>`;
+      ${p.coverage_latest != null && p.coverage_latest < 1 ? `<div class="kpi"><div class="small muted">Priced at a current close</div><div class="v">${share(p.coverage_latest)}</div><div class="small muted">of basket value</div></div>` : ""}`;
     $("#main").querySelectorAll("[data-range]").forEach((b) => {
       b.setAttribute("aria-pressed", String(b.dataset.range === range));
       const sp = RANGES.find((r) => r[0] === b.dataset.range);
