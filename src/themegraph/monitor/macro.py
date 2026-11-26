@@ -40,12 +40,23 @@ T_CLEAR = 2.0
 
 
 def monthly_returns(carry: pd.DataFrame, last_date) -> pd.DataFrame:
-    """Simple monthly returns of carried closes, complete months only."""
+    """Simple monthly returns, complete months only, from the value on each month's
+    last calendar session.
+
+    Pass `PriceBook.observed`, not `PriceBook.carry`: there a month-end value exists
+    only when the security's last real close is within the book's `stale_sessions`
+    of its venue's sessions, so a month without quotes (delisted, suspended, a long
+    gap) has a missing return, and so has the month after it; it is never a 0.0
+    return made from a carried price. The value is the one on the month's last
+    session itself, not the last value seen earlier in the month."""
     px = carry.copy()
     px.index = pd.DatetimeIndex(px.index).tz_convert(None)
-    m = px.resample("ME").last()
+    months = px.index.to_period("M")
+    m = px.loc[~months.duplicated(keep="last")]
+    m.index = m.index.to_period("M")
+    if len(m):
+        m = m.reindex(pd.period_range(m.index[0], m.index[-1], freq="M"))
     r = m.pct_change(fill_method=None)
-    r.index = r.index.to_period("M")
     last = pd.Timestamp(last_date).tz_convert(None) if pd.Timestamp(last_date).tzinfo \
         else pd.Timestamp(last_date)
     if last.normalize() < (last + pd.offsets.BMonthEnd(0)).normalize():
@@ -203,12 +214,18 @@ def factor_moves(F: pd.DataFrame) -> dict:
 def macro_table(book, factors: pd.DataFrame | None, clusters: list[dict],
                 baskets: dict[str, list[str]], index: str) -> dict:
     """Sensitivities of every theme basket and market cluster over each span in
-    SPANS, from up to HISTORY_MONTHS complete months."""
+    SPANS, from up to HISTORY_MONTHS complete months.
+
+    A group's monthly return is the mean over the members with an observed return
+    that month (`monthly_returns` on `book.observed`): a member without quotes is
+    left out of that month, not averaged in as zero. `members` gives, per group,
+    how many members there are, how many had an observed return in the latest
+    complete month, and how many were left out of it for lack of observations."""
     if factors is None or factors.empty:
         return {"available": False,
                 "note": "No macro series stored yet (rates, oil, CPI, dollar): they are "
                         "downloaded with prices on the next refresh."}
-    r = monthly_returns(book.carry, book.last_date).tail(HISTORY_MONTHS)
+    r = monthly_returns(book.observed, book.last_date).tail(HISTORY_MONTHS)
     if index not in r or r[index].notna().sum() < MIN_BLOCKS:
         return {"available": False, "note": "Not enough complete months of prices."}
     F = factors.copy()
@@ -230,6 +247,9 @@ def macro_table(book, factors: pd.DataFrame | None, clusters: list[dict],
         for g, res in span_sensitivities(Y, np.log1p(r[index]), F, h).items():
             per[g][str(h)] = res
     per = {g: v for g, v in per.items() if v}
+    used = {g: int(r[c].iloc[-1].notna().sum()) for g, c in cols.items() if g in per}
+    members = {g: {"members": len(groups[g]), "used": n, "left_out": len(groups[g]) - n}
+               for g, n in used.items()}
     done = F.dropna(how="any")
     return {"available": True, "index": index, "history_months": HISTORY_MONTHS,
             "start": str(r.index[0]), "end": str(done.index[-1]) if len(done) else None,
@@ -237,6 +257,8 @@ def macro_table(book, factors: pd.DataFrame | None, clusters: list[dict],
             "factors": [{"key": k, "label": FACTORS[k]} for k in F.columns],
             "missing": absent + short,
             "factor_moves": factor_moves(F),
+            "members": {"clusters": {g[2:]: v for g, v in members.items() if g.startswith("c:")},
+                        "themes": {g[2:]: v for g, v in members.items() if g.startswith("t:")}},
             "clusters": {g[2:]: v for g, v in per.items() if g.startswith("c:")},
             "themes": {g[2:]: v for g, v in per.items() if g.startswith("t:")}}
 
@@ -311,6 +333,12 @@ def _company_span(r: pd.DataFrame, F: pd.DataFrame, sector: dict[str, str], inde
     syms = [s for s in sector if s in rw.columns and rw[s].notna().all() and rw[s].std() > 0]
     if len(syms) < 3:
         return {"available": False, "note": "Too few companies with the full history."}
+    # Left out because quotes stopped or paused inside the window (an unobserved
+    # month after the company's first observed one), as opposed to a history that
+    # starts after the window does.
+    seen = rw.notna()
+    unobserved = sum(1 for s in sector if s in rw.columns and s not in syms
+                     and bool((seen[s].cummax() & ~seen[s]).any()))
     Y, m = np.log1p(rw[syms].to_numpy()), np.log1p(rw[index].to_numpy())
     obs = _span_betas(Y, m, Fw, h)                            # factors x companies
     gap = max(h, 12)
@@ -362,6 +390,7 @@ def _company_span(r: pd.DataFrame, F: pd.DataFrame, sector: dict[str, str], inde
     companies.sort(key=lambda c: (-c["sensitive"], -c["n_clear"], c["joint_p"], c["symbol"]))
     return {"available": True, "months": W, "start": str(rw.index[0]), "end": str(rw.index[-1]),
             "n_companies": len(syms), "left_out": len(sector) - len(syms),
+            "left_out_unobserved": unobserved,
             "sensitive": int(len(sens)), "factors": keys, "factors_left_out": left,
             "multi": sum(c["n_clear"] >= 2 for c in companies),
             "null": {"mean": round(float(counts.mean()), 1),
@@ -386,10 +415,16 @@ def company_macro(book, factors: pd.DataFrame | None, universe, index: str,
        paths are, cut at `min_corr`; named after the strongest average sensitivity.
     4. Chance comparison: the number of companies that would pass in each slid
        history. `beyond_chance` says whether the real count beats 95% of them.
+
+    Returns are observed ones (`monthly_returns` on `book.observed`). A company
+    with an unobserved month inside a span's window is left out of that span, by
+    the rule already in force that every company in a span has the full window:
+    the chance comparison slides one common history, so a company cannot enter
+    with a shorter one. `left_out_unobserved` counts those among `left_out`.
     """
     if factors is None or factors.empty:
         return {"available": False, "note": "No macro series stored yet."}
-    r = monthly_returns(book.carry, book.last_date).tail(HISTORY_MONTHS)
+    r = monthly_returns(book.observed, book.last_date).tail(HISTORY_MONTHS)
     F = factors.copy()
     F.index = pd.DatetimeIndex(F.index).to_period("M")
     F = F.loc[~F.index.duplicated(keep="last")].reindex(r.index)

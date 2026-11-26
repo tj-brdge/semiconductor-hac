@@ -86,12 +86,38 @@ def load_inputs(fixtures: bool, as_of: dt.date, log=print,
     store = _store()
     mcfg = load_monitor(profile.monitor)
     # The store is shared by profiles: read only this universe's companies.
-    return {"cfg": cfg, "universe": u, "prices": load_prices(store, universe=u),
-            "docs": load_documents(store, universe=u), "embedder": make_embedder(cfg.embedding),
+    prices, docs = load_prices(store, universe=u), load_documents(store, universe=u)
+    # `as_of` in the past is an information cutoff, as on the fixture path: every
+    # layer downstream reads these inputs only. A run dated today (the default)
+    # reads the store as it is.
+    past = as_of < dt.date.today()
+    if past:
+        prices, docs = cut_inputs(prices, docs, as_of)
+    return {"cfg": cfg, "universe": u, "prices": prices,
+            "docs": docs, "embedder": make_embedder(cfg.embedding),
             # A month with no CPI figure counts as "nothing published" (macro.py).
-            "factors": load_factors(store, cfg, fill_unpublished=3),
+            "factors": load_factors(store, cfg, fill_unpublished=3,
+                                    as_of=as_of if past else None),
             "cache": DATA / "cache", "fixture": False,
+            # Not cut: the watermark records when a download was made, not market data.
             "doc_watermark": document_watermark(store, u, mcfg.completeness.min_symbol_share)}
+
+
+def cut_inputs(prices: pd.DataFrame, docs: pd.DataFrame,
+               as_of: dt.date) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Prices and documents usable at the end of `as_of` (data/pit.py): rows whose
+    `available_at` is at or before 23:59:59 UTC that day; prices also need a
+    session date on or before it."""
+    from ..data.pit import as_of as usable
+    cut = _cut(as_of)
+    if len(prices):
+        prices = usable(prices, cut)
+        day = pd.to_datetime(prices["date"])
+        day = day.dt.tz_localize(None) if day.dt.tz is not None else day
+        prices = prices.loc[day.dt.normalize() <= pd.Timestamp(as_of)]
+    if len(docs):
+        docs = usable(docs, cut)
+    return prices.reset_index(drop=True), docs.reset_index(drop=True)
 
 
 DOC_TABLES = ("documents_transcripts", "documents_edgar")

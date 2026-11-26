@@ -325,10 +325,19 @@ def load_documents(store: Store, upto: str | None = None,
 
 
 def load_factors(store: Store, cfg: PipelineConfig, upto: str | None = None,
-                 fill_unpublished: int = 0) -> pd.DataFrame | None:
+                 fill_unpublished: int = 0, as_of=None) -> pd.DataFrame | None:
+    """Month-end factor table from the stored macro series. `as_of` (a date): only
+    values available by the end of that day (data/pit.py: a daily value on its own
+    date, CPI for reference month M from day 1 of M + the release lag), cut before
+    anything is filled or differenced, so later values cannot reach earlier months."""
     if not store.vintages("macro"):
         return None
     m = store.read("macro", upto=upto)
+    if as_of is not None:
+        from .data.pit import as_of as usable
+        m = usable(m, as_of)
+        if not len(m):
+            return None
     daily, kinds, cpi = {}, {}, None
     for name, g in m.groupby("series"):
         s = g.set_index(pd.to_datetime(g["date"]))["value"].sort_index()

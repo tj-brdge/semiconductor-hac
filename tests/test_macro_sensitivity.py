@@ -181,7 +181,8 @@ def _book(seed, planted=True, n=40, months=38):
                        lvl.set_index(ends)])
     u = NS(issuers=[NS(symbol=f"S{i:02d}", segment="a" if i < 20 else "b") for i in range(n)],
            sectors={"a": "Sector A", "b": "Sector B"})
-    return NS(carry=carry, last_date=ends[-1]), F, u
+    # Every price here is a real close, so the observed view equals the carried one.
+    return NS(carry=carry, observed=carry, last_date=ends[-1]), F, u
 
 
 def test_each_company_is_measured_against_the_factors_then_clustered():

@@ -66,6 +66,13 @@ def _latest_measure(th: dict) -> dict:
 
 
 def _market_trend(hist: list[dict], bench: str, threshold_pp: float) -> dict:
+    """Whether the basket's 3-month lead over the benchmark widened or narrowed since
+    the previous month-end, and why. The classification is unchanged: the change in
+    the 3-month excess against `threshold_pp`. Added beside it: the excess over the
+    month that entered the window and over the month that left it. `driver` says
+    which of the two moved the figure more in the direction of the change:
+    "latest_month" (new relative performance) or "window" (an old month dropping
+    out). It is a reading aid from two recorded numbers, not a score."""
     key = f"excess_3m_vs_{bench}"
     pts = [h for h in hist if h.get(key) is not None]
     if len(pts) < 2:
@@ -73,8 +80,46 @@ def _market_trend(hist: list[dict], bench: str, threshold_pp: float) -> dict:
     change = (pts[-1][key] - pts[-2][key]) * 100
     trend = "gaining" if change >= threshold_pp else "losing" if change <= -threshold_pp \
         else "steady"
-    return {"trend": trend, "excess_3m_pp": round(pts[-1][key] * 100, 2),
-            "change_pp_1m": round(change, 2)}
+    out = {"trend": trend, "excess_3m_pp": round(pts[-1][key] * 100, 2),
+           "change_pp_1m": round(change, 2), "as_of": pts[-1]["t"],
+           "latest_month_pp": None, "left_month_pp": None, "driver": None}
+    entered, left = pts[-1].get(f"entered_excess_vs_{bench}"), pts[-1].get(
+        f"left_excess_vs_{bench}")
+    if entered is not None and left is not None:
+        sign = 1 if change >= 0 else -1
+        out.update(latest_month_pp=round(entered * 100, 2),
+                   left_month_pp=round(left * 100, 2),
+                   driver="latest_month" if sign * entered >= sign * -left else "window")
+    return out
+
+
+def observation(th: dict) -> dict:
+    """How current the evidence behind a theme's status is. A month in which too few
+    of the theme's companies had documents is *unobserved*: nothing can be said about
+    discussion, and the status is carried from the last observed month. That is
+    different from a month that was observed and in which the theme was not found.
+    The two are counted apart so missing evidence is never read as decline."""
+    rows = th.get("measures", [])
+    unobserved = absent = 0
+    for r in reversed(rows):
+        if r.get("present"):
+            break
+        if r.get("observed") is False:
+            unobserved += 1
+        else:
+            absent += 1
+    trailing = 0                      # unobserved months at the very end only
+    for r in reversed(rows):
+        if r.get("present") or r.get("observed") is not False:
+            break
+        trailing += 1
+    last_obs = next((r["t"] for r in reversed(rows)
+                     if r.get("present") or r.get("observed") is not False), None)
+    last_present = next((r["t"] for r in reversed(rows) if r.get("present")), None)
+    return {"last_observed": last_obs, "last_present": last_present,
+            "months_unobserved": trailing, "months_absent_since_present": absent,
+            "months_unobserved_since_present": unobserved,
+            "current": trailing == 0}
 
 
 def theme_document(th: dict, perf: dict, snapshots: list[str], mcfg) -> dict:
@@ -104,6 +149,7 @@ def theme_document(th: dict, perf: dict, snapshots: list[str], mcfg) -> dict:
         "name_history": th["name_history"], "status_history": th["status_history"],
         "lineage": th["lineage"], "merged_into": th.get("merged_into"),
         "status_points": status_points(th),
+        "observation": observation(th),
         "evidence": th["evidence"],
         "measures": [{k: v for k, v in r.items()} for r in th["measures"]],
         "basket_versions": th["versions"],
@@ -379,6 +425,7 @@ def summary_row(doc: dict, bench: str) -> dict:
         "quote": representative_quote(doc),
         "label_status": doc["label"].get("status"), "status": doc["status"],
         "route": doc["route"], "basis": doc["basis"],
+        "observation": doc.get("observation"),
         "published_snapshot": doc["published_snapshot"], "last_seen": doc["last_seen"],
         "published_at": doc["published_at"], "benchmarks": doc["benchmarks"],
         "emergence": {"growth_3m": m.get("growth_3m"), "share": m.get("share"),
@@ -448,6 +495,11 @@ def overview_lists(rows: list[dict], mcfg, snapshots: list[str] | None = None) -
                 (r for r in trend if r["market"]["trend"]["trend"] == "losing"),
                 key=lambda r: r["market"]["trend"]["change_pp_1m"])],
             "cooling": [r["id"] for r in rows if r["status"] == "cooling"],
+            # Status carried from an earlier month because too few of the theme's
+            # companies had documents: missing evidence, not a decline.
+            "unobserved": [r["id"] for r in rows
+                           if (r.get("observation") or {}).get("months_unobserved")
+                           and r["status"] not in ("inactive", "merged")],
             # Published through the newly-covered route in the last six months:
             # visible because coverage expanded, not because discussion grew.
             "newly_covered": [r["id"] for r in rows if r["route"] == "newly_covered"

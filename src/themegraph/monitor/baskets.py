@@ -78,6 +78,20 @@ class PriceBook:
         out = np.where(pd.isna(lastv), 10**6, pos_v - pos_l)
         return pd.Series(out, index=self.cal)
 
+    @property
+    def observed(self) -> pd.DataFrame:
+        """Carried closes for statistics: a day's value counts as observed only when
+        the security's last real close is at most `stale_sessions` of its own venue's
+        sessions old (the rule that reports a holding as stale); otherwise it is
+        missing (NaN), never a zero return. Verified venue closures are not sessions
+        (eval/returns.py: `venue_sessions`), so a holiday week leaves no gap.
+        Valuation does not read this: a basket is always valued from `carry`."""
+        if getattr(self, "_observed", None) is None:
+            miss = pd.DataFrame({s: self.missing_sessions(s) for s in self.carry.columns},
+                                index=self.cal)
+            self._observed = self.carry.where(miss <= self.stale)
+        return self._observed
+
 
 def _segment(book: PriceBook, members: list[str], entry: pd.Timestamp,
              end: pd.Timestamp | None) -> dict:
@@ -345,38 +359,72 @@ def _live_from(theme: dict, version: dict, go_live: str | None) -> pd.Timestamp 
 
 
 def _participation(book: PriceBook, members: list[str], benchmarks: list[str]) -> dict:
+    """How many constituents rose, and beat the first benchmark, over three months.
+
+    Eligible: a constituent with an observed price (`PriceBook.observed`) at both
+    ends of the window. One whose quotes stopped (delisted, suspended, a long gap)
+    has a carried value but no return to speak of: it is not eligible, and is
+    counted in `unobserved` instead of as "eligible, not positive"."""
     k = TRAILING["3m"]
     if len(book.cal) <= k:
         return {"eligible": 0}
     a, b = book.cal[-1 - k], book.cal[-1]
-    r = {}
+    seen = book.observed
+    r, unobserved = {}, 0
     for s in members:
         if s in book.carry and pd.notna(book.carry[s].get(a)) and pd.notna(book.carry[s].get(b)):
-            r[s] = book.carry[s][b] / book.carry[s][a] - 1
+            if pd.notna(seen[s].get(a)) and pd.notna(seen[s].get(b)):
+                r[s] = book.carry[s][b] / book.carry[s][a] - 1
+            else:
+                unobserved += 1
     spy = benchmarks[0] if benchmarks else None
     rb = (book.carry[spy][b] / book.carry[spy][a] - 1) if spy in book.carry else None
     return {"eligible": len(r), "positive": int(sum(x > 0 for x in r.values())),
-            f"beat_{spy}": int(sum(x > rb for x in r.values())) if rb is not None else None}
+            f"beat_{spy}": int(sum(x > rb for x in r.values())) if rb is not None else None,
+            "unobserved": unobserved}
 
 
 def market_history(perf: dict, snapshots: list[str]) -> list[dict]:
     """3-month return and excess vs the first benchmark at each month-end, from the
-    index itself (for 'gaining / losing market strength')."""
+    index itself (for 'gaining / losing ground').
+
+    Two 3-month windows one month apart share two months. The change in the 3-month
+    excess is therefore the excess over the stretch that entered (since the previous
+    month-end) minus the excess over the stretch that left the window. Both are
+    recorded, so a reader can tell new outperformance from an old month dropping
+    out; nothing here changes how a trend is classified."""
     if perf.get("status") != "ok":
         return []
     s = pd.DataFrame(perf["series"]).set_index("date")
     s.index = pd.to_datetime(s.index)
     b = [c for c in s.columns if c not in ("theme", "coverage", "basis")]
-    out = []
+    n3 = TRAILING["3m"]
+
+    def excess(i0: int, i1: int) -> float | None:
+        """Basket return minus the benchmark's between two rows of the index."""
+        if not b or i0 < 0 or i1 <= i0:
+            return None
+        a, z = s.iloc[i0], s.iloc[i1]
+        if pd.isna(a[b[0]]) or pd.isna(z[b[0]]) or not a[b[0]] or not a["theme"]:
+            return None
+        return float(z["theme"] / a["theme"] - 1) - float(z[b[0]] / a[b[0]] - 1)
+
+    out, prev = [], None
     for t in snapshots:
         d = pd.Timestamp(t).tz_localize(None).normalize()
-        hist = s.loc[s.index <= d]
-        if len(hist) <= TRAILING["3m"]:
+        pos = int(s.index.searchsorted(d, side="right")) - 1   # last session on or before
+        if pos < n3:
             continue
-        a = hist.iloc[-1 - TRAILING["3m"]]
-        z = hist.iloc[-1]
+        a, z = s.iloc[pos - n3], s.iloc[pos]
         row = {"t": t, "ret_3m": float(z["theme"] / a["theme"] - 1)}
-        if b and pd.notna(z[b[0]]) and pd.notna(a[b[0]]):
-            row[f"excess_3m_vs_{b[0]}"] = row["ret_3m"] - float(z[b[0]] / a[b[0]] - 1)
+        ex = excess(pos - n3, pos)
+        if ex is not None:
+            row[f"excess_3m_vs_{b[0]}"] = ex
+        if prev is not None and prev < pos:
+            entered, left = excess(prev, pos), excess(prev - n3, pos - n3)
+            if entered is not None and left is not None:
+                row[f"entered_excess_vs_{b[0]}"] = entered
+                row[f"left_excess_vs_{b[0]}"] = left
+        prev = pos
         out.append(row)
     return out
