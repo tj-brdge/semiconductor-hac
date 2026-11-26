@@ -685,6 +685,35 @@ def _kappa(a, b) -> float | None:
     return P.cohen_kappa(a, b) if len(a) else None
 
 
+def predictions(p: pd.DataFrame, answers: Path, model: str = MODEL,
+                ) -> tuple[pd.DataFrame, list[str]]:
+    """Both methods' labels for the sampled passages `p` (as `_passages` gives them):
+    `p` without the text plus the prediction columns, and the reason of every
+    invalid answer. Raises `Refused` when a passage has no model answer."""
+    cache = load_answers(answers)
+    recs = [cache.get(P.cache_key(t, model)) for t in p["text"]]
+    absent = [pid for pid, r in zip(p["passage_id"], recs, strict=True) if r is None]
+    if absent:
+        raise Refused(f"{len(absent)} sampled passages have no model answer in {answers} "
+                      f"(e.g. {absent[0]}): finish `run` first")
+    preds, reasons = [], []
+    for text, role, rec in zip(p["text"], p["role"], recs, strict=True):
+        bad = {"speaker_effect": P.INVALID, "opposite_party": None,
+               "statement_type": P.INVALID, "problems": [rec["invalid_reason"]]}
+        pr = bad if rec["invalid_reason"] else P.prediction(rec["answer"], text)
+        reasons += pr["problems"][:1]
+        preds.append({"baseline": P.baseline_label(text, role),
+                      "baseline_raw_analyst": P.baseline_label(
+                          text, role, score_analyst_questions=True),
+                      "extraction": pr["speaker_effect"],
+                      "extraction_opposite_party": {True: "yes", False: "no"}.get(
+                          pr["opposite_party"], P.INVALID),
+                      "extraction_statement_type": pr["statement_type"]})
+    d = pd.concat([p.drop(columns=["text"]).reset_index(drop=True), pd.DataFrame(preds)],
+                  axis=1)
+    return d, reasons
+
+
 def score(work: Path, answers: Path, *, model: str = MODEL, n_boot: int = P.N_BOOT,
           log=print) -> dict:
     """Agreement, adjudication, both methods' labels and the declared criteria.
@@ -730,27 +759,7 @@ def score(work: Path, answers: Path, *, model: str = MODEL, n_boot: int = P.N_BO
         return {"status": "needs_adjudication", "kappa": kappa, "disagreements": len(d)}
     final = _adjudicated(work, lab, differ)
 
-    cache = load_answers(answers)
-    recs = [cache.get(P.cache_key(t, model)) for t in p["text"]]
-    absent = [pid for pid, r in zip(p["passage_id"], recs, strict=True) if r is None]
-    if absent:
-        raise Refused(f"{len(absent)} sampled passages have no model answer in {answers} "
-                      f"(e.g. {absent[0]}): finish `run` first")
-    preds, reasons = [], []
-    for text, role, rec in zip(p["text"], p["role"], recs, strict=True):
-        bad = {"speaker_effect": P.INVALID, "opposite_party": None,
-               "statement_type": P.INVALID, "problems": [rec["invalid_reason"]]}
-        pr = bad if rec["invalid_reason"] else P.prediction(rec["answer"], text)
-        reasons += pr["problems"][:1]
-        preds.append({"baseline": P.baseline_label(text, role),
-                      "baseline_raw_analyst": P.baseline_label(
-                          text, role, score_analyst_questions=True),
-                      "extraction": pr["speaker_effect"],
-                      "extraction_opposite_party": {True: "yes", False: "no"}.get(
-                          pr["opposite_party"], P.INVALID),
-                      "extraction_statement_type": pr["statement_type"]})
-    d = pd.concat([p.drop(columns=["text"]).reset_index(drop=True), pd.DataFrame(preds)],
-                  axis=1)
+    d, reasons = predictions(p, answers, model)
     d["reader_a"], d["reader_b"] = lab["speaker_effect_a"], lab["speaker_effect_b"]
     d["adjudicated"], d["hard_case"] = final["speaker_effect"].to_numpy(), hard
     res = P.score(d[["passage_id", "symbol", "reader_a", "reader_b", "adjudicated",

@@ -77,3 +77,54 @@ $PILOT status
 | `export.parquet`, `export_report.json`, reader sheets, `READER_GUIDE.md`, `disagreements.csv`, `adjudicated.csv` | `runs/impact_pilot/` | No (passage text) |
 | `answers.jsonl` (the answer cache) | `<state>/experimental/impact_pilot/` | No |
 | `sample.csv`, `labels_final.csv`, `predictions.csv`, `result.md` | `runs/impact_pilot/`, then copied to `docs/experiments/impact_pilot/` | Yes: `sample.csv` before the model run, the rest after `score` |
+
+## Version 2: invited labellers
+
+Protocol: `ECONOMIC_IMPACT_PILOT_V2.md` (awaiting the owner's approval). It replaces steps 3 and 5
+above; `export`, `sample` and `run` are the same commands. The two reader sheets that `sample`
+writes are not used, and `score` is not run. Logic: `experimental/impact_crowd.py` (rules) and
+`impact_crowd_run.py` (files). None of the `crowd-*` commands uses a model or the network.
+
+| # | Command | What it does |
+|---|---|---|
+| 1 | `$PILOT export`, `$PILOT sample` | As above. Commit `sample.csv` as above. |
+| 2 | `$PILOT crowd-codes --n 24 --out runs/impact_pilot/codes.txt` | Makes random labeller codes (four consonants, four digits). 300 passages need at least 20 labellers at 3 labels a passage and 45 passages each; invite 24 to 26. |
+| 3 | `$PILOT crowd-pack --codes runs/impact_pilot/codes.txt` | Writes `runs/impact_pilot/crowd/` (the page and one data file per code) and `crowd_assignment.csv`. Refuses a code that looks like a name or an email, too few codes, or a folder that fails its own blindness check. `--per-passage 5` needs 34 codes. |
+| 4 | Invite | See below. |
+| 5 | `$PILOT crowd-collect runs/impact_pilot/returned/labels_*.json` | Checks every returned file, applies the attention-check rule, writes `crowd_labels/`. Exit code 2 and no `adjudicated.csv` while too few passages are resolved. Pass every file returned so far, each time. |
+| 6 | (if needed) add new codes to `codes.txt`, then `crowd-pack` again, invite, `crowd-collect` again | New labellers get only the passages still needing labels. Existing data files are not changed. |
+| 7 | Commit the labels (below), then `$PILOT run --confirm-cost` | The model run, as above, only after the commit. |
+| 8 | `$PILOT crowd-score` | Version 1's criteria against the majority labels; writes `result_v2.md` and `predictions.csv`. Refuses a hand-edited `adjudicated.csv`. |
+
+### What to send each labeller
+
+- Keep, outside the repository, your own list of who has which code. No tool here reads or writes it.
+- **Hosted:** put the contents of `runs/impact_pilot/crowd/` on a static host that does not list
+  folders and is not indexed, and send each person their own link: `<address>/index.html?code=<their code>`.
+- **By file instead:** send `index.html` and that person's `data/<code>.json` only. They open
+  `index.html`, and choose the data file when the page asks.
+- Tell them: about 30 to 40 minutes; they can stop and continue on the same device; at the end the
+  page downloads `labels_<code>.json`, which they send back to you.
+- Never send `sample.csv`, `crowd_assignment.csv`, another person's data file or anything from
+  `crowd_labels/`. Do not discuss passages with labellers while collection is open.
+
+### What to collect
+
+- Save each returned `labels_<code>.json` in `runs/impact_pilot/returned/`. If someone sends a
+  newer file, replace the old one (two files with one code are both rejected).
+- Read `crowd_labels/crowd_report.md` after each `crowd-collect`: rejected files and why, who is
+  valid, excluded, incomplete or not returned, agreement, unresolved passages, and how many labels
+  are still needed and from whom. `labels_needed.csv` lists the passages.
+- Do not edit a returned file or `adjudicated.csv`. A rejected file goes back to its labeller.
+- Collection closes when the labels are committed. Then remove the folder from the host.
+
+### What is committed, and what is not
+
+| File | In git? |
+|---|---|
+| `crowd_assignment.csv`; from `crowd_labels/`: `labellers.csv`, `labels_long.csv`, `adjudicated.csv`, `crowd_report.md`, `crowd_summary.json` (codes and labels only) | Yes, to `docs/experiments/impact_pilot/`, **before the model run** |
+| `predictions.csv`, `result_v2.md` | Yes, after `crowd-score` |
+| `codes.txt` | May be committed (codes only); not needed |
+| The list of who has which code | **Never** |
+| `returned/labels_*.json` (they hold the free-text comments) | **Never** |
+| `crowd/` (passage text), `export.parquet` | No |

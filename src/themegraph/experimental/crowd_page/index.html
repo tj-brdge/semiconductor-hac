@@ -1,0 +1,557 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'">
+<title>Passage labelling</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --bg: #f5f5f2; --surface: #ffffff; --ink: #1b1e22; --muted: #57606a; --line: #cfd4d9;
+  --accent: #1d4a73; --on-accent: #ffffff; --chosen: #e6eef6; --warn: #8a4b00;
+  --focus: #0b5cad;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #131619; --surface: #1b1f23; --ink: #e7e9eb; --muted: #a0a9b3; --line: #3a4149;
+    --accent: #9cc3e6; --on-accent: #0f1d2a; --chosen: #223344; --warn: #f0b76a;
+    --focus: #9cc3e6;
+  }
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+header.bar {
+  border-bottom: 1px solid var(--line); background: var(--surface);
+}
+.bar-in, main { max-width: 46rem; margin: 0 auto; padding: 0 1rem; }
+.bar-in { display: flex; align-items: center; justify-content: space-between; gap: 1rem; min-height: 3rem; }
+.brand { font-weight: 600; letter-spacing: .01em; }
+.who { color: var(--muted); font-size: .875rem; font-variant-numeric: tabular-nums; }
+main { padding-top: 1.5rem; padding-bottom: 4rem; }
+h1 { font-size: 1.5rem; line-height: 1.25; margin: 0 0 .75rem; font-weight: 650; }
+h2 { font-size: 1.0625rem; margin: 1.75rem 0 .5rem; font-weight: 650; }
+p { margin: 0 0 .75rem; }
+.lead { font-size: 1.0625rem; max-width: 62ch; }
+.muted { color: var(--muted); }
+.small { font-size: .875rem; }
+ol.rules { margin: 0 0 .75rem; padding-left: 1.4rem; max-width: 66ch; }
+ol.rules li { margin: 0 0 .4rem; }
+details { border: 1px solid var(--line); border-radius: 6px; background: var(--surface); padding: .6rem .9rem; margin: .75rem 0 0; }
+summary { cursor: pointer; font-weight: 600; }
+details[open] summary { margin-bottom: .6rem; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 1.1rem 1.25rem; }
+.row { display: flex; flex-wrap: wrap; gap: .75rem 1rem; align-items: end; }
+.field { display: flex; flex-direction: column; gap: .3rem; min-width: 12rem; flex: 1 1 12rem; }
+.field > span, label.plain { font-size: .875rem; font-weight: 600; }
+input[type=text], select, textarea {
+  font: inherit; color: var(--ink); background: var(--surface);
+  border: 1px solid var(--muted); border-radius: 6px; padding: .55rem .65rem; width: 100%;
+}
+textarea { min-height: 3.2rem; resize: vertical; }
+input[type=text].code { text-transform: uppercase; letter-spacing: .12em; font-variant-numeric: tabular-nums; max-width: 14rem; }
+button {
+  font: inherit; font-weight: 600; border-radius: 6px; padding: .65rem 1.15rem; min-height: 2.75rem;
+  border: 1px solid var(--accent); background: var(--accent); color: var(--on-accent); cursor: pointer;
+}
+button.quiet { background: transparent; color: var(--accent); }
+button.link { background: none; border: 0; color: var(--accent); padding: .25rem 0; min-height: 0; font-weight: 500; text-decoration: underline; }
+button[disabled] { opacity: .45; cursor: not-allowed; }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+[tabindex="-1"]:focus { outline: none; }
+label.plain { display: inline-block; margin-bottom: .35rem; }
+.below { margin-top: 1.25rem; }
+.progress { display: flex; align-items: center; gap: .75rem; margin: 0 0 1rem; }
+.progress .count { font-size: .875rem; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.track { flex: 1; height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
+.track > div { height: 100%; width: 0; background: var(--accent); }
+.meta { display: flex; flex-wrap: wrap; gap: .15rem 1rem; margin: 0 0 .6rem; font-size: .875rem; color: var(--muted); }
+.meta strong { color: var(--ink); font-size: 1rem; flex-basis: 100%; }
+.passage {
+  margin: 0; padding: .1rem 0 .1rem 1rem; border-left: 3px solid var(--accent);
+  font-size: 1.0625rem; line-height: 1.65; max-width: 68ch; white-space: pre-wrap; overflow-wrap: anywhere;
+}
+fieldset { border: 0; margin: 1.4rem 0 0; padding: .6rem .75rem .75rem; border-left: 3px solid transparent; border-radius: 0 6px 6px 0; min-width: 0; }
+fieldset.active { border-left-color: var(--accent); background: color-mix(in srgb, var(--chosen) 45%, transparent); }
+legend { font-weight: 650; padding: 0; float: left; width: 100%; margin: 0 0 .15rem; }
+legend + * { clear: both; }
+.hint { font-size: .875rem; color: var(--muted); margin: 0 0 .55rem; max-width: 66ch; }
+.opts { display: grid; grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr)); gap: .5rem; }
+@media (min-width: 44rem) { .opts { grid-template-columns: repeat(var(--n, 4), minmax(0, 1fr)); } }
+.opt {
+  position: relative; display: flex; align-items: center; gap: .6rem; min-height: 3rem;
+  padding: .55rem .75rem; border: 1px solid var(--muted); border-radius: 6px; background: var(--surface); cursor: pointer;
+  line-height: 1.25; -webkit-tap-highlight-color: transparent;
+}
+.opt input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.opt kbd {
+  font: 600 .8125rem/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; min-width: 1.5rem; height: 1.5rem;
+  display: inline-grid; place-items: center; border: 1px solid var(--muted); border-radius: 4px; color: var(--muted);
+}
+.opt:has(input:checked) { border-color: var(--accent); background: var(--chosen); box-shadow: inset 0 0 0 1px var(--accent); font-weight: 600; }
+.opt:has(input:checked) kbd { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.opt:has(input:focus-visible) { outline: 3px solid var(--focus); outline-offset: 2px; }
+.nav { display: flex; justify-content: space-between; align-items: center; gap: .75rem; margin-top: 1.5rem; flex-wrap: wrap; }
+.nav .right { display: flex; gap: .75rem; align-items: center; margin-left: auto; }
+.note { color: var(--warn); font-size: .875rem; min-height: 1.3rem; margin: .5rem 0 0; text-align: right; }
+.keys { margin-top: 1.25rem; }
+pre.out { white-space: pre-wrap; overflow-wrap: anywhere; }
+textarea.out { min-height: 9rem; font: .8125rem/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+[hidden] { display: none !important; }
+@media (max-width: 30rem) {
+  main { padding-top: 1rem; }
+  .card { padding: .9rem .85rem; border-radius: 6px; }
+  h1 { font-size: 1.3125rem; }
+  .opts { grid-template-columns: 1fr; }
+  fieldset { padding-left: .6rem; padding-right: 0; }
+  .nav button { flex: 1; }
+  .nav .right { flex: 1; }
+  .keys { display: none; }
+}
+@media (prefers-reduced-motion: no-preference) { .track > div { transition: width .2s; } }
+</style>
+</head>
+<body>
+<header class="bar"><div class="bar-in">
+  <span class="brand">Passage labelling</span>
+  <span class="who" id="who"></span>
+</div></header>
+
+<main>
+<noscript><p>This page needs JavaScript to show your passages. Nothing is sent anywhere: your answers stay in this browser until you download them.</p></noscript>
+
+<!-- 1. Code entry and loading -->
+<section id="s-load" hidden aria-labelledby="h-load">
+  <h1 id="h-load">Enter your code</h1>
+  <p class="lead">You were sent a personal code with your invitation. It is how your answers are recorded: under the code, not under your name.</p>
+  <form id="f-code" class="card" novalidate>
+    <div class="row">
+      <label class="field" for="code"><span>Your code</span>
+        <input class="code" type="text" id="code" name="code" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="8" aria-describedby="load-msg">
+      </label>
+      <button type="submit">Open my passages</button>
+    </div>
+    <p class="note" id="load-msg" role="alert" style="text-align:left"></p>
+    <div id="pick" hidden>
+      <p class="small">If you were sent a data file with your invitation (its name is your code followed by <code>.json</code>), choose it here instead.</p>
+      <label class="plain" for="file">Data file</label><br>
+      <input type="file" id="file" accept=".json,application/json">
+    </div>
+  </form>
+</section>
+
+<!-- 2. Welcome -->
+<section id="s-welcome" hidden aria-labelledby="h-welcome">
+  <h1 id="h-welcome" tabindex="-1">Thank you for helping</h1>
+  <p class="lead">You will read <strong id="w-n"></strong> short passages from company earnings calls and regulatory filings, and answer three quick questions about each. It takes about <strong>30 to 40 minutes</strong>. You can stop at any time and come back to this link on the same device: your progress is kept in this browser.</p>
+  <p class="lead">The purpose is a research check: your answers, together with those of other invited finance professionals, become the reference that two automatic ways of reading such passages are compared with. There are no trick questions and no scores for you. A few passages are invented quality-check items with known answers; they look like the others.</p>
+  <p class="muted">Your answers are recorded under your code, not your name. This page sends nothing over the network. At the end you download one small file and send it back to the person who invited you.</p>
+
+  <h2>How to label</h2>
+  <ol class="rules" id="short-rules">
+    <li>Go by what the passage says, not by what you know about the company or what happened later.</li>
+    <li>Judge the state described, not the change: "less bad" is still harmed.</li>
+    <li>Risk-factor wording and "if ... would" statements describe no effect: answer neutral.</li>
+    <li>Good and bad news together: give the net effect only if the passage states it; otherwise cannot tell.</li>
+    <li>An analyst's question is not a statement by the company: neutral, statement type none.</li>
+    <li>Harm or benefit to someone else is not an effect on the company speaking.</li>
+    <li>"Cannot tell" is for passages that cannot be read, not for hard ones.</li>
+    <li>"Opposite direction" means the company gains while another party loses, or the reverse.</li>
+    <li>Several kinds of statement: choose the first that applies, in the order shown.</li>
+  </ol>
+  <details id="full-guide">
+    <summary>Read the full guide</summary>
+    <ol class="rules" id="full-rules">
+      <li>Label what the passage says, not what you know about the company or what happened later.</li>
+      <li>Effect is the state described, not the change: "less bad" is still harmed; "no longer a problem" is not harmed.</li>
+      <li>Risk-factor language and conditionals state no effect: neutral, with statement type risk factor or hypothetical. A risk factor that reports something that has happened is an observed result.</li>
+      <li>Good and bad together: label the net effect if the passage states one, otherwise cannot tell.</li>
+      <li>An analyst's premise is not a company statement: neutral and statement type none, unless the passage also holds the company's own words.</li>
+      <li>Harm or benefit to someone else is not an effect on the company speaking.</li>
+      <li>Cannot tell is for passages that cannot be read, not for hard ones.</li>
+      <li>Another party is affected in the opposite direction only when the company speaking benefits and a customer, supplier, competitor or other party is harmed, or the reverse. If the effect on the company is neutral, the answer is no.</li>
+      <li>Statement type: when the passage holds several kinds of statement about the company, choose the first that applies in this order: observed result, guidance or forecast, risk factor, hypothetical. Choose none when the company makes no statement about itself.</li>
+    </ol>
+    <p class="small muted">The comment box under each passage is optional and is never scored. Please do not put your name or employer in it.</p>
+  </details>
+
+  <h2>About you <span class="muted small">(optional)</span></h2>
+  <p class="small muted">Recorded with your code and reported only as totals. It is never used to include or leave out anyone's answers.</p>
+  <div class="row">
+    <label class="field" for="bg-role"><span>Your role</span>
+      <select id="bg-role">
+        <option value="prefer_not_to_say">Prefer not to say</option>
+        <option value="buy_side">Buy side (analyst or portfolio manager)</option>
+        <option value="sell_side">Sell side (research or sales)</option>
+        <option value="banking_or_advisory">Banking or advisory</option>
+        <option value="corporate_finance_or_ir">Corporate finance or investor relations</option>
+        <option value="academic_or_other">Academic or other</option>
+      </select>
+    </label>
+    <label class="field" for="bg-years"><span>Years in finance</span>
+      <select id="bg-years">
+        <option value="prefer_not_to_say">Prefer not to say</option>
+        <option value="under_3">Under 3</option>
+        <option value="3_to_10">3 to 10</option>
+        <option value="over_10">Over 10</option>
+      </select>
+    </label>
+  </div>
+  <div class="nav"><div class="right"><button type="button" id="b-start">Start</button></div></div>
+</section>
+
+<!-- 3. One passage -->
+<section id="s-passage" hidden aria-labelledby="p-company">
+  <div class="progress">
+    <span class="count" id="p-count"></span>
+    <div class="track" role="progressbar" aria-label="Passages answered" aria-valuemin="0" id="p-bar"><div></div></div>
+    <span class="count" id="p-done"></span>
+  </div>
+  <div class="card">
+    <div class="meta">
+      <strong id="p-company" tabindex="-1"></strong>
+      <span id="p-source"></span>
+      <span id="p-date"></span>
+    </div>
+    <blockquote class="passage" id="p-text"></blockquote>
+    <form id="f-q" novalidate>
+      <div id="questions"></div>
+      <div style="margin-top:1.4rem">
+        <label class="plain" for="p-comment">Comment <span class="muted" style="font-weight:400">(optional, never scored)</span></label>
+        <textarea id="p-comment" maxlength="1000" rows="2"></textarea>
+      </div>
+      <div class="nav">
+        <button type="button" class="quiet" id="b-back">Back</button>
+        <div class="right"><button type="submit" id="b-next">Next</button></div>
+      </div>
+      <p class="note" id="p-note" role="status" aria-live="polite"></p>
+    </form>
+  </div>
+  <p class="small muted keys below">Keyboard: number keys choose an answer for the highlighted question, Enter goes to the next passage.</p>
+  <p class="small below"><button type="button" class="link" id="b-guide">Show the guide</button> · <button type="button" class="link" id="b-stop">Stop for now</button></p>
+  <div class="card below" id="guide-box" hidden></div>
+</section>
+
+<!-- 4. Finish (also reached from "Stop for now") -->
+<section id="s-finish" hidden aria-labelledby="h-finish">
+  <h1 id="h-finish" tabindex="-1"></h1>
+  <p class="lead" id="f-lead"></p>
+  <div class="card">
+    <p><button type="button" id="b-download">Download my answers</button></p>
+    <p class="small">This saves a file named <code id="f-name"></code>. <strong>Send that file back to the person who invited you</strong>, by replying to their invitation. Nothing has been sent automatically.</p>
+    <details>
+      <summary>The download does not work</summary>
+      <p class="small">Copy the text below and paste it into your reply instead.</p>
+      <p><button type="button" class="quiet" id="b-copy">Copy to clipboard</button> <span class="small muted" id="copy-msg" role="status" aria-live="polite"></span></p>
+      <label class="plain" for="f-out">Your answers as text</label>
+      <textarea class="out" id="f-out" readonly></textarea>
+    </details>
+  </div>
+  <div class="nav"><button type="button" class="quiet" id="b-review">Go back to the passages</button></div>
+</section>
+</main>
+
+<script>
+"use strict";
+(function () {
+  var PROTOCOL = "2";
+  var CODE = /^[BCDFGHJKLMNPQRSTVWXZ]{4}[2-9]{4}$/;
+  var QUESTIONS = [
+    { key: "speaker_effect",
+      ask: function (c) { return "What does the passage say is the effect on " + c + "?"; },
+      hint: "Stated as fact or as the company's own forecast. Risks and \"if\" statements are neutral.",
+      options: [["benefits", "Benefits"], ["harmed", "Harmed"], ["neutral", "Neutral"], ["cannot_tell", "Cannot tell"]] },
+    { key: "opposite_party",
+      ask: function () { return "Is another party affected in the opposite direction?"; },
+      hint: "Yes only if the company gains while a customer, supplier, competitor or other party loses, or the reverse.",
+      options: [["yes", "Yes"], ["no", "No"], ["cannot_tell", "Cannot tell"]] },
+    { key: "statement_type",
+      ask: function () { return "What kind of statement does the company make about itself?"; },
+      hint: "If several apply, choose the first in this order.",
+      options: [["observed", "Observed result"], ["guidance", "Guidance or forecast"], ["risk", "Risk factor"],
+                ["hypothetical", "Hypothetical"], ["none", "None"]] }
+  ];
+  var $ = function (id) { return document.getElementById(id); };
+  var screens = ["s-load", "s-welcome", "s-passage", "s-finish"];
+  var data = null, state = null, activeQ = 0;
+
+  function show(id, focusId) {
+    screens.forEach(function (s) { $(s).hidden = s !== id; });
+    window.scrollTo(0, 0);
+    if (focusId) { $(focusId).focus({ preventScroll: true }); }
+  }
+
+  // -- storage (this browser only) ----------------------------------------------------
+  function storeKey() { return "passage-labels:" + data.pack + ":" + data.code; }
+  function save() {
+    try { localStorage.setItem(storeKey(), JSON.stringify(state)); } catch (e) { /* private mode: carry on */ }
+  }
+  function restore() {
+    var s = null;
+    try { s = JSON.parse(localStorage.getItem(storeKey()) || "null"); } catch (e) { s = null; }
+    if (!s || typeof s !== "object" || typeof s.answers !== "object") { s = null; }
+    state = s || { pos: 0, started: false, background: { role: "prefer_not_to_say", years: "prefer_not_to_say" }, answers: {} };
+    state.pos = Math.max(0, Math.min(Number(state.pos) || 0, data.items.length - 1));
+  }
+
+  // -- loading ------------------------------------------------------------------------
+  function usable(d, code) {
+    return d && typeof d === "object" && String(d.protocol) === PROTOCOL && CODE.test(d.code || "") &&
+      (!code || d.code === code) && Array.isArray(d.items) && d.items.length > 0 &&
+      d.items.every(function (it) { return it && typeof it.id === "string" && typeof it.text === "string"; });
+  }
+  function opened(d) {
+    data = d;
+    restore();
+    $("who").textContent = "Code " + data.code;
+    $("w-n").textContent = String(data.items.length);
+    $("bg-role").value = state.background.role;
+    $("bg-years").value = state.background.years;
+    $("b-start").textContent = done() ? "Continue (" + done() + " of " + data.items.length + " done)" : "Start";
+    show("s-welcome", "h-welcome");
+  }
+  function ask(message, offerFile) {
+    $("load-msg").textContent = message || "";
+    $("pick").hidden = !offerFile;
+    show("s-load");
+    $("code").focus();
+  }
+  function load(code) {
+    if (!CODE.test(code)) {
+      ask(code ? "That is not a valid code. A code is four letters followed by four digits, for example KQZT4827." : "", false);
+      return;
+    }
+    $("code").value = code;
+    $("load-msg").textContent = "Loading...";
+    fetch("data/" + code + ".json", { cache: "no-store", credentials: "omit" })
+      .then(function (r) { if (!r.ok) { throw new Error("missing"); } return r.json(); })
+      .then(function (d) {
+        if (!usable(d, code)) { throw new Error("unusable"); }
+        opened(d);
+      })
+      .catch(function () {
+        ask("Your passages could not be loaded for this code. Check the code, or choose the data file you were sent.", true);
+      });
+  }
+  $("f-code").addEventListener("submit", function (e) {
+    e.preventDefault();
+    load($("code").value.trim().toUpperCase());
+  });
+  $("file").addEventListener("change", function () {
+    var f = this.files && this.files[0];
+    if (!f) { return; }
+    var reader = new FileReader();
+    reader.onload = function () {
+      var d = null;
+      try { d = JSON.parse(String(reader.result)); } catch (e) { d = null; }
+      if (usable(d, "")) { opened(d); } else { ask("That file is not a data file for this page.", true); }
+    };
+    reader.readAsText(f);
+  });
+
+  // -- questions ----------------------------------------------------------------------
+  function buildQuestions() {
+    var box = $("questions");
+    QUESTIONS.forEach(function (q, qi) {
+      var fs = document.createElement("fieldset");
+      fs.id = "q-" + q.key;
+      var lg = document.createElement("legend");
+      lg.id = "lg-" + q.key;
+      fs.appendChild(lg);
+      var hint = document.createElement("p");
+      hint.className = "hint";
+      hint.id = "hint-" + q.key;
+      hint.textContent = q.hint;
+      fs.appendChild(hint);
+      fs.setAttribute("aria-describedby", hint.id);
+      var opts = document.createElement("div");
+      opts.className = "opts";
+      opts.style.setProperty("--n", String(q.options.length > 4 ? 3 : q.options.length));
+      q.options.forEach(function (o, oi) {
+        var lab = document.createElement("label");
+        lab.className = "opt";
+        var inp = document.createElement("input");
+        inp.type = "radio";
+        inp.name = q.key;
+        inp.value = o[0];
+        inp.addEventListener("change", function () { choose(qi, o[0], false); });
+        inp.addEventListener("focus", function () { setActive(qi); });
+        var k = document.createElement("kbd");
+        k.textContent = String(oi + 1);
+        k.setAttribute("aria-hidden", "true");
+        var t = document.createElement("span");
+        t.textContent = o[1];
+        lab.appendChild(inp); lab.appendChild(k); lab.appendChild(t);
+        opts.appendChild(lab);
+      });
+      fs.appendChild(opts);
+      box.appendChild(fs);
+    });
+  }
+  function setActive(qi) {
+    activeQ = qi;
+    QUESTIONS.forEach(function (q, i) { $("q-" + q.key).classList.toggle("active", i === qi); });
+  }
+  function current() { return data.items[state.pos]; }
+  function answer(id) { return state.answers[id] || (state.answers[id] = {}); }
+  function complete(id) {
+    var a = state.answers[id];
+    return !!a && QUESTIONS.every(function (q) { return !!a[q.key]; });
+  }
+  function done() { return data.items.filter(function (it) { return complete(it.id); }).length; }
+  function firstOpen() {
+    var a = state.answers[current().id] || {};
+    for (var i = 0; i < QUESTIONS.length; i++) { if (!a[QUESTIONS[i].key]) { return i; } }
+    return QUESTIONS.length - 1;
+  }
+  function choose(qi, value, move) {
+    answer(current().id)[QUESTIONS[qi].key] = value;
+    save();
+    $("p-note").textContent = "";
+    progress();
+    if (move) {
+      var next = complete(current().id) ? qi : firstOpen();
+      setActive(next);
+    }
+  }
+  function progress() {
+    var n = data.items.length, d = done();
+    $("p-count").textContent = "Passage " + (state.pos + 1) + " of " + n;
+    $("p-done").textContent = d + " answered";
+    var bar = $("p-bar");
+    bar.setAttribute("aria-valuemax", String(n));
+    bar.setAttribute("aria-valuenow", String(d));
+    bar.firstElementChild.style.width = (100 * d / n) + "%";
+    $("b-next").textContent = state.pos === n - 1 ? "Finish" : "Next";
+    $("b-back").disabled = state.pos === 0;
+  }
+  function render() {
+    var it = current(), a = state.answers[it.id] || {};
+    // Only these four fields of an item are ever shown.
+    $("p-company").textContent = it.company || "";
+    $("p-source").textContent = it.source || "";
+    $("p-date").textContent = it.date || "";
+    $("p-text").textContent = it.text;
+    QUESTIONS.forEach(function (q) {
+      $("lg-" + q.key).textContent = q.ask(it.company || "the company");
+      Array.prototype.forEach.call(document.getElementsByName(q.key), function (inp) {
+        inp.checked = a[q.key] === inp.value;
+      });
+    });
+    $("p-comment").value = a.comment || "";
+    $("p-note").textContent = "";
+    setActive(firstOpen());
+    progress();
+    show("s-passage", "p-company");
+  }
+  function go(step) {
+    if (step > 0 && !complete(current().id)) {
+      $("p-note").textContent = "Please answer all three questions to continue.";
+      setActive(firstOpen());
+      return;
+    }
+    if (step > 0 && state.pos === data.items.length - 1) { finish(); return; }
+    state.pos = Math.max(0, state.pos + step);
+    save();
+    render();
+  }
+  $("p-comment").addEventListener("input", function () {
+    var a = answer(current().id);
+    a.comment = this.value;
+    save();
+  });
+  $("f-q").addEventListener("submit", function (e) { e.preventDefault(); go(1); });
+  $("b-back").addEventListener("click", function () { go(-1); });
+  $("b-start").addEventListener("click", function () {
+    state.background = { role: $("bg-role").value, years: $("bg-years").value };
+    state.started = true;
+    var open = data.items.findIndex(function (it) { return !complete(it.id); });
+    state.pos = open < 0 ? data.items.length - 1 : open;
+    save();
+    render();
+  });
+  $("b-guide").addEventListener("click", function () {
+    var box = $("guide-box");
+    if (!box.firstChild) { box.appendChild($("full-rules").cloneNode(true)).removeAttribute("id"); }
+    box.hidden = !box.hidden;
+    this.textContent = box.hidden ? "Show the guide" : "Hide the guide";
+  });
+  document.addEventListener("keydown", function (e) {
+    if ($("s-passage").hidden || e.ctrlKey || e.metaKey || e.altKey) { return; }
+    var t = e.target, tag = t && t.tagName;
+    if (tag === "TEXTAREA" || tag === "SELECT" || tag === "BUTTON") { return; }
+    var n = "123456789".indexOf(e.key);
+    if (n >= 0 && n < QUESTIONS[activeQ].options.length) {
+      e.preventDefault();
+      var q = QUESTIONS[activeQ], inp = document.getElementsByName(q.key)[n];
+      inp.checked = true;
+      choose(activeQ, inp.value, true);
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      go(1);
+    }
+  });
+
+  // -- finishing ----------------------------------------------------------------------
+  function result() {
+    return {
+      protocol: PROTOCOL, pack: data.pack, code: data.code, background: state.background,
+      labels: data.items.filter(function (it) { return complete(it.id); }).map(function (it) {
+        var a = state.answers[it.id];
+        return { id: it.id, speaker_effect: a.speaker_effect, opposite_party: a.opposite_party,
+                 statement_type: a.statement_type, comment: (a.comment || "").trim() };
+      })
+    };
+  }
+  function finish() {
+    var n = data.items.length, d = done(), all = d === n;
+    $("h-finish").textContent = all ? "All done. Thank you." : "Stopped at " + d + " of " + n;
+    $("f-lead").textContent = all
+      ? "One last step: download your answers and send the file back."
+      : "Your answers so far are kept in this browser. Open the same link on this device to continue. If you will not be able to come back, download what you have and send it.";
+    $("f-name").textContent = "labels_" + data.code + ".json";
+    $("f-out").value = JSON.stringify(result());
+    $("copy-msg").textContent = "";
+    show("s-finish", "h-finish");
+  }
+  $("b-stop").addEventListener("click", finish);
+  $("b-review").addEventListener("click", render);
+  $("b-download").addEventListener("click", function () {
+    var blob = new Blob([JSON.stringify(result(), null, 1)], { type: "application/json" });
+    var url = URL.createObjectURL(blob), a = document.createElement("a");
+    a.href = url;
+    a.download = "labels_" + data.code + ".json";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+  });
+  $("b-copy").addEventListener("click", function () {
+    var out = $("f-out"), msg = $("copy-msg");
+    function fallback() {
+      out.focus();
+      out.select();
+      var ok = false;
+      try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+      msg.textContent = ok ? "Copied." : "Select the text below and copy it.";
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(out.value).then(function () { msg.textContent = "Copied."; }, fallback);
+    } else { fallback(); }
+  });
+
+  // -- start --------------------------------------------------------------------------
+  buildQuestions();
+  var given = "";
+  try { given = (new URLSearchParams(location.search).get("code") || "").trim().toUpperCase(); } catch (e) { given = ""; }
+  if (given) { load(given); } else { ask("", location.protocol === "file:"); }
+})();
+</script>
+</body>
+</html>
