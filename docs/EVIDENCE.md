@@ -1,5 +1,10 @@
 # Evidence summary: window vs anchored topics (development period)
 
+> **Research record, kept for reference.** Not needed to run or understand the monitor:
+> see `docs/HOW_IT_WORKS.md`, `docs/OPERATIONS.md` and `docs/METHOD.md` for how things work
+> today, and `docs/DECISIONS.md` for what changed and when. Nothing here is edited except
+> to add dated records.
+
 Status on 2026-10-25. Holdout not run. Outcome returns are not used for any
 judgement here.
 

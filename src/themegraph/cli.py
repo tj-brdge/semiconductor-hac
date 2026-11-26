@@ -228,7 +228,7 @@ def cmd_questions(a):
 
 def _rebuild(a, prof, M) -> int:
     """Rebuild the monitor's history from scratch with today's coverage list
-    (docs/MONITOR.md, "Rebuilding history"). The current registry and site are moved
+    (docs/OPERATIONS.md). The current registry and site are moved
     aside, never deleted; if the rebuild fails they are put back."""
     import shutil
     state, site = Path(a.state), Path(a.site)

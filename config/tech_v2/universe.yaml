@@ -5,7 +5,7 @@
 # Since 2026-11-20 it also holds 27 companies in electrical and data-centre
 # infrastructure (version 3) and materials (version 4): 154 in all. For those 27,
 # identities were checked on EDGAR; prices, transcripts and the XLI and XLB
-# benchmarks are still unverified (docs/MONITOR.md, "What is still unverified").
+# benchmarks are still unverified (docs/DECISIONS.md).
 #
 # Identities checked against SEC EDGAR on 2026-10-27 (company_tickers_exchange.json
 # and each company's filing index): CIK, registered name, exchange, SIC code and the
@@ -29,7 +29,7 @@ description: >-
   materials, and metals and minerals. Themes can connect any of them.
 version: "4"
 
-# Rebuild marker (docs/MONITOR.md, "Rebuilding history"), set 2026-11-20 at the
+# Rebuild marker (docs/OPERATIONS.md), set 2026-11-20 at the
 # owner's request for a ten-year record that includes the companies added in
 # versions 3 and 4. It takes effect only through `themegraph monitor rebuild
 # --confirm`; until then the existing registry keeps treating them as added live.
@@ -60,14 +60,14 @@ changes:
   - version: "2"
     date: 2026-10-29
     note: "Technology pilot v2: 51 software, cybersecurity and data/cloud companies, with full history"
-  # A live expansion (docs/MONITOR.md, "Electrical and data-centre infrastructure"):
+  # A live expansion (docs/DECISIONS.md):
   # the 16 companies are covered from this date, so they enter through the
   # newly-covered rules. No earlier measure, theme or basket is recomputed.
   - version: "3"
     date: 2026-11-20
     added: [HUBB, POWL, GNRC, BE, TT, CARR, JCI, MOD, PWR, EME, FIX, MTZ, STRL, IESC, EQIX, DLR]
     note: "Electrical equipment, cooling, electrical contractors and data-centre operators: 16 companies, covered from this date"
-  # A second live expansion the same day (docs/MONITOR.md, "Materials").
+  # A second live expansion the same day (docs/DECISIONS.md).
   - version: "4"
     date: 2026-11-20
     added: [LIN, APD, DD, ESI, ROG, PLAB, CBT, FCX, SCCO, MP, ALB]

@@ -153,7 +153,7 @@ class Issuer(_Strict):
     delisted: dt.date | None = None
     successor: Successor | None = None
     cik: int | None = None
-    # Monitored coverage (docs/MONITOR.md, "Universe changes"): when the company
+    # Monitored coverage (docs/METHOD.md): when the company
     # was added to, or removed from, the monitored universe. None = since the start.
     # Distinct from listed/delisted, which bound when the stock traded.
     covered_from: dt.date | None = None
@@ -176,7 +176,7 @@ class UniverseConfig(_Strict):
     sectors: dict[str, str] = {}   # segment -> sector shown on the dashboard
     changes: list[UniverseChange] = []
     issuers: list[Issuer]
-    # Rebuild marker (docs/MONITOR.md, "Rebuilding history"). A monitor registry
+    # Rebuild marker (docs/OPERATIONS.md). A monitor registry
     # built on or after this date treats every company whose `covered_from` is on or
     # before it as covered from the start, so the replayed history includes them.
     # It changes nothing for a registry built earlier: that needs

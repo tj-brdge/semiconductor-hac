@@ -304,8 +304,8 @@ def universe_symbols(universe: UniverseConfig, benchmarks: bool = True) -> set[s
 def load_prices(store: Store, upto: str | None = None,
                 universe: UniverseConfig | None = None) -> pd.DataFrame:
     """Prices from the shared store; with `universe`, only its companies, their
-    recorded acquirers and its benchmarks (profiles share one store, docs/MONITOR.md
-    "Profiles", and must not see each other's companies)."""
+    recorded acquirers and its benchmarks (profiles share one store,
+    docs/METHOD.md, and must not see each other's companies)."""
     return store.read("prices", upto=upto,
                       symbols=universe_symbols(universe) if universe is not None else None)
 

@@ -1,5 +1,5 @@
 """`themegraph monitor feed`: every published theme in one Markdown file, for a
-person (or Claude) to read and comment on (docs/MONITOR.md, "Theme feed").
+person (or Claude) to read and comment on (docs/OPERATIONS.md).
 
 For each theme: its title and where the title came from, the summary, keywords,
 companies, tone and a few quoted passages. The top of the file says how titles

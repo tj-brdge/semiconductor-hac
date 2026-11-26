@@ -1,4 +1,4 @@
-"""Equal-weight theme basket indexes (docs/MONITOR.md, "Basket method").
+"""Equal-weight theme basket indexes (docs/METHOD.md).
 
 Prices: the store's closes are dividend-adjusted and converted to USD at ingest
 (data/fmp.py: `historical-price-eod/dividend-adjusted`, `to_usd`), so every
@@ -170,7 +170,7 @@ def theme_performance(theme: dict, book: PriceBook, benchmarks: list[str],
     empty = [v["version"] for v in versions if not v["constituents"]]
     if empty:
         # Registries written before baskets were checked could hold a version with no
-        # companies (docs/MONITOR.md, "Repairing state"). It cannot be valued; say so
+        # companies (docs/OPERATIONS.md). It cannot be valued; say so
         # instead of computing an index from nothing.
         return {"status": "unavailable", "reason": "empty_basket",
                 "note": f"Basket version {', '.join(map(str, empty))} has no companies, "

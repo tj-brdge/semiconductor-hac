@@ -1,6 +1,6 @@
 """Coverage expansions: a theme is only published with companies it can buy, its
 basket starts when it is published, and a release never contains invalid JSON
-(docs/MONITOR.md, "Universe changes" and "Repairing state")."""
+(docs/METHOD.md)."""
 
 import datetime as dt
 import json

@@ -1,5 +1,5 @@
-"""Rebuilding history with companies added later (docs/MONITOR.md, "Rebuilding
-history"): the registry's basis is fixed when it is built, and a rebuild never
+"""Rebuilding history with companies added later (docs/OPERATIONS.md):
+the registry's basis is fixed when it is built, and a rebuild never
 destroys the monitor it replaces."""
 
 import datetime as dt

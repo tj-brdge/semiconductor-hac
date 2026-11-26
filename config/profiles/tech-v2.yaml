@@ -15,7 +15,7 @@ fixture: tech
 # Built like the semiconductor pilot: the first refresh replayed 120 month-ends (10 years) with
 # the 127 companies it then had (simulated history, labelled), then runs live. The 27
 # companies added on 2026-11-20 (154 in all) are covered from that date until a rebuild
-# (docs/MONITOR.md, "Rebuilding history"). Its themes have
+# (docs/OPERATIONS.md). Its themes have
 # their own tech- IDs; the semiconductor registry is not copied or changed. (For a
 # live expansion that should keep another profile's theme IDs, set
 # fork_from: <profile> instead; see docs/TECH_PILOT_V2.md.)

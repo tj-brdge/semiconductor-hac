@@ -1,5 +1,4 @@
-"""Macro sensitivity of baskets and market clusters (docs/MONITOR.md, "Macro
-sensitivity").
+"""Macro sensitivity of baskets and market clusters (docs/METHOD.md).
 
 Question: when short rates, long rates, oil, inflation or the dollar moved, did
 this group of stocks tend to move with them, beyond the market?

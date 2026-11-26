@@ -1,6 +1,6 @@
 """`themegraph monitor refresh`: ingest -> themes -> baskets -> export.
 
-Steps and cadence (docs/MONITOR.md, "Scheduling"):
+Steps and cadence (docs/OPERATIONS.md):
 - prices     daily after the US close; fast
 - documents  weekly (transcripts and filings); slow, paid API calls
 - themes     when a month-end has passed that the registry has not processed
@@ -593,8 +593,8 @@ def _relations(reg: Registry, d: dict, mcfg: MonitorConfig, now: str, namer, log
 
 
 def _history_basis(reg: Registry, d: dict) -> str | None:
-    """Which companies this registry treats as covered from the start (docs/MONITOR.md,
-    "Rebuilding history"). Fixed when the registry is first built, from the
+    """Which companies this registry treats as covered from the start
+    (docs/OPERATIONS.md). Fixed when the registry is first built, from the
     universe's `full_history_through`; a registry built before the marker was set
     keeps its own basis, so its history is never silently reinterpreted. Returns a
     note when the coverage list asks for a rebuild this registry has not had."""

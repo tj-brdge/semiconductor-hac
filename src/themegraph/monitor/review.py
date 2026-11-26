@@ -1,5 +1,5 @@
 """`themegraph monitor review`: what to look at before trusting families and
-headwinds on real data (docs/MONITOR.md, "Theme families" and "Headwinds").
+headwinds on real data (docs/METHOD.md).
 
 Reads a profile's registry and writes Markdown: the most similar pairs of active
 themes with their shared companies and keywords (where the family cut falls), the

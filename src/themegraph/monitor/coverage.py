@@ -1,5 +1,4 @@
-"""Which companies count when comparing a theme over time (docs/MONITOR.md,
-"Universe changes").
+"""Which companies count when comparing a theme over time (docs/METHOD.md).
 
 A company added to the monitored universe arrives with back-filled documents. If
 it counted immediately, themes it discusses would appear to accelerate (more

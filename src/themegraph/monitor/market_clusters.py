@@ -1,5 +1,5 @@
 """Which stocks trade together right now: the market HAC cut into clusters
-(docs/MONITOR.md, "Market clusters").
+(docs/METHOD.md).
 
 The research market layer uses hierarchical agglomerative clustering (HAC) only as
 a similarity score (cophenetic affinity) and never cuts the tree. This page cuts

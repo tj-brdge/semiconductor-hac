@@ -1,4 +1,4 @@
-"""Static data feed for the dashboard (schema documented in docs/MONITOR.md).
+"""Static data feed for the dashboard (schema documented in docs/METHOD.md).
 
 Layout under the site directory:
   index.html                       the dashboard (static, reads the feed)

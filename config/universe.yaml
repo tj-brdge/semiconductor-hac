@@ -35,7 +35,7 @@ sectors:
 
 # Coverage changes. Add a company by appending an issuer with covered_from: <date>
 # and a change entry; never delete an issuer (mark covered_until instead), so held
-# baskets keep their prices. See docs/MONITOR.md, "Universe changes".
+# baskets keep their prices. See docs/METHOD.md.
 changes:
   - {version: "1", date: 2026-10-27, note: "pilot universe as of the monitor's first release"}
   # Not a coverage change: the company was already covered. Recorded because it

@@ -1,7 +1,6 @@
 /* Themegraph: a research workstation. Dense, neutral, numbers first.
    Tokens first; light and dark are both chosen (dark is not an inversion). Chart
-   series colours come from a validated categorical palette (docs/MONITOR.md,
-   "Dashboard"). No external fonts or assets: the site is static and works offline. */
+   series colours come from a validated categorical palette (docs/METHOD.md). No external fonts or assets: the site is static and works offline. */
 :root {
   color-scheme: light;
   --page: #f3f4f6; --surface: #ffffff; --sunk: #f0f1f4; --raise: #fafbfc;

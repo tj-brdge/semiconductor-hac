@@ -1,5 +1,5 @@
 """Company investor-relations documents as a third, separately labelled source
-(data/ir.py; docs/MONITOR.md, "Company IR documents")."""
+(data/ir.py; docs/OPERATIONS.md)."""
 
 import datetime as dt
 from types import SimpleNamespace as NS

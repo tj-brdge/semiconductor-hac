@@ -1,5 +1,5 @@
 """SK hynix's SEC filings reach theme detection through the ordinary EDGAR path
-(config/universe.yaml; docs/MONITOR.md, "Universe changes"). Nothing here puts
+(config/universe.yaml; docs/METHOD.md). Nothing here puts
 the company in a theme: that depends on what its passages say."""
 
 import datetime as dt

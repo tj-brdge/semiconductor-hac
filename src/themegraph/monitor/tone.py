@@ -1,5 +1,4 @@
-"""Headwind or tailwind: what kind of news a theme's discussion is (docs/MONITOR.md,
-"Headwinds").
+"""Headwind or tailwind: what kind of news a theme's discussion is (docs/METHOD.md).
 
 A theme about weaker demand, inventory corrections or pricing pressure is a
 different kind of idea from one about a product ramp, even if both are growing.

@@ -1,4 +1,4 @@
-"""Families of overlapping themes (docs/MONITOR.md, "Theme families").
+"""Families of overlapping themes (docs/METHOD.md).
 
 Topics are re-clustered every month and broad subjects often come out as several
 themes (the same AI build-out seen from memory, networking and power). The

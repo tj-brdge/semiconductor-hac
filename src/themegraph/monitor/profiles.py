@@ -1,4 +1,4 @@
-"""Monitor profiles (docs/MONITOR.md, "Profiles"): one named set of configuration
+"""Monitor profiles (docs/METHOD.md): one named set of configuration
 files, state and output, so that pilots with different coverage run side by side.
 
 A profile names its universe, pipeline and monitor files and where its registry
@@ -32,7 +32,7 @@ PROFILES = CONFIG_DIR / "profiles"
 PILOT = DEFAULT = "semis"
 # The one monitor people use: every command-line command without --profile runs
 # this profile, so there is a single universe to download, refresh and look at.
-# Changed from the pilot on 2026-11-14 (docs/MONITOR.md, "Profiles").
+# Changed from the pilot on 2026-11-14 (docs/METHOD.md).
 ACTIVE = "tech-v2"
 
 

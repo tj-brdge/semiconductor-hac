@@ -1,6 +1,5 @@
 """A month-end is processed only once its documents have been downloaded after a
-settling period; otherwise it stays pending (docs/MONITOR.md, "Month-end
-completeness")."""
+settling period; otherwise it stays pending (docs/METHOD.md)."""
 
 import datetime as dt
 import json
