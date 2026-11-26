@@ -160,8 +160,9 @@ Rules for a Claude label:
   shown, and has a title of at most 12 words. Otherwise the automatic label is
   used and the rejected answer and reason are stored.
 - A label is written once per theme and keyword name. It is written again when the
-  keyword name changes or the prompt version changes (`PROMPT_VERSION` 2). A
-  verdict that the passages are unclear is not asked again.
+  keyword name changes, the prompt version changes (`PROMPT_VERSION` 2), or only
+  an automatic label exists and a writer is available. A verdict that the
+  passages are unclear is not asked again.
 - Every label is kept in `label_history` with its source and time.
 
 Settings:
@@ -219,7 +220,8 @@ display; nothing is merged and no ID, basket or history changes (`families.py`).
 - **Lead theme:** most months present in the last 12, then most companies, then
   oldest.
 - **Topic names:** with a writer (see "Titles and summaries"), a name of two to six
-  words and one sentence, written only from the member themes' titles and terms.
+  words (up to eight are accepted) and one sentence, written only from the member
+  themes' titles and terms.
   It is stored in the registry (`group_names`) and written again only when the
   members or their titles change; at most 20 per refresh
   (`groups.max_names_per_refresh`). Otherwise a topic takes its lead theme's title.
@@ -382,8 +384,8 @@ nothing else (`macro.py`).
   the factor rose by one of its usual moves, with the market and other factors
   held fixed.
 - **"Clear" (slid-history significance):** the factor history is slid against the
-  returns by every offset of at least a year, or the span if longer. A link is
-  clear when its coefficient is larger than in 95% of those offsets.
+  returns by every offset of at least a year. A link is clear when its coefficient
+  is larger than in 95% of those offsets.
 
 **Theme baskets and market clusters** (`macro_table`):
 - return: the equal-weight monthly return of the group's current companies,
@@ -468,7 +470,8 @@ before it and holds at least half of this event's companies.
 **Outcome.** The event's basket, equal starting capital, bought at the first
 session on a later UTC date than the decision and held 126 sessions (`PRIMARY`).
 The outcome is its total USD return minus the recorded benchmark's over the same
-sessions. A company without a price stays in cash.
+sessions; that benchmark is the monitor's first, SPY. A company without a price
+stays in cash.
 
 **Read.**
 - A test is ready when 20 counted events (`MIN_EVENTS`) have a completed
@@ -561,8 +564,9 @@ The 154 companies of `tech-v2`:
 - 16 in electrical and data-centre infrastructure, `covered_from: 2026-11-20`;
 - 11 in materials, `covered_from: 2026-11-20`.
 
-`full_history_through` is 2026-11-20 for `tech-v2`, so the 27 later companies are
-treated as added live until a rebuild (see "Coverage and universe changes").
+`full_history_through` is 2026-11-20 for `tech-v2`. A registry built before that
+date keeps treating the 27 later companies as added live until a rebuild (see
+"Coverage and universe changes").
 
 - Universe and monitor files can `extends:` a base file.
 - The document and price store is shared; every read is limited to the profile's
@@ -590,7 +594,8 @@ A refresh publishes static JSON that the site reads; any web host can serve it
 - **Publishing.** A release is written to a staging directory, checked, renamed,
   and only then made current by replacing `latest.json`. The last 5 releases are
   kept.
-- **Failures.** Loading, themes and valuation are required steps. When one fails,
+- **Failures.** Downloads (when run), loading, themes and valuation are required
+  steps. When one fails,
   later steps are skipped, nothing is published and the previous release stays
   current. `status.json` is written on every attempt.
 - **Optional parts.** Labels, topic names, business relationships and macro tables
@@ -628,8 +633,9 @@ A refresh publishes static JSON that the site reads; any web host can serve it
   chance, groups share companies, and today's members are used throughout.
 - **Coverage is a chosen list.** Some sector labels hold very few companies.
 - **Nothing is validated as predictive.** No measure here has been shown to predict
-  returns. The forward tests are the only planned evidence and none has been read.
-- **Nothing was verified on real data from the build environment.** The code was
-  written and tested on synthetic fixtures; the build environment has no price
-  store, documents or monitor state. For the 27 companies added on 2026-11-20,
-  prices, transcripts and the XLI and XLB benchmarks are unverified.
+  returns. The forward tests are the only planned evidence, and a test cannot be
+  read before 20 of its events have a completed 126-session window.
+- **Nothing was verified on real data from the build environment.** It has no
+  price store, documents or monitor state, so the code is tested on synthetic
+  fixtures only. For the 27 companies added on 2026-11-20, prices, transcripts and
+  the XLI and XLB benchmarks are unverified.
