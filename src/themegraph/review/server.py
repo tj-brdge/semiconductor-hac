@@ -93,7 +93,7 @@ def _schema(choices: list[str]) -> dict:
 
 class ClaudeSuggester:
     """Asks Claude for decisions on a batch of entries of one kind. Uses the
-    `anthropic` SDK (install with `uv sync --extra review`); credentials come from
+    `anthropic` SDK (installed with the project); credentials come from
     the environment as the SDK resolves them."""
 
     def __init__(self, model: str = DEFAULT_MODEL):
@@ -260,8 +260,8 @@ class ReviewStore:
         """Ask Claude about the next batch of entries without a suggestion (theme
         matches first). Returns how many were done and how many remain."""
         if self.suggester is None:
-            raise RuntimeError("Claude suggestions are off: install the review extra "
-                               "(uv sync --extra review) and set ANTHROPIC_API_KEY")
+            raise RuntimeError("Claude suggestions are off: set ANTHROPIC_API_KEY where "
+                               "this command runs")
         entries = [e for e in self._entries(run) if not e.get("stale")]
         todo = [e for e in entries if not e.get("ai_suggestion")]
         if not todo:

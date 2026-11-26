@@ -101,7 +101,7 @@ def test_decisions_are_validated_and_need_a_name(tmp_path):
     assert (e["decision"], e["decided_by"], e["notes"]) == ("confirmed", "human",
                                                               "clear HBM subject")
     assert "Decision: confirmed" in (run / A.PACKET).read_text()
-    with pytest.raises(RuntimeError, match="review extra"):
+    with pytest.raises(RuntimeError, match="ANTHROPIC_API_KEY"):
         store.suggest_next("w")
 
 

@@ -609,7 +609,7 @@ def main(argv=None):
     s.add_argument("run_dirs", nargs="+")
     s.add_argument("--port", type=int, default=8765)
     s.add_argument("--model", default="claude-opus-5-5",
-                   help="Claude model for suggestions (needs the review extra)")
+                   help="Claude model for suggestions (needs ANTHROPIC_API_KEY)")
     s.add_argument("--no-browser", action="store_true")
     s.set_defaults(fn=cmd_review)
     s = sub.add_parser("monitor", help="theme monitor: refresh the data feed or serve it")
