@@ -66,8 +66,9 @@ def test_protocol_holds_every_worked_example_and_the_declared_numbers():
                    f"{P.MAX_INVALID_SHARE:.0%}", f"{P.MAX_UNCLEAR_SHARE:.0%}",
                    str(P.SAMPLE_SEED), f"{P.N_BOOT:,}"):
         assert number in doc, number
-    assert "to be filled from the current price list before execution" in doc
-    assert "$" not in doc   # no price is quoted
+    # Prices are dated and the run stays gated on the owner's approval of the cost.
+    assert "re-check on the day of the run" in doc
+    assert "not run until the owner approves this cost" in doc
 
 
 def test_rules_do_not_fire_on_plain_text_and_use_role_only_where_declared():
