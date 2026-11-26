@@ -1,6 +1,7 @@
 # Economic-impact extraction pilot: protocol
 
-Version 1 · 2026-11-26 · status: **designed, not run**. To be frozen (committed) before any model answer exists. Code:
+Version 1 · 2026-11-26 · status: **approved by the owner on 2026-11-26 and frozen; not yet run**. No model answer
+exists. From here any change to the sample rules, labels, metrics or thresholds needs a new version. Code:
 `src/themegraph/experimental/impact_pilot.py` (wired to no command; calls no model).
 
 ## 1. Question
@@ -217,13 +218,25 @@ per million output tokens.
 The last two rows rest on the unverified passage counts above and are not approved by this
 protocol: only the pilot is. The pilot is not run until the owner approves this cost.
 
-## 10. Owner approval before execution
+## 10. Approvals and what remains
 
-- [ ] This protocol, version 1, committed unchanged.
-- [ ] The two readers named; labelling time agreed (300 passages each, plus adjudication).
-- [ ] Sample drawn without shortfall; ID list committed.
+Recorded from the owner's reply of 2026-11-26:
+
+- [x] This protocol, version 1, including its design choices: 72 hard cases, risk factors and
+      hypotheticals labelled neutral, passages adjudicated unclear left out of the primary score,
+      analyst questions scored neutral for the phrase lists.
+- [x] Model: Claude Opus 5.5 (`claude-opus-5-5`), low effort as the monitor uses, with no
+      fallback model, so every answer comes from one model. A refusal is recorded as an invalid
+      answer.
+- [x] Cost: the pilot only, about $5.60 (range $3 to $8) at the prices in section 9.
+- [x] A one-off export from the owner's machine linking stored passages to themes.
+- [x] The owner states the data licence covers distribution; sending passage text to the model
+      provider is on the same footing as the titles and relationship readings already run.
+- [ ] The two readers named (the owner agreed to supply them; not yet named here).
+- [ ] Sample drawn without shortfall; ID list committed before any model answer.
 - [ ] Both label files and the adjudicated labels committed; kappa at or above 0.60.
-- [ ] Model ID and reasoning effort fixed and written into this file's result record.
-- [ ] Prices filled in above from the current price list; total cost approved.
-- [ ] Sending passage text to the model provider is allowed by the text sources' licences.
-- [ ] Run code written, reviewed and approved separately (none exists; this pilot adds none).
+- [ ] Model answers produced (after the sample is committed; readers stay blind to them).
+- [ ] Result recorded here, pass or fail, with no change to the criteria.
+
+The tooling for the export, the sample, the labelling sheets, the model run and the scoring is
+`scripts/impact_pilot.py` (see its `--help`). Nothing in it is used by the monitor.

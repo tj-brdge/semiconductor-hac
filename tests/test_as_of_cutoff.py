@@ -31,8 +31,9 @@ def _macro() -> pd.DataFrame:
     rng = np.random.default_rng(11)
     days = pd.bdate_range("2014-01-01", "2021-12-31")
     frames = []
-    for name, kind, base, step in (("us2y", "treasury", 1.5, 0.03), ("us10y", "treasury", 2.5, 0.03),
-                                   ("wti", "price", 60.0, 0.9), ("dxy", "price", 95.0, 0.3)):
+    series = (("us2y", "treasury", 1.5, 0.03), ("us10y", "treasury", 2.5, 0.03),
+              ("wti", "price", 60.0, 0.9), ("dxy", "price", 95.0, 0.3))
+    for name, kind, base, step in series:
         level = np.abs(base + np.cumsum(rng.normal(0, step, len(days)))) + 0.2
         df = pd.DataFrame({"date": days, "value": level})
         df["available_at"] = price_available_at(df["date"], RULES)
@@ -72,7 +73,8 @@ def world(tmp_path_factory):
     root = tmp_path_factory.mktemp("asof")
     u = S.synthetic_universe()
     prices, docs, macro = S.synthetic_prices(u), S.synthetic_documents(u), _macro()
-    assert prices["date"].max() > pd.Timestamp(LATER) and docs["available_at"].max() > snapshot_ts(LATER)
+    assert prices["date"].max() > pd.Timestamp(LATER)
+    assert docs["available_at"].max() > snapshot_ts(LATER)
     return {"root": root, "universe": u, "cfg": S.demo_config(load_pipeline()),
             "full": _write(root / "store_full", prices, docs, macro),
             "only_d": _write(root / "store_d", *_known_by(D, prices, docs, macro))}
