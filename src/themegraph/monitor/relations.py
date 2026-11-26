@@ -1,5 +1,4 @@
-"""Named business relationships between covered companies (docs/MONITOR.md,
-"Business relationships").
+"""Named business relationships between covered companies (docs/METHOD.md).
 
 Question: which covered companies say they do business with which others: as
 supplier and customer, partners, competitors, or owner and owned?

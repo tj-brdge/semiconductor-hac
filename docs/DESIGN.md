@@ -1,5 +1,10 @@
 # Multi-layer theme graph — design (v1 draft)
 
+> **Research record, kept for reference.** Not needed to run or understand the monitor:
+> see `docs/HOW_IT_WORKS.md`, `docs/OPERATIONS.md` and `docs/METHOD.md` for how things work
+> today, and `docs/DECISIONS.md` for what changed and when. Nothing here is edited except
+> to add dated records.
+
 Status: **v1 implemented** (see README for what has and has not run on real data). Decisions marked *(decided)* came from
 the scoping interview; items marked *(open)* need an answer before or during the
 milestone that depends on them.
@@ -907,7 +912,7 @@ Measured from `themegraph compare runs/cmp2-window runs/cmp2-anchored`:
 
 ### Evaluation status change: monitoring (2026-10-27)
 
-The product is a theme monitor (docs/MONITOR.md) that reads data through the
+The product is a theme monitor (docs/METHOD.md) that reads data through the
 current date. That includes 2022-01-01..2026-10-31, the period reserved as the
 holdout.
 - **The holdout is inspected.** From 2026-10-27 that period counts as inspected,
@@ -955,7 +960,7 @@ It is now computed from the index residuals directly ((1 - shrinkage) times thei
 sample correlation), which is algebraically the same and exactly zero at full
 shrinkage. Companies with no residual variance are left out, an index without
 variance raises, and the monitor gives no verdict when the comparison carries no
-information (docs/MONITOR.md, "Trading together"). Shrinkage intensities and all
+information (docs/METHOD.md). Shrinkage intensities and all
 non-degenerate correlations are unchanged up to rounding.
 
 ### Headwind direction and theme families (declared 2026-10-29)
@@ -988,8 +993,7 @@ turn that mentions the Q&A once a company speaker has spoken; transcripts withou
 operator turns fall back to the first mention after the first speaker. Passage
 text and embeddings are unchanged; genres, and therefore topics, change. Results
 declared before this date were produced with the old rule and stand as recorded.
-A monitor state built before it should be rebuilt (docs/MONITOR.md, "Repairing
-state"); the share of real transcripts affected has not been measured here.
+A monitor state built before it should be rebuilt (docs/OPERATIONS.md); the share of real transcripts affected has not been measured here.
 
 ### Headwind forward test (registered 2026-11-12, before any outcome exists)
 
@@ -1100,7 +1104,7 @@ this date. No rule, threshold or form list changed.
 ### Rebuilds and the forward tests (2026-11-20, before any test was read)
 
 The monitor can now be rebuilt from scratch with a larger company list
-(`themegraph monitor rebuild`; MONITOR.md, "Rebuilding history"). For the
+(`themegraph monitor rebuild`; docs/OPERATIONS.md). For the
 registered forward tests this means:
 
 - A rebuild starts a new registry with an empty forward log. Replayed month-ends

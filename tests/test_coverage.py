@@ -1,4 +1,4 @@
-"""Universe configuration and coverage changes (docs/MONITOR.md, "Universe changes")."""
+"""Universe configuration and coverage changes (docs/METHOD.md)."""
 
 import datetime as dt
 import json

@@ -4,7 +4,7 @@ The long-term vision is an institutionally credible research and monitoring
 platform. It is **not** marketed as a proven return-predicting system: nothing
 here has been shown to predict returns. This file is the working plan: stages,
 acceptance criteria, what was found, and what waits for the owner's approval.
-It is deliberately short; detail lives in `MONITOR.md` and `DESIGN.md`.
+It is deliberately short; how things work today is in `METHOD.md` and `OPERATIONS.md`.
 
 ## Stages
 

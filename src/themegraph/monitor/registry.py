@@ -1,4 +1,4 @@
-"""Persistent theme registry (docs/MONITOR.md).
+"""Persistent theme registry (docs/METHOD.md).
 
 State lives in one directory:
 - registry.json  every tracked theme: identity, names, measures per month-end,

@@ -228,7 +228,7 @@ def cmd_questions(a):
 
 def _rebuild(a, prof, M) -> int:
     """Rebuild the monitor's history from scratch with today's coverage list
-    (docs/MONITOR.md, "Rebuilding history"). The current registry and site are moved
+    (docs/OPERATIONS.md). The current registry and site are moved
     aside, never deleted; if the rebuild fails they are put back."""
     import shutil
     state, site = Path(a.state), Path(a.site)
@@ -609,7 +609,7 @@ def main(argv=None):
     s.add_argument("run_dirs", nargs="+")
     s.add_argument("--port", type=int, default=8765)
     s.add_argument("--model", default="claude-opus-5-5",
-                   help="Claude model for suggestions (needs the review extra)")
+                   help="Claude model for suggestions (needs ANTHROPIC_API_KEY)")
     s.add_argument("--no-browser", action="store_true")
     s.set_defaults(fn=cmd_review)
     s = sub.add_parser("monitor", help="theme monitor: refresh the data feed or serve it")

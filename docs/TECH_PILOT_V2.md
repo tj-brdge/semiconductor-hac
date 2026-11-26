@@ -2,10 +2,10 @@
 
 > **Read this as history.** The "pilot" is now the monitor: since 2026-11-14 every
 > command uses this universe by default and there is one registry and one site
-> (docs/MONITOR.md, "Profiles"). This document records how the 51 added companies
+> (docs/METHOD.md). This document records how the 51 added companies
 > were selected and what was tested when they were added. Where it describes two
 > monitors running side by side, fork mode, or commands with `--profile tech-v2`,
-> that is how it worked before; the current behaviour is in docs/MONITOR.md.
+> that is how it worked before; the current behaviour is in docs/METHOD.md.
 
 A controlled expansion of the theme monitor from the semiconductor pilot toward the
 wider technology ecosystem. It runs as its own profile (`tech-v2`) beside the
@@ -19,7 +19,7 @@ themegraph monitor serve --profile tech-v2                  # http://127.0.0.1:8
 ```
 
 **Since 2026-11-14 this profile is the monitor**: every command without `--profile`
-uses it (docs/MONITOR.md, "Profiles"). The commands below still work; `--profile
+uses it (docs/METHOD.md). The commands below still work; `--profile
 tech-v2` is now the default and can be left out.
 
 Status on 2026-10-27: implemented and tested on synthetic fixture data only. It has
@@ -203,7 +203,7 @@ Three labels, three different routes into the inventory:
   evidence (`newly_covered`), not as an earlier discovery, and no measures are
   written for months before the expansion. Only companies in coverage at the
   month-end count toward it and can be bought; a refresh that processes an old
-  month-end late still buys after the refresh (MONITOR.md, "Live expansions").
+  month-end late still buys after the refresh (docs/METHOD.md).
   This route only matters in fork mode or for a later live expansion: in the
   default full-history build every company is covered from the start.
 

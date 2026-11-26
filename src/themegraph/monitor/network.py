@@ -1,4 +1,4 @@
-"""The company network for the dashboard (docs/MONITOR.md, "Network").
+"""The company network for the dashboard (docs/METHOD.md).
 
 Nodes are the covered companies. Two kinds of link, kept separate:
 - **price**: the pair's correlation beyond the index over the last six months is

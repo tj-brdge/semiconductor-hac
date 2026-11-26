@@ -1,4 +1,4 @@
-"""Readable theme titles and summaries (docs/MONITOR.md, "Theme labels").
+"""Readable theme titles and summaries (docs/METHOD.md).
 
 The topic layer names a theme by its top keywords ("ethernet · transceivers ·
 enterprise"). Readers need a title and a one- or two-sentence explanation. Each

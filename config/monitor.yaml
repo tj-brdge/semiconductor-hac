@@ -1,4 +1,4 @@
-# Theme monitor settings (docs/MONITOR.md). Separate from config/pipeline.yaml: the
+# Theme monitor settings (docs/METHOD.md). Separate from config/pipeline.yaml: the
 # research specification and its declared results are not changed by the monitor.
 # None of these values were chosen by looking at basket returns.
 
@@ -36,7 +36,7 @@ market:
   benchmark_labels: {SPY: "US large companies (S&P 500)", SOXX: "Semiconductors (iShares)"}
   trend_threshold_pp: 5.0      # 3-month excess vs SPY changed by this much in a month
 
-coverage:                      # universe changes (docs/MONITOR.md, "Universe changes")
+coverage:                      # universe changes (docs/METHOD.md)
   min_history_months: 12       # a company's documents must go back this far to count in growth
   min_growth_ratio: 1.25       # emergence route: comparable-company growth over 3 months
 
@@ -47,16 +47,16 @@ freshness:
   price_stale_sessions: 3      # status turns stale when the newest close is older
   documents_stale_days: 21
 
-completeness:                  # when a month-end may be processed (docs/MONITOR.md, "Month-end completeness")
+completeness:                  # when a month-end may be processed (docs/METHOD.md)
   settle_days: 5               # wait this long after the month-end, then need a document download made after it
   refresh_days: 7              # a plain refresh also downloads documents when the last download is this old
   min_symbol_share: 0.9        # a download counts only if it covers this share of the companies with documents
 
-groups:                        # broader topics with subthemes (docs/MONITOR.md, "Theme groups")
+groups:                        # broader topics with subthemes (docs/METHOD.md)
   min_cosine: 0.6              # the family tree cut lower; display only, text only
   max_names_per_refresh: 20
 
-labels:                        # readable titles and summaries (docs/MONITOR.md, "Theme labels")
+labels:                        # readable titles and summaries (docs/METHOD.md)
   writer: claude               # auto | claude | keywords. claude: a missing key or package is a
                                # warning in status.json and titles fall back to keywords
   model: claude-opus-5-5
@@ -64,7 +64,7 @@ labels:                        # readable titles and summaries (docs/MONITOR.md,
                                # written at each refresh. Labels are written once per theme
                                # and keyword name. A number paces inactive themes only.
 
-comovement:                    # "trading together" (docs/MONITOR.md); prices only, never a route in
+comovement:                    # "trading together" (docs/METHOD.md); prices only, never a route in
   window_sessions: 126         # last six months, compared with the six months before
   min_observations_share: 0.9  # a company needs its own close on 90% of the sessions
   null_draws: 1000             # random baskets with the same segment mix

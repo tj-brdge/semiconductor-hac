@@ -1,4 +1,4 @@
-"""Do a theme's stocks trade together? (docs/MONITOR.md, "Trading together")
+"""Do a theme's stocks trade together? (docs/METHOD.md)
 
 For the last `window_sessions` closes, and the same span just before, on the
 benchmark calendar:

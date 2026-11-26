@@ -1,12 +1,12 @@
-"""Monitor profiles (docs/MONITOR.md, "Profiles"): one named set of configuration
+"""Monitor profiles (docs/METHOD.md): one named set of configuration
 files, state and output, so that pilots with different coverage run side by side.
 
 A profile names its universe, pipeline and monitor files and where its registry
 (state) and site go. Profiles share the document and price store, read only their
 own companies from it, and share the content-addressed embedding and cluster
 caches (keyed by text, vectors and settings, so they cannot mix results). The
-default profile, `semis`, uses the original files and directories, so existing
-commands behave exactly as before.
+commands use `tech-v2` unless `--profile` says otherwise; `semis` is the original
+semiconductor pilot, with its own files and directories.
 
 `fork_from` starts a profile's registry as a copy of another profile's registry
 (theme IDs, basket versions and history kept) the first time it runs; from then on
@@ -32,7 +32,7 @@ PROFILES = CONFIG_DIR / "profiles"
 PILOT = DEFAULT = "semis"
 # The one monitor people use: every command-line command without --profile runs
 # this profile, so there is a single universe to download, refresh and look at.
-# Changed from the pilot on 2026-11-14 (docs/MONITOR.md, "Profiles").
+# Changed from the pilot on 2026-11-14 (docs/METHOD.md).
 ACTIVE = "tech-v2"
 
 

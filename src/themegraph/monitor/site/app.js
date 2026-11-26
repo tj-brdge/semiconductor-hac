@@ -1,5 +1,5 @@
 // Themegraph research application. Reads the static feed written by `themegraph
-// monitor refresh` (docs/MONITOR.md, "Data feed") and renders:
+// monitor refresh` (docs/METHOD.md) and renders:
 //   #/               overview: what is emerging, changing and at risk
 //   #/themes         theme explorer: sortable, filterable table of every theme
 //   #/theme/<id>     one theme: performance, discussion, companies, evidence, record

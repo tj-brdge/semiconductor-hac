@@ -1,5 +1,5 @@
 """Company investor-relations documents: a third document source beside transcripts
-and SEC filings (docs/MONITOR.md, "Company IR documents").
+and SEC filings (docs/OPERATIONS.md).
 
 A manifest (`config/ir_documents.yaml`) lists documents on companies' own sites:
 earnings releases, presentations, call scripts, business reports. Each is fetched
