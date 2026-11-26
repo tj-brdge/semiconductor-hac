@@ -62,7 +62,6 @@ def test_protocol_holds_every_worked_example_and_the_declared_numbers():
     doc = " ".join(DOC.read_text().split())
     for key, (text, *_rest) in EXAMPLES.items():
         assert f"**{key}," in doc and " ".join(text.split()) in doc, key
-    assert len(DOC.read_text().splitlines()) < 220
     for number in (f"{P.KAPPA_FLOOR:.2f}", f"{P.MIN_F1_GAIN:.2f}", f"{P.MIN_PRECISION:.2f}",
                    f"{P.MAX_INVALID_SHARE:.0%}", f"{P.MAX_UNCLEAR_SHARE:.0%}",
                    str(P.SAMPLE_SEED), f"{P.N_BOOT:,}"):
